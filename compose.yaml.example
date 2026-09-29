@@ -1,0 +1,14 @@
+services:
+  mytaste:
+    build: .
+    environment:
+      MYTASTE_TMDB_TOKEN: ${MYTASTE_TMDB_TOKEN:?Set MYTASTE_TMDB_TOKEN}
+      MYTASTE_LANGUAGE: ${MYTASTE_LANGUAGE:-en-US}
+    ports:
+      - "8000:8000"
+    volumes:
+      - mytaste-data:/data
+    restart: unless-stopped
+
+volumes:
+  mytaste-data:

@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark light">
+    <meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+    <title>{% block title %}MyTaste{% endblock %}</title>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}">
+    <script src="{{ request.url_for('static', path='app.js') }}" defer></script>
+  </head>
+  <body
+    data-show-year="{{ 'true' if display.show_year else 'false' }}"
+    data-show-rating="{{ 'true' if display.show_rating else 'false' }}"
+    data-show-media-type="{{ 'true' if display.show_media_type else 'false' }}"
+    data-show-genres="{{ 'true' if display.show_genres else 'false' }}"
+    data-show-people="{{ 'true' if display.show_people else 'false' }}"
+    data-show-providers="{{ 'true' if display.show_providers else 'false' }}"
+    data-card-size="{{ display.card_size }}"
+    data-autoplay-trailer="{{ 'true' if display.autoplay_trailer else 'false' }}"
+    data-media-mode="{{ header_media }}"
+    data-sidebar="{{ 'open' if display.sidebar_open else 'closed' }}"
+  >
+    <header class="site-header">
+      <div class="header-primary">
+        <a class="brand" href="/" aria-label="MyTaste home">
+          <span class="brand-mark" aria-hidden="true">M</span>
+          <span class="brand-name">MyTaste</span>
+        </a>
+
+        <div class="primary-controls">
+          <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="/" role="search">
+            <input type="hidden" name="media" value="{{ header_media }}">
+            <input type="hidden" name="category" value="latest">
+            <button class="icon-button search-toggle" type="button" aria-label="Open search" aria-expanded="{{ 'true' if search_query else 'false' }}">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+            </button>
+            <label class="sr-only" for="catalog-search">Search movies and TV shows</label>
+            <input id="catalog-search" class="search-input" type="search" name="q" value="{{ search_query }}" placeholder="Search titles" autocomplete="off">
+          </form>
+
+          <nav class="media-switch" aria-label="Media type">
+            {% if media_links %}
+              {% for item in media_links %}
+                <a href="{{ item.url }}" {% if item.active %}aria-current="page"{% endif %}>{{ item.label }}</a>
+              {% endfor %}
+            {% else %}
+              <a href="/?media=all" aria-current="page">All</a>
+              <a href="/?media=movie">Movies</a>
+              <a href="/?media=tv">TV Shows</a>
+            {% endif %}
+          </nav>
+
+        </div>
+
+        {% set logo_limit = 2 if header_has_library else 3 %}
+        <a class="services-link" href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %} aria-label="Manage services">
+          <span class="service-logo-stack" aria-hidden="true">
+            {% for provider in header_providers[:logo_limit] %}
+              {% if provider.logo_url %}
+                <img src="{{ provider.logo_url }}" alt="" width="30" height="30">
+              {% else %}
+                <span class="mini-logo">{{ provider.name[0] }}</span>
+              {% endif %}
+            {% endfor %}
+            {% if header_has_library %}
+              <span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"></path></svg></span>
+            {% endif %}
+            {% if not header_providers and not header_has_library %}
+              <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="2"></rect><rect x="4" y="13" width="16" height="6" rx="2"></rect></svg>
+            {% endif %}
+          </span>
+          {% if header_providers|length > logo_limit %}<span class="service-count">+{{ header_providers|length - logo_limit }}</span>{% endif %}
+          <span class="services-label">Services</span>
+        </a>
+      </div>
+    </header>
+
+    {% block layout %}<main>{% block content %}{% endblock %}</main>{% endblock %}
+
+    <footer>
+      <p>Movie and TV metadata from <a href="https://www.themoviedb.org/" rel="noreferrer">TMDB</a>. Streaming availability powered by JustWatch.</p>
+      <p>This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </footer>
+  </body>
+</html>

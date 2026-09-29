@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Services · MyTaste{% endblock %}
+{% block content %}
+  {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
+  {% macro source_choices(action) -%}
+    <button class="source-choice" type="button" {{ action }}="streaming">
+      <span class="source-choice-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12.5" rx="2.5"></rect><path d="m10.2 8.3 4.6 2.45-4.6 2.45V8.3Z"></path><path d="M8 20.5h8"></path></svg>
+      </span>
+      <span class="source-choice-copy">
+        <strong>Streaming service</strong>
+        <small>Netflix, Prime Video, Disney+ and other subscriptions</small>
+      </span>
+      <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+    </button>
+    <button class="source-choice" type="button" {{ action }}="local">
+      <span class="source-choice-icon source-choice-icon-local" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
+      </span>
+      <span class="source-choice-copy">
+        <strong>Local folder</strong>
+        <small>Movies or shows on this device, a USB drive, or a network share</small>
+      </span>
+      <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+    </button>
+  {%- endmacro %}
+
+  <div class="services-page">
+    <header class="services-header">
+      <div class="services-intro">
+        <h1>{% if has_sources %}Your services{% else %}Where do you watch?{% endif %}</h1>
+        <p>
+          {% if has_sources %}
+            Everything available on these is mixed into one catalog.
+          {% else %}
+            Add the streaming services you subscribe to, folders of movies and shows on this device, or both.
+          {% endif %}
+        </p>
+      </div>
+      <div class="services-header-actions">
+        <form class="region-picker" method="post" action="/settings/region" data-region-form>
+          <label for="region">Streaming region</label>
+          <span class="region-select">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.5 12h17M12 3.5c2.3 2.4 3.4 5.2 3.4 8.5s-1.1 6.1-3.4 8.5c-2.3-2.4-3.4-5.2-3.4-8.5s1.1-6.1 3.4-8.5Z"></path></svg>
+            <select id="region" name="region">
+              {% for item in regions %}
+                <option value="{{ item.code }}" {% if item.code == region %}selected{% endif %}>{{ item.name }}</option>
+              {% endfor %}
+              {% if not regions %}<option value="{{ region }}">{{ region }}</option>{% endif %}
+            </select>
+          </span>
+          <noscript><button class="button button-secondary" type="submit">Save</button></noscript>
+        </form>
+        {% if has_sources %}<a class="button button-primary" href="/">Done</a>{% endif %}
+      </div>
+    </header>
+
+    {% if error %}<div class="alert" role="alert"><strong>Could not load streaming services.</strong> {{ error }}</div>{% endif %}
+    {% if page_error %}<div class="alert" role="alert">{{ page_error }}</div>{% endif %}
+
+    {% if has_sources %}
+      <ul class="source-grid" aria-label="Enabled services">
+        {% for provider in enabled_providers %}
+          <li class="source-card">
+            <span class="source-logo">
+              {% if provider.logo_url %}
+                <img src="{{ provider.logo_url }}" alt="" width="48" height="48">
+              {% else %}
+                <span class="source-logo-letter" aria-hidden="true">{{ provider.name[0] }}</span>
+              {% endif %}
+            </span>
+            <div class="source-copy">
+              <h2 class="source-name">{{ provider.name }}</h2>
+              <p class="source-kind">Streaming</p>
+            </div>
+            <form class="source-actions" method="post" action="/settings/services/{{ provider.id }}/remove">
+              <button class="icon-button source-action" type="submit" aria-label="Remove {{ provider.name }}" title="Remove">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+        {% for row in library_rows %}
+          <li class="source-card source-card-local" data-library-id="{{ row.id }}" data-state="{{ row.state }}">
+            <span class="source-logo source-logo-local" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
+            </span>
+            <div class="source-copy">
+              <h2 class="source-name">{{ row.name }}</h2>
+              <p class="source-kind">Local · <span class="source-status" data-library-status role="status" aria-live="polite">{{ row.text }}</span></p>
+              <p class="source-path" title="{{ row.path }}">{{ row.path }}</p>
+            </div>
+            <div class="source-actions">
+              <form method="post" action="/settings/libraries/{{ row.id }}/rescan">
+                <button class="icon-button source-action" type="submit" data-library-rescan aria-label="Rescan {{ row.name }}" title="Rescan" {% if row.state == 'scanning' %}disabled{% endif %}>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9"></path><path d="M19.5 4v5h-5"></path></svg>
+                </button>
+              </form>
+              <form method="post" action="/settings/libraries/{{ row.id }}/remove" data-confirm="Remove the library “{{ row.name }}”? Your files are not touched.">
+                <button class="icon-button source-action" type="submit" aria-label="Remove {{ row.name }}" title="Remove">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+                </button>
+              </form>
+            </div>
+          </li>
+        {% endfor %}
+        <li class="source-grid-add">
+          <button class="source-add" type="button" data-open-add="choose" aria-haspopup="dialog">
+            <span class="source-add-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+            </span>
+            <span class="source-add-copy">
+              <strong>Add</strong>
+              <small>Streaming service or local folder</small>
+            </span>
+          </button>
+        </li>
+      </ul>
+    {% else %}
+      <div class="source-choices source-choices-welcome">
+        {{ source_choices("data-open-add") }}
+      </div>
+    {% endif %}
+
+    <dialog class="add-source" id="add-source" aria-labelledby="add-source-title" data-open-step="{{ add_step }}">
+      <div class="add-source-shell">
+        <header class="add-source-header">
+          <button class="icon-button" type="button" data-add-back aria-label="Back to source types" hidden>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+          </button>
+          <h2 id="add-source-title" data-add-title>Add a service</h2>
+          <button class="icon-button" type="button" data-close-add aria-label="Close">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+          </button>
+        </header>
+
+        <section class="add-panel" data-add-panel="choose" data-title="Add a service">
+          <div class="add-panel-body">
+            <p class="add-lede">What would you like to add?</p>
+            <div class="source-choices">
+              {{ source_choices("data-add-go") }}
+            </div>
+          </div>
+        </section>
+
+        <section class="add-panel" data-add-panel="streaming" data-title="Add streaming services" hidden>
+          <form class="add-form" method="post" action="/settings/services" data-provider-form>
+            <input type="hidden" name="region" value="{{ region }}">
+            <div class="add-panel-intro">
+              <p class="add-lede">Subscriptions available in {{ region_name }}. Rentals and stores aren’t included.</p>
+              {% if streaming_error %}<div class="alert" role="alert">{{ streaming_error }}</div>{% endif %}
+              {% if available_providers %}
+                <label class="search-field">
+                  <span class="sr-only">Search streaming services</span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
+                  <input type="search" placeholder="Search services" autocomplete="off" data-provider-search>
+                </label>
+              {% endif %}
+            </div>
+            <div class="add-panel-body">
+              {% if available_providers %}
+                <div class="provider-picker" data-provider-list>
+                  {% for provider in available_providers %}
+                    <label class="provider-choice" data-provider-name="{{ provider.name|lower }}">
+                      <input type="checkbox" name="provider_ids" value="{{ provider.id }}" {% if provider.id in selected_ids %}checked{% endif %}>
+                      {% if provider.logo_url %}
+                        <img src="{{ provider.logo_url }}" alt="" width="40" height="40" loading="lazy">
+                      {% else %}
+                        <span class="provider-choice-letter" aria-hidden="true">{{ provider.name[0] }}</span>
+                      {% endif %}
+                      <span class="provider-choice-name">{{ provider.name }}</span>
+                      <span class="provider-choice-check" aria-hidden="true">
+                        <svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg>
+                      </span>
+                    </label>
+                  {% endfor %}
+                </div>
+                <p class="add-empty" data-provider-empty hidden>No services match your search.</p>
+              {% elif not error %}
+                <p class="add-empty">You’ve added every subscription available in {{ region_name }}.</p>
+              {% endif %}
+            </div>
+            <footer class="add-form-footer">
+              <p class="add-count" data-provider-count aria-live="polite"></p>
+              <button class="button button-primary" type="submit" data-provider-submit {% if not available_providers %}disabled{% endif %}>Add services</button>
+            </footer>
+          </form>
+        </section>
+
+        <section class="add-panel" data-add-panel="local" data-title="Add a local folder" hidden>
+          <form class="add-form" method="post" action="/settings/libraries" data-library-form>
+            <div class="add-panel-body">
+              <p class="add-lede">MyTaste scans the folder, matches each title on TMDB, and mixes it into your catalog. Your files are never changed.</p>
+              {% if library_error %}<div class="alert" role="alert">{{ library_error }}</div>{% endif %}
+              <fieldset class="add-field">
+                <legend>This folder contains</legend>
+                <div class="size-options">
+                  <label><input type="radio" name="media_type" value="movie" {% if library_form.media_type != 'tv' %}checked{% endif %}><span>Movies</span></label>
+                  <label><input type="radio" name="media_type" value="tv" {% if library_form.media_type == 'tv' %}checked{% endif %}><span>TV Shows</span></label>
+                </div>
+              </fieldset>
+              <div class="add-field">
+                <label for="library-path">Folder</label>
+                <div class="path-control">
+                  <input id="library-path" name="path" type="text" value="{{ library_form.path }}" placeholder="/mnt/media/Movies" autocomplete="off" spellcheck="false" required>
+                  <button class="button button-secondary" type="button" data-folder-browse aria-expanded="false" aria-controls="folder-picker">Browse</button>
+                </div>
+                {% if library_roots %}<p class="field-note">Folders must be inside {{ library_roots|join(', ') }}.</p>{% endif %}
+                <div class="folder-picker" id="folder-picker" data-folder-picker hidden>
+                  <div class="folder-picker-bar">
+                    <button class="icon-button" type="button" data-folder-up aria-label="Parent folder" title="Parent folder">
+                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"></path></svg>
+                    </button>
+                    <span class="folder-picker-path" data-folder-current></span>
+                    <button class="button button-secondary" type="button" data-folder-choose>Use this folder</button>
+                  </div>
+                  <ul class="folder-picker-list" data-folder-entries role="list"></ul>
+                  <p class="folder-picker-status" data-folder-status role="status" aria-live="polite"></p>
+                </div>
+              </div>
+              <div class="add-field">
+                <label for="library-name">Name <span class="field-optional">Optional</span></label>
+                <input id="library-name" name="name" type="text" value="{{ library_form.name }}" placeholder="Uses the folder name" maxlength="80" autocomplete="off">
+              </div>
+            </div>
+            <footer class="add-form-footer">
+              <button class="button button-primary" type="submit">Add and scan</button>
+            </footer>
+          </form>
+        </section>
+      </div>
+    </dialog>
+  </div>
+{% endblock %}

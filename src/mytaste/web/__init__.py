@@ -1,0 +1,1 @@
+"""MyTaste web application."""

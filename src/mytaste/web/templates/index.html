@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} · MyTaste{% endblock %}
+{% block layout %}
+  {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
+  {% set check_icon %}<svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg>{% endset %}
+  <div class="browse-layout">
+    <aside class="browse-sidebar" id="browse-sidebar" aria-label="Filters and display options" {% if not display.sidebar_open %}inert{% endif %}>
+      <button class="icon-button sidebar-dismiss" type="button" data-sidebar-close aria-label="Close filters and display options">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+      </button>
+      <div class="sidebar-body">
+        <form class="sidebar-form" method="get" action="/" data-filter-form>
+          <input type="hidden" name="media" value="{{ query.media_type }}">
+          <input type="hidden" name="category" value="{{ query.category }}">
+          {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
+
+          {% if source_options %}
+            <section class="sidebar-section" aria-labelledby="sources-heading">
+              <div class="sidebar-section-head">
+                <h3 id="sources-heading">Sources</h3>
+                {% if sources_changed %}<a class="section-action" href="{{ all_sources_url }}">Select all</a>{% endif %}
+              </div>
+              {% if configured_providers %}<input type="hidden" name="providers" value="none">{% endif %}
+              {% if libraries %}<input type="hidden" name="libraries" value="none">{% endif %}
+              <ul class="source-list" role="list">
+                {% for option in source_options %}
+                  <li class="source-row">
+                    <label class="source-toggle">
+                      <input type="checkbox" name="{{ 'providers' if option.kind == 'provider' else 'libraries' }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
+                      <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}" aria-hidden="true">
+                        {% if option.logo_url %}
+                          <img src="{{ option.logo_url }}" alt="" width="30" height="30">
+                        {% elif option.kind == 'library' %}
+                          <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
+                        {% else %}
+                          {{ option.name[0] }}
+                        {% endif %}
+                      </span>
+                      <span class="source-row-copy">
+                        <span class="source-row-name">{{ option.name }}</span>
+                        {% if option.kind == 'library' %}<span class="source-row-detail">{{ option.detail }}</span>{% endif %}
+                      </span>
+                      <span class="checkbox" aria-hidden="true">{{ check_icon }}</span>
+                    </label>
+                    <a class="source-only" href="{{ option.only_url }}">Only<span class="sr-only"> {{ option.name }}</span></a>
+                  </li>
+                {% endfor %}
+              </ul>
+            </section>
+          {% endif %}
+
+          <section class="sidebar-section" aria-labelledby="year-heading">
+            <div class="sidebar-section-head">
+              <h3 id="year-heading">Release year</h3>
+              {% if query.year_from is not none or query.year_to is not none %}<a class="section-action" href="{{ year_clear_url }}">Clear</a>{% endif %}
+            </div>
+            <div class="year-range">
+              <label><span class="sr-only">From year</span><input type="number" name="year_from" min="1900" max="{{ current_year }}" value="{{ query.year_from or '' }}" placeholder="From" inputmode="numeric"></label>
+              <span class="year-range-dash" aria-hidden="true">–</span>
+              <label><span class="sr-only">To year</span><input type="number" name="year_to" min="1900" max="{{ current_year }}" value="{{ query.year_to or '' }}" placeholder="To" inputmode="numeric"></label>
+            </div>
+            <div class="chip-row">
+              {% for preset in year_presets %}
+                <a class="chip" href="{{ preset.url }}" {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="sidebar-section" aria-labelledby="rating-heading">
+            <div class="sidebar-section-head">
+              <h3 id="rating-heading">Minimum rating</h3>
+            </div>
+            <div class="segmented segmented-rating" role="radiogroup" aria-labelledby="rating-heading">
+              {% for value in rating_options %}
+                <label>
+                  <input type="radio" name="rating_min" value="{{ value if value is not none else '' }}" {% if query.minimum_rating == value %}checked{% endif %}>
+                  <span>{% if value is none %}Any{% else %}{{ value }}+{% endif %}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <label class="switch-row">
+              <span>Include unrated titles<small>Keep titles without a score</small></span>
+              <input class="switch" type="checkbox" name="unrated" value="1" {% if query.include_unrated %}checked{% endif %}>
+            </label>
+          </section>
+
+          <noscript><button class="button button-primary sidebar-apply" type="submit">Apply filters</button></noscript>
+        </form>
+
+        <form class="sidebar-form" id="display-form">
+          <section class="sidebar-section" aria-labelledby="display-heading">
+            <div class="sidebar-section-head">
+              <h3 id="display-heading">Display</h3>
+              <p class="save-status" id="display-save-status" role="status" aria-live="polite"></p>
+            </div>
+            <div class="segmented" role="radiogroup" aria-label="Card size">
+              <label>
+                <input type="radio" name="card_size" value="comfortable" {% if display.card_size == 'comfortable' %}checked{% endif %}>
+                <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>Comfortable</span>
+              </label>
+              <label>
+                <input type="radio" name="card_size" value="compact" {% if display.card_size == 'compact' %}checked{% endif %}>
+                <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4" rx="1"></rect><rect x="10" y="4" width="4" height="4" rx="1"></rect><rect x="16" y="4" width="4" height="4" rx="1"></rect><rect x="4" y="10" width="4" height="4" rx="1"></rect><rect x="10" y="10" width="4" height="4" rx="1"></rect><rect x="16" y="10" width="4" height="4" rx="1"></rect><rect x="4" y="16" width="4" height="4" rx="1"></rect><rect x="10" y="16" width="4" height="4" rx="1"></rect><rect x="16" y="16" width="4" height="4" rx="1"></rect></svg>Compact</span>
+              </label>
+            </div>
+            <p class="sidebar-label" id="card-details-label">Show on cards</p>
+            <div class="chip-row" role="group" aria-labelledby="card-details-label">
+              {% for key, label, hint, checked in [
+                ('show_year', 'Year', 'Release or first-air year', display.show_year),
+                ('show_rating', 'Rating', 'TMDB community score', display.show_rating),
+                ('show_media_type', 'Type', 'Movie or series badge', display.show_media_type),
+                ('show_genres', 'Genres', 'Up to two genres', display.show_genres),
+                ('show_people', 'Director', 'Director or creator, loaded for visible cards', display.show_people),
+                ('show_providers', 'Sources', 'Your streaming services and local folders that have the title', display.show_providers)
+              ] %}
+                <label class="chip chip-choice" title="{{ hint }}">
+                  <input type="checkbox" name="{{ key }}" {% if checked %}checked{% endif %}>
+                  <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ label }}</span>
+                </label>
+              {% endfor %}
+            </div>
+            <label class="switch-row">
+              <span>Autoplay trailers<small>Play when title details open</small></span>
+              <input class="switch" type="checkbox" name="autoplay_trailer" {% if display.autoplay_trailer %}checked{% endif %}>
+            </label>
+          </section>
+        </form>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" data-sidebar-close aria-hidden="true"></div>
+
+    <div class="browse-main">
+      <div class="browse-toolbar">
+        <button class="icon-button sidebar-toggle" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="{{ 'Hide' if display.sidebar_open else 'Show' }} filters and display options" title="Filters and display">
+          <svg class="sidebar-icon-collapse" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15M15.5 10l-2 2 2 2"></path></svg>
+          <svg class="sidebar-icon-expand" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15M13.5 10l2 2-2 2"></path></svg>
+          {% if active_filter_count %}<span class="filter-count">{{ active_filter_count }}</span>{% endif %}
+        </button>
+        <nav class="category-tabs" aria-label="Browse category">
+          {% for item in category_links %}
+            <a href="{{ item.url }}" {% if item.active %}aria-current="page"{% endif %}>{{ item.label }}</a>
+          {% endfor %}
+        </nav>
+      </div>
+
+      <main class="browse-content">
+        {% if active_filters %}
+          <div class="active-filters" role="group" aria-label="Active filters">
+            {% for chip in active_filters %}
+              <a class="filter-chip" href="{{ chip.url }}">
+                {{ chip.label }}
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+                <span class="sr-only">(remove filter)</span>
+              </a>
+            {% endfor %}
+            <a class="filter-chip-clear" href="{{ clear_filters_url }}">Clear all</a>
+          </div>
+        {% endif %}
+    {% if error %}
+      <div class="alert" role="alert"><strong>Catalog unavailable.</strong> {{ error }} Refresh the page to try again.</div>
+    {% endif %}
+    {% if notice %}
+      <div class="notice" role="status">{{ notice }}</div>
+    {% endif %}
+
+    {% if page.items %}
+      <section class="media-grid" aria-label="{{ heading }}">
+        {% for item in page.items %}
+          {% set in_library = item.in_library or (item.media_type, item.id) in library_keys %}
+          {% set on_services = item.id > 0 and preferences.configured %}
+          <article
+            class="media-card{% if in_library %} is-in-library{% endif %}"
+            {% if item.id > 0 %}data-detail-url="/api/items/{{ item.media_type }}/{{ item.id }}/details"{% endif %}
+            data-title="{{ item.title }}"
+            data-year="{{ item.year }}"
+            data-rating="{{ item.rating }}"
+            data-media-label="{{ item.media_label }}"
+            data-overview="{{ item.overview }}"
+            data-genres='{{ item.genres|tojson }}'
+          >
+            <button class="poster-link" type="button" data-open-media-details aria-label="Open details for {{ item.title }}">
+              <div class="poster">
+                {% if item.poster_url %}
+                  <img src="{{ item.poster_url }}" alt="" width="500" height="750" {% if loop.index > 7 %}loading="lazy"{% endif %}>
+                {% else %}
+                  <div class="poster-placeholder" aria-hidden="true"><span>{{ item.title[0] }}</span></div>
+                {% endif %}
+                <span class="type-badge">{{ item.media_label }}</span>
+                {% if on_services or in_library %}
+                  <span class="provider-strip"{% if on_services %} data-providers-key="{{ item.media_type }}:{{ item.id }}"{% endif %}{% if in_library %} title="In your local library"{% endif %}>
+                    {% if in_library %}<span class="source-local"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
+                  </span>
+                {% endif %}
+              </div>
+            </button>
+            <div class="card-copy">
+              <h2><button class="media-title-button" type="button" data-open-media-details>{{ item.title }}</button></h2>
+              {% if on_services or in_library %}<p class="sr-only" data-providers-text>{% if in_library %}In your local library{% endif %}</p>{% endif %}
+              <div class="card-meta">
+                <span class="meta-year">{{ item.year }}</span>
+                {% if item.rating %}<span class="meta-rating" aria-label="Rating {{ item.rating }} out of 10">★ {{ item.rating }}</span>{% endif %}
+              </div>
+              {% if item.genres %}<p class="meta-genres">{{ item.genres|join(' · ') }}</p>{% endif %}
+              {% if item.library_summary %}<p class="meta-library">{{ item.library_summary }}</p>{% endif %}
+              {% if item.id > 0 %}
+                <p class="meta-people" data-people-url="/api/items/{{ item.media_type }}/{{ item.id }}/people" aria-live="polite"><span>Loading credits…</span></p>
+              {% else %}
+                <p class="meta-people meta-unmatched">Not matched on TMDB yet</p>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </section>
+    {% elif not error %}
+      <div class="empty-state">
+        {% if library_scanning and not streaming_selected %}
+          <h2>Your library is being scanned</h2>
+          <p>Titles appear here as soon as the first scan finishes. Refresh in a moment.</p>
+          <a class="button button-secondary" href="/settings">View scan progress</a>
+        {% else %}
+          <h2>No matches yet</h2>
+          <p>Try another category, loosen the filters, or include more of your services.</p>
+          <a class="button button-secondary" href="{{ clear_filters_url }}">Clear filters</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if previous_url or next_url %}
+      <nav class="pagination" aria-label="Catalog pages">
+        {% if previous_url %}<a class="button button-secondary" href="{{ previous_url }}">Previous</a>{% endif %}
+        <span>Page {{ page.page }} of {{ page.total_pages }}</span>
+        {% if next_url %}<a class="button button-secondary" href="{{ next_url }}">Next</a>{% endif %}
+      </nav>
+    {% endif %}
+
+    <dialog class="media-details" id="media-details" aria-labelledby="media-detail-title">
+      <div class="media-detail-shell">
+        <button class="media-detail-close" type="button" data-close-media-details aria-label="Close media details">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        </button>
+        <div class="media-detail-layout">
+          <aside class="media-detail-identity">
+            <div class="media-detail-poster" data-detail-poster aria-hidden="true"></div>
+            <p class="media-detail-kind" data-detail-kind></p>
+            <h2 id="media-detail-title" data-detail-title>Loading…</h2>
+            <p class="media-detail-scoreline">
+              <span data-detail-year></span>
+              <span data-detail-runtime></span>
+              <span data-detail-rating></span>
+            </p>
+          </aside>
+
+          <section class="media-detail-stage" aria-live="polite">
+            <div class="media-detail-visual" data-detail-visual aria-hidden="true">
+              <img data-detail-backdrop alt="">
+              <div class="media-detail-video" data-detail-video></div>
+            </div>
+            <button
+              class="media-detail-sound"
+              type="button"
+              data-detail-sound
+              data-muted="true"
+              aria-label="Unmute trailer"
+              aria-pressed="false"
+              title="Unmute trailer"
+              hidden
+            >
+              <svg data-sound-muted aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+                <path d="m16 9 5 5M21 9l-5 5"></path>
+              </svg>
+              <svg data-sound-on aria-hidden="true" viewBox="0 0 24 24">
+                <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+                <path d="M15 9.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10"></path>
+              </svg>
+            </button>
+            <div class="media-detail-copy">
+              <div class="media-detail-status" data-detail-status>Loading details…</div>
+              <div class="media-detail-content" data-detail-content hidden>
+                <div class="media-detail-genres" data-detail-genres></div>
+                <p class="media-detail-overview" data-detail-overview></p>
+                <div class="media-detail-actions">
+                  <a class="detail-action detail-action-primary" data-detail-trailer target="_blank" rel="noreferrer">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z"></path></svg>
+                    Watch trailer
+                  </a>
+                  <button class="detail-action detail-action-add" type="button" data-detail-add aria-label="Add to watchlist" title="Add to watchlist">
+                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+                  </button>
+                </div>
+                <section class="media-detail-cast-section" aria-labelledby="media-detail-cast-title">
+                  <h3 id="media-detail-cast-title">Cast</h3>
+                  <div class="media-detail-cast" data-detail-cast role="list"></div>
+                </section>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </dialog>
+      </main>
+    </div>
+  </div>
+{% endblock %}
