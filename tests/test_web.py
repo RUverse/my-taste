@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -17,7 +18,7 @@ from mytaste.catalog.models import (
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
 from mytaste.config import AppSettings
-from mytaste.library.models import Library, LibraryStatus
+from mytaste.library.models import Library, LibraryFolder, LibraryStatus
 from mytaste.library.service import FolderEntry, FolderListing
 from mytaste.web.app import create_app
 
@@ -130,22 +131,72 @@ class FakeLibrary:
     def statuses(self) -> tuple[LibraryStatus, ...]:
         return tuple(self.status(item.id) for item in self.items)
 
-    def add(self, name: str, path: str, media_type: str) -> Library:
-        if not path.startswith("/"):
+    def add(self, name: str, folders: list[tuple[str, str]]) -> Library:
+        if not folders:
+            raise ValueError("Choose a folder")
+        if any(not path.startswith("/") for path, _ in folders):
             raise ValueError("Use an absolute folder path such as /mnt/media/Movies")
         library = Library(
             id=len(self.items) + 1,
             name=name or "Library",
-            path=path,
-            media_type=media_type,  # type: ignore[arg-type]
             created_at="2026-09-10T08:00:00+00:00",
+            folders=tuple(
+                LibraryFolder(
+                    id=len(self.items) * 10 + index + 1,
+                    path=path,
+                    media_type=media_type,  # type: ignore[arg-type]
+                )
+                for index, (path, media_type) in enumerate(folders)
+            ),
             last_scanned_at="2026-09-10T08:05:00+00:00",
             item_count=2,
             file_count=3,
+            movie_count=2 if any(media == "movie" for _, media in folders) else 0,
+            show_count=1 if any(media == "tv" for _, media in folders) else 0,
+            episode_count=2 if any(media == "tv" for _, media in folders) else 0,
         )
         self.items.append(library)
         self.scan_requests.append(library.id)
         return library
+
+    def add_folders(self, library_id: int, folders: list[tuple[str, str]]) -> Library:
+        library = self.library(library_id)
+        if library is None:
+            raise ValueError("Unknown library")
+        if any(path == folder.path for path, _ in folders for folder in library.folders):
+            raise ValueError(f"{folders[0][0]} is already in the library “{library.name}”")
+        added = tuple(
+            LibraryFolder(id=100 + len(library.folders) + index, path=path, media_type=media)  # type: ignore[arg-type]
+            for index, (path, media) in enumerate(folders)
+        )
+        updated = replace(library, folders=library.folders + added)
+        self.items = [updated if item.id == library_id else item for item in self.items]
+        self.scan_requests.append(library_id)
+        return updated
+
+    def remove_folder(self, library_id: int, folder_id: int) -> bool:
+        library = self.library(library_id)
+        if library is None or all(folder.id != folder_id for folder in library.folders):
+            return False
+        if len(library.folders) == 1:
+            raise ValueError("A library needs at least one folder; remove the library instead")
+        updated = replace(
+            library, folders=tuple(folder for folder in library.folders if folder.id != folder_id)
+        )
+        self.items = [updated if item.id == library_id else item for item in self.items]
+        self.scan_requests.append(library_id)
+        return True
+
+    def rename(self, library_id: int, name: str) -> bool:
+        cleaned = " ".join(name.split())
+        if not cleaned:
+            raise ValueError("Give the library a name")
+        library = self.library(library_id)
+        if library is None:
+            return False
+        updated = replace(library, name=cleaned)
+        self.items = [updated if item.id == library_id else item for item in self.items]
+        return True
 
     def remove(self, library_id: int) -> bool:
         before = len(self.items)
@@ -405,7 +456,7 @@ def test_service_icons_are_an_opt_in_card_option(tmp_path: Path) -> None:
 
 def test_local_titles_show_a_folder_in_the_source_strip(tmp_path: Path) -> None:
     library = FakeLibrary()
-    library.add("Shows", "/media/Shows", "tv")
+    library.add("Shows", [("/media/Shows", "tv")])
     with make_client(tmp_path, library) as client:
         home = client.get("/")
         providers = client.get("/api/items/providers", params={"items": "movie:12"})
@@ -470,11 +521,11 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
         rejected = client.post(
             "/settings/libraries",
-            data={"name": "Movies", "path": "relative", "media_type": "movie"},
+            data={"name": "Movies", "path": "relative", "media_type_0": "movie"},
         )
         added = client.post(
             "/settings/libraries",
-            data={"name": "Movies", "path": "/media/Movies", "media_type": "movie"},
+            data={"name": "Movies", "path": "/media/Movies", "media_type_0": "movie"},
             follow_redirects=False,
         )
         services = client.get("/settings")
@@ -545,10 +596,94 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert library.items == []
 
 
+def test_library_holds_several_folders_of_both_media_types(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    with make_client(tmp_path, library) as client:
+        created = client.post(
+            "/settings/libraries",
+            data={
+                "name": "Drive",
+                "path": ["/media/Movies", "/media/TV Shows", ""],
+                "media_type_0": "movie",
+                "media_type_1": "tv",
+                "media_type_2": "movie",
+            },
+            follow_redirects=False,
+        )
+        services = client.get("/settings")
+        status = client.get("/api/libraries/status")
+        duplicate = client.post(
+            "/settings/libraries/1/folders",
+            data={"path": "/media/Movies", "media_type_0": "movie"},
+        )
+        extra = client.post(
+            "/settings/libraries/1/folders",
+            data={"path": "/media/Anime", "media_type_0": "tv"},
+            follow_redirects=False,
+        )
+        removed = client.post("/settings/libraries/1/folders/1/remove", follow_redirects=False)
+        home = client.get("/")
+
+    assert created.status_code == 303
+    assert library.items[0].name == "Drive"
+    assert [(folder.path, folder.media_type) for folder in library.items[0].folders] == [
+        ("/media/TV Shows", "tv"),
+        ("/media/Anime", "tv"),
+    ], "the blank row is ignored; later folders are appended and removed individually"
+    assert "2 movies · 1 show · 2 episodes" in services.text
+    assert services.text.count('class="source-folder"') == 2
+    assert 'action="/settings/libraries/1/folders/2/remove"' in services.text
+    assert 'data-library-target="1"' in services.text
+    assert status.json()["libraries"][0]["folders"] == [
+        {"id": 1, "path": "/media/Movies", "media_type": "movie", "media_label": "Movies"},
+        {"id": 2, "path": "/media/TV Shows", "media_type": "tv", "media_label": "TV Shows"},
+    ]
+    assert status.json()["libraries"][0]["media_label"] == "Movies & TV Shows"
+    assert duplicate.status_code == 422
+    assert "already in the library" in duplicate.text
+    assert 'action="/settings/libraries/1/folders"' in duplicate.text
+    assert "Add folders to Drive" in duplicate.text
+    assert extra.status_code == 303
+    assert removed.status_code == 303
+    assert library.scan_requests == [1, 1, 1]
+    assert "Local · TV Shows" in home.text
+
+
+def test_library_can_be_renamed(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    library.add("Shows", [("/media/Shows", "tv")])
+    with make_client(tmp_path, library) as client:
+        services = client.get("/settings")
+        renamed = client.post(
+            "/settings/libraries/1/rename", data={"name": "Home Drive"}, follow_redirects=False
+        )
+        blank = client.post("/settings/libraries/1/rename", data={"name": "  "})
+
+    assert 'action="/settings/libraries/1/rename" data-library-rename-form hidden' in services.text
+    assert 'aria-label="Rename Shows"' in services.text
+    assert renamed.status_code == 303
+    assert blank.status_code == 422
+    assert "Give the library a name" in blank.text
+    assert library.items[0].name == "Home Drive"
+
+
+def test_last_folder_of_a_library_cannot_be_removed(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    library.add("Shows", [("/media/Shows", "tv")])
+    with make_client(tmp_path, library) as client:
+        services = client.get("/settings")
+        response = client.post("/settings/libraries/1/folders/1/remove")
+
+    assert "/folders/1/remove" not in services.text
+    assert response.status_code == 422
+    assert "remove the library instead" in response.text
+    assert len(library.items[0].folders) == 1
+
+
 def test_library_only_setup_skips_streaming_onboarding(tmp_path: Path) -> None:
     library = FakeLibrary()
     catalog = FakeCatalog()
-    library.add("Shows", "/media/Shows", "tv")
+    library.add("Shows", [("/media/Shows", "tv")])
     with make_client(tmp_path, library, catalog) as client:
         home = client.get("/")
         services = client.get("/settings")
@@ -566,7 +701,7 @@ def test_streaming_outage_falls_back_to_library(tmp_path: Path) -> None:
     library = FakeLibrary()
     catalog = FakeCatalog()
     catalog.fail_browse = True
-    library.add("Shows", "/media/Shows", "tv")
+    library.add("Shows", [("/media/Shows", "tv")])
     with make_client(tmp_path, library, catalog) as client:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
         home = client.get("/")

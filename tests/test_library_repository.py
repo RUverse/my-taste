@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -25,17 +26,44 @@ def test_libraries_are_persisted_and_unique(tmp_path: Path) -> None:
     repository = LibraryRepository(tmp_path / "data" / "mytaste.db")
     repository.initialize()
 
-    library = repository.add_library("Movies", "/media/movies", "movie")
+    library = repository.add_library("Media", [("/media/movies", "movie"), ("/media/tv", "tv")])
 
-    assert library.name == "Movies"
+    assert library.name == "Media"
     assert library.last_scanned_at is None
+    assert [(folder.path, folder.media_type) for folder in library.folders] == [
+        ("/media/movies", "movie"),
+        ("/media/tv", "tv"),
+    ]
+    assert library.media_label == "Movies & TV Shows"
     assert repository.list_libraries() == (library,)
     with pytest.raises(ValueError, match="already"):
-        repository.add_library("Again", "/media/movies", "movie")
+        repository.add_library("Again", [("/media/movies", "movie")])
+    assert len(repository.list_libraries()) == 1, "a failed folder insert rolls back the library"
+    with pytest.raises(ValueError, match="twice"):
+        repository.add_library("Again", [("/media/a", "movie"), ("/media/a", "tv")])
     with pytest.raises(ValueError, match="name"):
-        repository.add_library("   ", "/media/other", "movie")
+        repository.add_library("   ", [("/media/other", "movie")])
     with pytest.raises(ValueError, match="movies or TV"):
-        repository.add_library("Other", "/media/other", "music")
+        repository.add_library("Other", [("/media/other", "music")])
+    with pytest.raises(ValueError, match="folder"):
+        repository.add_library("Other", [])
+
+    extended = repository.add_folders(library.id, [("/media/anime", "tv")])
+    assert [folder.path for folder in extended.folders][-1] == "/media/anime"
+    first, *others = extended.folders
+    assert repository.remove_folder(library.id, first.id) is True
+    assert repository.remove_folder(library.id, first.id) is False
+    assert repository.remove_folder(library.id, others[0].id) is True
+    with pytest.raises(ValueError, match="at least one folder"):
+        repository.remove_folder(library.id, others[1].id)
+    assert repository.get_library(library.id).media_label == "TV Shows"  # type: ignore[union-attr]
+
+    assert repository.rename_library(library.id, "  Home   drive ") is True
+    assert repository.get_library(library.id).name == "Home drive"  # type: ignore[union-attr]
+    with pytest.raises(ValueError, match="name"):
+        repository.rename_library(library.id, "   ")
+    assert repository.rename_library(999, "Missing") is False
+
     assert repository.remove_library(library.id) is True
     assert repository.list_libraries() == ()
 
@@ -43,14 +71,15 @@ def test_libraries_are_persisted_and_unique(tmp_path: Path) -> None:
 def test_replace_items_and_browse(tmp_path: Path) -> None:
     repository = LibraryRepository(tmp_path / "mytaste.db")
     repository.initialize()
-    movies = repository.add_library("Movies", "/media/movies", "movie")
-    shows = repository.add_library("Shows", "/media/shows", "tv")
+    movies = repository.add_library("Movies", [("/media/movies", "movie")])
+    shows = repository.add_library("Shows", [("/media/shows", "tv")])
 
     repository.replace_items(
         movies.id,
         [
             ItemDraft(
                 group_key="movie:parasite:2019",
+                media_type="movie",
                 title="Parasite",
                 files=(make_file("/media/movies/Parasite.2019.mkv"),),
                 year=2019,
@@ -64,6 +93,7 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
             ),
             ItemDraft(
                 group_key="movie:dane anjir maabed:",
+                media_type="movie",
                 title="Dane Anjir Maabed",
                 files=(make_file("/media/movies/Dane-Anjir-Maabed-1080.mp4"),),
             ),
@@ -75,6 +105,7 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
         [
             ItemDraft(
                 group_key="tv:folder:dark",
+                media_type="tv",
                 title="Dark",
                 files=(
                     make_file("/media/shows/Dark/S01/E01.mkv", 1, 1),
@@ -163,3 +194,72 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
     repository.replace_items(movies.id, [])
     assert repository.get_library(movies.id).item_count == 0  # type: ignore[union-attr]
     assert repository.matched_keys() == {("tv", 70523)}
+
+
+def test_single_folder_libraries_are_migrated(tmp_path: Path) -> None:
+    database = tmp_path / "mytaste.db"
+    with sqlite3.connect(database) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE libraries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv')),
+                created_at TEXT NOT NULL,
+                last_scanned_at TEXT,
+                last_error TEXT
+            );
+            CREATE TABLE library_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+                media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv')),
+                group_key TEXT NOT NULL,
+                title TEXT NOT NULL,
+                year INTEGER,
+                tmdb_id INTEGER,
+                release_date TEXT NOT NULL DEFAULT '',
+                overview TEXT NOT NULL DEFAULT '',
+                rating REAL NOT NULL DEFAULT 0,
+                poster_path TEXT,
+                genre_ids TEXT NOT NULL DEFAULT ',',
+                popularity REAL NOT NULL DEFAULT 0,
+                added_at TEXT NOT NULL DEFAULT '',
+                file_count INTEGER NOT NULL DEFAULT 0,
+                season_count INTEGER NOT NULL DEFAULT 0,
+                episode_count INTEGER NOT NULL DEFAULT 0,
+                UNIQUE (library_id, group_key)
+            );
+            INSERT INTO libraries (id, name, path, media_type, created_at, last_scanned_at)
+            VALUES
+                (1, 'Movies', '/media/movies', 'movie', '2026-09-01', '2026-09-02'),
+                (3, 'Shows', '/media/shows', 'tv', '2026-09-01', NULL);
+            INSERT INTO library_items
+                (library_id, media_type, group_key, title, tmdb_id, file_count)
+            VALUES (1, 'movie', 'movie:parasite:2019', 'Parasite', 496243, 1),
+                   (3, 'tv', 'tv:folder:dark', 'Dark', 70523, 26);
+            """
+        )
+    connection.close()
+
+    repository = LibraryRepository(database)
+    repository.initialize()
+    repository.initialize()
+
+    movies, shows = repository.list_libraries()
+    assert (movies.id, movies.name, movies.last_scanned_at) == (1, "Movies", "2026-09-02")
+    assert [(folder.path, folder.media_type) for folder in movies.folders] == [
+        ("/media/movies", "movie")
+    ]
+    assert [(folder.path, folder.media_type) for folder in shows.folders] == [
+        ("/media/shows", "tv")
+    ]
+    assert (shows.id, shows.show_count, shows.episode_count) == (3, 1, 26)
+    assert repository.matched_keys() == {("movie", 496243), ("tv", 70523)}
+
+    added = repository.add_library("New", [("/media/new", "movie")])
+    assert added.id == 4, "ids keep counting after the table rebuild"
+    assert repository.remove_library(shows.id) is True
+    assert repository.matched_keys() == {("movie", 496243)}, "items still cascade"
+    with pytest.raises(ValueError, match="already"):
+        repository.add_folders(movies.id, [("/media/movies", "tv")])

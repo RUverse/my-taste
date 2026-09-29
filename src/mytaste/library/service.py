@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -134,11 +134,30 @@ class LibraryService:
             raise ValueError("MyTaste does not have permission to read that folder")
         return resolved
 
-    def add(self, name: str, path: str, media_type: str) -> Library:
-        resolved = self.resolve_path(path)
-        library = self.repository.add_library(name or resolved.name, str(resolved), media_type)
+    def add(self, name: str, folders: Sequence[tuple[str, str]]) -> Library:
+        """Create a library from ``(path, media_type)`` pairs and start scanning it."""
+
+        resolved = self._resolve_folders(folders)
+        default_name = Path(resolved[0][0]).name if len(resolved) == 1 else "Local library"
+        library = self.repository.add_library(name or default_name, resolved)
         self.schedule_scan(library.id)
         return library
+
+    def add_folders(self, library_id: int, folders: Sequence[tuple[str, str]]) -> Library:
+        if self.repository.get_library(library_id) is None:
+            raise ValueError("Unknown library")
+        library = self.repository.add_folders(library_id, self._resolve_folders(folders))
+        self._restart_scan(library_id)
+        return library
+
+    def remove_folder(self, library_id: int, folder_id: int) -> bool:
+        removed = self.repository.remove_folder(library_id, folder_id)
+        if removed:
+            self._restart_scan(library_id)
+        return removed
+
+    def rename(self, library_id: int, name: str) -> bool:
+        return self.repository.rename_library(library_id, name)
 
     def remove(self, library_id: int) -> bool:
         task = self._scan_tasks.pop(library_id, None)
@@ -157,8 +176,43 @@ class LibraryService:
             return False
         task = asyncio.create_task(self.scan(library_id))
         self._scan_tasks[library_id] = task
-        task.add_done_callback(lambda finished: self._scan_tasks.pop(library_id, None))
+
+        def forget(finished: asyncio.Task[LibraryStatus]) -> None:
+            if self._scan_tasks.get(library_id) is finished:
+                del self._scan_tasks[library_id]
+
+        task.add_done_callback(forget)
         return True
+
+    def _restart_scan(self, library_id: int) -> None:
+        """Rescan after the folder list changed, replacing a scan of the old folder list."""
+
+        task = self._scan_tasks.pop(library_id, None)
+        if task is not None:
+            task.cancel()
+        self.schedule_scan(library_id)
+
+    def _resolve_folders(self, folders: Sequence[tuple[str, str]]) -> list[tuple[str, str]]:
+        if not folders:
+            raise ValueError("Choose a folder")
+        taken = [
+            (Path(folder.path), library.name)
+            for library in self.repository.list_libraries()
+            for folder in library.folders
+        ]
+        resolved: list[tuple[str, str]] = []
+        for raw, media_type in folders:
+            path = self.resolve_path(raw)
+            for other, owner in taken:
+                if path == other:
+                    where = f"the library “{owner}”" if owner else "this list"
+                    raise ValueError(f"{path} is already in {where}")
+                if _within(path, other) or _within(other, path):
+                    where = f"“{owner}”" if owner else "this list"
+                    raise ValueError(f"{path} overlaps {other} in {where}")
+            taken.append((path, ""))
+            resolved.append((str(path), media_type))
+        return resolved
 
     def list_folders(self, raw: str | None) -> FolderListing:
         if not raw:
@@ -206,22 +260,29 @@ class LibraryService:
         library = self.repository.get_library(library_id)
         if library is None:
             raise ValueError("Unknown library")
-        self._set_status(LibraryStatus(library_id, "scanning", "Scanning folder…"))
-        try:
-            result = await asyncio.to_thread(scan_directory, Path(library.path), library.media_type)
-        except LibraryUnavailableError as exc:
-            self.repository.record_error(library_id, str(exc))
-            return self._set_status(LibraryStatus(library_id, "error", str(exc)))
+        self._set_status(LibraryStatus(library_id, "scanning", "Scanning folders…"))
+        files: list[ScannedFile] = []
+        for folder in library.folders:
+            try:
+                result = await asyncio.to_thread(
+                    scan_directory, Path(folder.path), folder.media_type
+                )
+            except LibraryUnavailableError as exc:
+                # Keep the previous items: a drive that is briefly unmounted should not
+                # empty the library.
+                self.repository.record_error(library_id, str(exc))
+                return self._set_status(LibraryStatus(library_id, "error", str(exc)))
+            files.extend(result.files)
 
         groups: dict[str, list[ScannedFile]] = {}
-        for file in result.files:
+        for file in files:
             groups.setdefault(file.group_key, []).append(file)
         existing = {item.group_key: item for item in self.repository.items(library_id)}
         progress = LibraryStatus(
             library_id,
             "scanning",
             "Matching titles…",
-            scanned_files=len(result.files),
+            scanned_files=len(files),
             total_items=len(groups),
         )
         self._set_status(progress)
@@ -236,6 +297,7 @@ class LibraryService:
             if current is not None and current.matched:
                 draft = ItemDraft(
                     group_key=group_key,
+                    media_type=first.media_type,
                     title=current.title,
                     files=ordered,
                     year=current.year,
@@ -250,7 +312,7 @@ class LibraryService:
             else:
                 match: CatalogItem | None = None
                 try:
-                    match = await self._match(library.media_type, first.titles, first.year)
+                    match = await self._match(first.media_type, first.titles, first.year)
                 except TMDBError as exc:
                     tmdb_failures += 1
                     logger.warning("TMDB match failed for %s: %s", first.titles[0], exc)
@@ -274,7 +336,7 @@ class LibraryService:
                 library_id,
                 "idle",
                 message,
-                scanned_files=len(result.files),
+                scanned_files=len(files),
                 matched_items=matched,
                 total_items=len(groups),
             )
@@ -397,6 +459,7 @@ def _draft_from_match(
     if match is None:
         return ItemDraft(
             group_key=group_key,
+            media_type=first.media_type,
             title=first.titles[0],
             files=files,
             year=first.year,
@@ -407,6 +470,7 @@ def _draft_from_match(
         year = first.year
     return ItemDraft(
         group_key=group_key,
+        media_type=first.media_type,
         title=match.title,
         files=files,
         year=year,

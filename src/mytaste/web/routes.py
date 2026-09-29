@@ -287,7 +287,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         page_error: str | None = None,
         streaming_error: str | None = None,
         library_error: str | None = None,
-        library_form: dict[str, str] | None = None,
+        library_form: dict[str, object] | None = None,
     ) -> dict[str, object]:
         preferences: Preferences = request.app.state.preferences.get()
         catalog = request.app.state.catalog
@@ -323,7 +323,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "header_providers": enabled_providers,
             "has_sources": bool(preferences.provider_ids or library_rows),
             "library_rows": library_rows,
-            "library_form": library_form or {"name": "", "path": "", "media_type": "movie"},
+            "library_form": library_form or _empty_library_form(),
             "library_roots": tuple(str(root) for root in getattr(library, "roots", ())),
             "add_step": add_step if add_step in _ADD_STEPS else "",
             "error": error,
@@ -410,23 +410,62 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     async def add_library(request: Request) -> Response:
         form = await request.form()
         name = str(form.get("name") or "").strip()
-        path = str(form.get("path") or "").strip()
-        media_type = str(form.get("media_type") or "movie")
+        rows = _folder_rows(form)
         try:
-            request.app.state.library.add(name, path, media_type)
+            request.app.state.library.add(name, _folder_pairs(rows))
         except ValueError as exc:
             context = await settings_context(
                 request,
                 add_step="local",
                 library_error=str(exc),
-                library_form={"name": name, "path": path, "media_type": media_type},
+                library_form={"name": name, "folders": rows, "library_id": None},
             )
+            return render(request, "settings.html", context, status_code=422)
+        return RedirectResponse("/settings", status_code=303)
+
+    @router.post("/settings/libraries/{library_id}/folders", response_class=HTMLResponse)
+    async def add_library_folders(library_id: int, request: Request) -> Response:
+        form = await request.form()
+        rows = _folder_rows(form)
+        try:
+            request.app.state.library.add_folders(library_id, _folder_pairs(rows))
+        except ValueError as exc:
+            target = request.app.state.library.library(library_id)
+            context = await settings_context(
+                request,
+                add_step="local",
+                library_error=str(exc),
+                library_form={
+                    "name": target.name if target else "",
+                    "folders": rows,
+                    "library_id": library_id if target else None,
+                },
+            )
+            return render(request, "settings.html", context, status_code=422)
+        return RedirectResponse("/settings", status_code=303)
+
+    @router.post("/settings/libraries/{library_id}/folders/{folder_id}/remove")
+    async def remove_library_folder(library_id: int, folder_id: int, request: Request) -> Response:
+        try:
+            request.app.state.library.remove_folder(library_id, folder_id)
+        except ValueError as exc:
+            context = await settings_context(request, page_error=str(exc))
             return render(request, "settings.html", context, status_code=422)
         return RedirectResponse("/settings", status_code=303)
 
     @router.post("/settings/libraries/{library_id}/rescan")
     async def rescan_library(library_id: int, request: Request) -> Response:
         request.app.state.library.schedule_scan(library_id)
+        return RedirectResponse("/settings", status_code=303)
+
+    @router.post("/settings/libraries/{library_id}/rename", response_class=HTMLResponse)
+    async def rename_library(library_id: int, request: Request) -> Response:
+        form = await request.form()
+        try:
+            request.app.state.library.rename(library_id, str(form.get("name") or ""))
+        except ValueError as exc:
+            context = await settings_context(request, page_error=str(exc))
+            return render(request, "settings.html", context, status_code=422)
         return RedirectResponse("/settings", status_code=303)
 
     @router.post("/settings/libraries/{library_id}/remove")
@@ -565,12 +604,37 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     return router
 
 
+def _empty_library_form() -> dict[str, object]:
+    return {"name": "", "folders": [{"path": "", "media_type": "movie"}], "library_id": None}
+
+
+def _folder_rows(form: Any) -> list[dict[str, str]]:
+    """Read the folder rows of the add-library form; each row names its own media type."""
+
+    rows: list[dict[str, str]] = []
+    for index, raw in enumerate(form.getlist("path")):
+        media_type = str(form.get(f"media_type_{index}") or "movie")
+        rows.append({"path": str(raw).strip(), "media_type": media_type})
+    return rows or [{"path": "", "media_type": "movie"}]
+
+
+def _folder_pairs(rows: list[dict[str, str]]) -> list[tuple[str, str]]:
+    return [(row["path"], row["media_type"]) for row in rows if row["path"]]
+
+
 def _library_payload(library: Library, status: LibraryStatus) -> dict[str, object]:
     return {
         "id": library.id,
         "name": library.name,
-        "path": library.path,
-        "media_type": library.media_type,
+        "folders": [
+            {
+                "id": folder.id,
+                "path": folder.path,
+                "media_type": folder.media_type,
+                "media_label": folder.media_label,
+            }
+            for folder in library.folders
+        ],
         "media_label": library.media_label,
         "state": status.state,
         "text": _library_status_text(library, status),
@@ -593,10 +657,12 @@ def _library_status_text(library: Library, status: LibraryStatus) -> str:
         return status.message or "The last scan failed."
     if library.last_scanned_at is None:
         return "Waiting for the first scan"
-    noun = "movie" if library.media_type == "movie" else "show"
-    parts = [f"{library.item_count} {noun}{'' if library.item_count == 1 else 's'}"]
-    if library.media_type == "tv":
-        parts.append(f"{library.file_count} episode{'' if library.file_count == 1 else 's'}")
+    parts: list[str] = []
+    if "movie" in library.media_types or library.movie_count:
+        parts.append(_count(library.movie_count, "movie"))
+    if "tv" in library.media_types or library.show_count:
+        parts.append(_count(library.show_count, "show"))
+        parts.append(_count(library.episode_count, "episode"))
     if library.unmatched_count:
         parts.append(f"{library.unmatched_count} unmatched")
     parts.append(f"scanned {_relative_time(library.last_scanned_at)}")
@@ -604,6 +670,10 @@ def _library_status_text(library: Library, status: LibraryStatus) -> str:
     if library.last_error:
         text = f"{text} · {library.last_error}"
     return text
+
+
+def _count(value: int, noun: str) -> str:
+    return f"{value} {noun}{'' if value == 1 else 's'}"
 
 
 def _relative_time(timestamp: str) -> str:

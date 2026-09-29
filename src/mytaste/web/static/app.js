@@ -750,28 +750,108 @@
     button.addEventListener("click", () => window.clearTimeout(libraryPollTimer));
   });
 
+  // Library names are edited in place: the card swaps its title and actions for a small form.
+  document.querySelectorAll("[data-library-rename]").forEach((button) => {
+    const card = button.closest("[data-library-id]");
+    const form = card.querySelector("[data-library-rename-form]");
+    const input = form.querySelector("input");
+    const saved = input.value;
+
+    const setEditing = (editing) => {
+      card.classList.toggle("is-renaming", editing);
+      form.hidden = !editing;
+      if (editing) {
+        input.focus();
+        input.select();
+      } else {
+        input.value = saved;
+        button.focus();
+      }
+    };
+
+    button.addEventListener("click", () => setEditing(true));
+    form.querySelector("[data-library-rename-cancel]").addEventListener("click", () => setEditing(false));
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setEditing(false);
+      }
+    });
+  });
+
   const addDialog = document.querySelector("#add-source");
-  const pathInput = document.querySelector("#library-path");
+  const libraryForm = document.querySelector("[data-library-form]");
   const nameInput = document.querySelector("#library-name");
   const folderPicker = document.querySelector("[data-folder-picker]");
-  const folderBrowse = document.querySelector("[data-folder-browse]");
   let openFolderPicker = () => {};
+  let firstPathInput = () => null;
+  let setLibraryTarget = () => {};
 
-  if (folderPicker && folderBrowse && pathInput) {
+  if (libraryForm && folderPicker) {
+    const folderRows = libraryForm.querySelector("[data-folder-rows]");
+    const rowTemplate = libraryForm.querySelector("[data-folder-row-template]");
+    const addRowButton = libraryForm.querySelector("[data-folder-add-row]");
+    const nameField = libraryForm.querySelector("[data-library-name-field]");
+    const librarySubmit = libraryForm.querySelector("[data-library-submit]");
+    const localPanel = libraryForm.closest("[data-add-panel]");
     const folderEntries = folderPicker.querySelector("[data-folder-entries]");
     const folderCurrent = folderPicker.querySelector("[data-folder-current]");
     const folderStatus = folderPicker.querySelector("[data-folder-status]");
     const folderUp = folderPicker.querySelector("[data-folder-up]");
     const folderChoose = folderPicker.querySelector("[data-folder-choose]");
     let currentListing = { path: "", parent: null, entries: [] };
-    let suggestedName = "";
+    let activeRow = null;
+    let suggestedName = nameInput?.value || "";
+    let libraryTarget = libraryForm.getAttribute("action").match(/libraries\/(\d+)\/folders/)?.[1] || "";
+    let startNear = libraryForm.dataset.startNear || "";
+
+    const rows = () => Array.from(folderRows.querySelectorAll("[data-folder-row]"));
+    const pathOf = (row) => row.querySelector("[data-folder-path]");
+    const lastSegment = (path) => path.split("/").filter(Boolean).pop() || "";
+    firstPathInput = () => pathOf(rows().find((row) => !pathOf(row).value.trim()) || rows()[0]);
+
+    // A single folder names the library after itself; several folders fall back to "Local library".
+    const updateSuggestedName = () => {
+      if (!nameInput) {
+        return;
+      }
+      const all = rows();
+      const next = all.length === 1 ? lastSegment(pathOf(all[0]).value.trim()) : "";
+      if (!nameInput.value || nameInput.value === suggestedName) {
+        nameInput.value = next;
+      }
+      suggestedName = next;
+      nameInput.placeholder = all.length === 1 ? "Uses the folder name" : "Local library";
+    };
+
+    // Radio groups are numbered by position so the server can pair each path with its type.
+    const renumber = () => {
+      const all = rows();
+      all.forEach((row, index) => {
+        row.querySelectorAll('input[type="radio"]').forEach((radio) => {
+          radio.name = `media_type_${index}`;
+        });
+        pathOf(row).id = `library-path-${index}`;
+        row.querySelector("[data-folder-remove-row]").hidden = all.length === 1;
+      });
+      updateSuggestedName();
+    };
+
+    const guessType = (row, path) => {
+      if ("typeChosen" in row.dataset) {
+        return;
+      }
+      const tv = /\b(tv|shows?|series)\b/i.test(lastSegment(path));
+      row.querySelector(`input[type="radio"][value="${tv ? "tv" : "movie"}"]`).checked = true;
+    };
 
     const usePath = (path) => {
-      pathInput.value = path;
-      if (nameInput && (!nameInput.value || nameInput.value === suggestedName)) {
-        suggestedName = path.split("/").filter(Boolean).pop() || "";
-        nameInput.value = suggestedName;
+      if (!activeRow) {
+        return;
       }
+      pathOf(activeRow).value = path;
+      guessType(activeRow, path);
+      updateSuggestedName();
     };
 
     const renderListing = (listing) => {
@@ -796,14 +876,14 @@
         const label = document.createElement("span");
         label.textContent = entry.name;
         button.append(icon, label);
-        button.addEventListener("click", () => loadFolder(entry.path));
+        button.addEventListener("click", () => loadFolder(entry.path, true));
         item.append(button);
         folderEntries.append(item);
       });
       folderStatus.textContent = listing.entries.length ? "" : "No subfolders here.";
     };
 
-    const loadFolder = async (path) => {
+    const loadFolder = async (path, fill) => {
       folderStatus.textContent = "Loading…";
       try {
         const params = new URLSearchParams();
@@ -818,7 +898,7 @@
           throw new Error(payload.error || "Folder unavailable");
         }
         renderListing(payload);
-        if (payload.path && payload.path !== "/") {
+        if (fill && payload.path && payload.path !== "/") {
           usePath(payload.path);
         }
       } catch (error) {
@@ -826,31 +906,138 @@
       }
     };
 
-    const setPickerOpen = (open) => {
-      folderPicker.hidden = !open;
-      folderBrowse.setAttribute("aria-expanded", String(open));
-      if (open) {
-        loadFolder(pathInput.value.trim());
-      }
+    const closePicker = () => {
+      folderPicker.hidden = true;
+      folderRows.querySelectorAll("[data-folder-browse]").forEach((button) => {
+        button.setAttribute("aria-expanded", "false");
+      });
     };
+
+    // The one folder picker moves under whichever row is being browsed. A new, empty row starts
+    // next to the folder chosen in the row above it.
+    const openPickerFor = (row) => {
+      closePicker();
+      activeRow = row;
+      row.append(folderPicker);
+      folderPicker.hidden = false;
+      row.querySelector("[data-folder-browse]").setAttribute("aria-expanded", "true");
+      let start = pathOf(row).value.trim();
+      if (!start) {
+        const above = rows()
+          .slice(0, rows().indexOf(row))
+          .map((candidate) => pathOf(candidate).value.trim())
+          .filter(Boolean)
+          .pop();
+        const near = above || startNear;
+        start = near ? near.replace(/\/[^/]+\/?$/, "") : "";
+      }
+      loadFolder(start, false);
+    };
+
     openFolderPicker = () => {
-      if (folderPicker.hidden && !pathInput.value.trim()) {
-        setPickerOpen(true);
+      const all = rows();
+      if (folderPicker.hidden && all.length === 1 && !pathOf(all[0]).value.trim()) {
+        openPickerFor(all[0]);
       }
     };
 
-    folderBrowse.addEventListener("click", () => setPickerOpen(folderPicker.hidden));
+    const addRow = () => {
+      const fragment = rowTemplate.content.cloneNode(true);
+      const row = fragment.querySelector("[data-folder-row]");
+      folderRows.append(fragment);
+      renumber();
+      openPickerFor(row);
+      pathOf(row).focus();
+    };
+
+    const removeRow = (row) => {
+      const all = rows();
+      const index = all.indexOf(row);
+      if (row.contains(folderPicker)) {
+        closePicker();
+        folderRows.after(folderPicker);
+        activeRow = null;
+      }
+      row.remove();
+      renumber();
+      const remaining = rows();
+      pathOf(remaining[Math.min(index, remaining.length - 1)]).focus();
+    };
+
+    const resetRows = () => {
+      closePicker();
+      folderRows.after(folderPicker);
+      activeRow = null;
+      rows()
+        .slice(1)
+        .forEach((row) => row.remove());
+      const [first] = rows();
+      pathOf(first).value = "";
+      delete first.dataset.typeChosen;
+      first.querySelector('input[type="radio"][value="movie"]').checked = true;
+      renumber();
+    };
+
+    // Opening the dialog for a different library (or a new one) starts from a single empty row.
+    setLibraryTarget = (id, name, near) => {
+      if (id !== libraryTarget) {
+        libraryTarget = id;
+        resetRows();
+      }
+      startNear = near || "";
+      libraryForm.action = id ? `/settings/libraries/${id}/folders` : "/settings/libraries";
+      nameField.hidden = Boolean(id);
+      nameInput.disabled = Boolean(id);
+      if (id) {
+        nameInput.value = "";
+        suggestedName = "";
+      } else {
+        updateSuggestedName();
+      }
+      localPanel.dataset.title = id ? `Add folders to ${name}` : "Add a local library";
+      librarySubmit.textContent = id ? "Add and rescan" : "Add and scan";
+    };
+
+    folderRows.addEventListener("click", (event) => {
+      const row = event.target.closest("[data-folder-row]");
+      if (!row) {
+        return;
+      }
+      if (event.target.closest("[data-folder-browse]")) {
+        if (activeRow === row && !folderPicker.hidden) {
+          closePicker();
+        } else {
+          openPickerFor(row);
+        }
+      } else if (event.target.closest("[data-folder-remove-row]")) {
+        removeRow(row);
+      }
+    });
+    folderRows.addEventListener("change", (event) => {
+      if (event.target.matches('input[type="radio"]')) {
+        event.target.closest("[data-folder-row]").dataset.typeChosen = "";
+      }
+    });
+    folderRows.addEventListener("input", (event) => {
+      if (event.target.matches("[data-folder-path]")) {
+        updateSuggestedName();
+      }
+    });
+    addRowButton.addEventListener("click", addRow);
     folderUp.addEventListener("click", () => {
       if (currentListing.parent !== null) {
-        loadFolder(currentListing.parent);
+        loadFolder(currentListing.parent, true);
       }
     });
     folderChoose.addEventListener("click", () => {
+      const row = activeRow;
       if (currentListing.path) {
         usePath(currentListing.path);
       }
-      setPickerOpen(false);
-      pathInput.focus();
+      closePicker();
+      if (row) {
+        pathOf(row).focus();
+      }
     });
   }
 
@@ -907,7 +1094,7 @@
       if (step === "streaming") {
         target = finePointer.matches ? panel.querySelector("[data-provider-search]") : null;
       } else if (step === "local") {
-        target = finePointer.matches ? pathInput : null;
+        target = finePointer.matches ? firstPathInput() : null;
       }
       (target || addTitle).focus();
     };
@@ -937,10 +1124,20 @@
 
     addTitle.tabIndex = -1;
     document.querySelectorAll("[data-open-add]").forEach((button) => {
-      button.addEventListener("click", () => openAdd(button.dataset.openAdd, button));
+      button.addEventListener("click", () => {
+        setLibraryTarget(
+          button.dataset.libraryTarget || "",
+          button.dataset.libraryName || "",
+          button.dataset.libraryNear || "",
+        );
+        openAdd(button.dataset.openAdd, button);
+      });
     });
     addDialog.querySelectorAll("[data-add-go]").forEach((button) => {
-      button.addEventListener("click", () => showStep(button.dataset.addGo));
+      button.addEventListener("click", () => {
+        setLibraryTarget("", "", "");
+        showStep(button.dataset.addGo);
+      });
     });
     addBack.addEventListener("click", () => showStep("choose"));
     addDialog.querySelector("[data-close-add]")?.addEventListener("click", () => addDialog.close());

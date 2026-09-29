@@ -7,6 +7,8 @@ from mytaste.catalog.models import CatalogItem, MediaType
 
 ScanState = Literal["idle", "scanning", "error"]
 
+_MEDIA_LABELS: dict[MediaType, str] = {"movie": "Movies", "tv": "TV Shows"}
+
 
 @dataclass(frozen=True, slots=True)
 class ParsedName:
@@ -30,24 +32,45 @@ class ScannedFile:
     year: int | None = None
     season: int | None = None
     episode: int | None = None
+    media_type: MediaType = "movie"
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryFolder:
+    """One scanned folder of a library; each folder holds either movies or shows."""
+
+    id: int
+    path: str
+    media_type: MediaType
+
+    @property
+    def media_label(self) -> str:
+        return _MEDIA_LABELS[self.media_type]
 
 
 @dataclass(frozen=True, slots=True)
 class Library:
     id: int
     name: str
-    path: str
-    media_type: MediaType
     created_at: str
+    folders: tuple[LibraryFolder, ...] = ()
     last_scanned_at: str | None = None
     last_error: str | None = None
     item_count: int = 0
     file_count: int = 0
     unmatched_count: int = 0
+    movie_count: int = 0
+    show_count: int = 0
+    episode_count: int = 0
+
+    @property
+    def media_types(self) -> tuple[MediaType, ...]:
+        present = {folder.media_type for folder in self.folders}
+        return tuple(media_type for media_type in ("movie", "tv") if media_type in present)
 
     @property
     def media_label(self) -> str:
-        return "Movies" if self.media_type == "movie" else "TV Shows"
+        return " & ".join(_MEDIA_LABELS[media_type] for media_type in self.media_types)
 
 
 @dataclass(frozen=True, slots=True)

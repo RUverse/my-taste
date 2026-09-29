@@ -13,7 +13,7 @@ from mytaste.catalog.models import (
     CatalogPage,
     MediaType,
 )
-from mytaste.library.models import Library, LibraryItem, ScannedFile
+from mytaste.library.models import Library, LibraryFolder, LibraryItem, ScannedFile
 
 _MEDIA_TYPES: frozenset[str] = frozenset({"movie", "tv"})
 
@@ -23,6 +23,7 @@ class ItemDraft:
     """A grouped, optionally matched title ready to be written for a library."""
 
     group_key: str
+    media_type: MediaType
     title: str
     files: tuple[ScannedFile, ...]
     year: int | None = None
@@ -57,18 +58,25 @@ class LibraryRepository:
 
     def initialize(self) -> None:
         self.database_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        self._migrate_single_folder_libraries()
         with self._connect() as connection:
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS libraries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
-                    path TEXT NOT NULL UNIQUE,
-                    media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv')),
                     created_at TEXT NOT NULL,
                     last_scanned_at TEXT,
                     last_error TEXT
                 );
+                CREATE TABLE IF NOT EXISTS library_folders (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+                    path TEXT NOT NULL UNIQUE,
+                    media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv'))
+                );
+                CREATE INDEX IF NOT EXISTS library_folders_library
+                    ON library_folders (library_id);
                 CREATE TABLE IF NOT EXISTS library_items (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
@@ -104,39 +112,95 @@ class LibraryRepository:
                 """
             )
 
+    def _migrate_single_folder_libraries(self) -> None:
+        """Move the folder of libraries created before multi-folder support into its own table.
+
+        Early databases stored one ``path`` and ``media_type`` on each ``libraries`` row. The
+        table is rebuilt without them (SQLite cannot drop a UNIQUE column) while foreign keys are
+        off, so existing items, files, and TMDB matches are kept.
+        """
+
+        connection = sqlite3.connect(self.database_path, timeout=5, isolation_level=None)
+        try:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(libraries)")}
+            if "path" not in columns:
+                return
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                for statement in _SINGLE_FOLDER_MIGRATION:
+                    connection.execute(statement)
+                if connection.execute("PRAGMA foreign_key_check").fetchone() is not None:
+                    raise sqlite3.IntegrityError("library migration broke a foreign key")
+                connection.execute("COMMIT")
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+        finally:
+            connection.close()
+
     def list_libraries(self) -> tuple[Library, ...]:
         with self._connect() as connection:
             rows = connection.execute(f"{_LIBRARY_SELECT} ORDER BY l.created_at, l.id").fetchall()
-        return tuple(_library_from_row(row) for row in rows)
+            folders = self._folders(connection)
+        return tuple(_library_from_row(row, folders.get(int(row[0]), ())) for row in rows)
 
     def get_library(self, library_id: int) -> Library | None:
         with self._connect() as connection:
             row = connection.execute(f"{_LIBRARY_SELECT} WHERE l.id = ?", (library_id,)).fetchone()
-        return _library_from_row(row) if row else None
+            folders = self._folders(connection, library_id)
+        return _library_from_row(row, folders.get(library_id, ())) if row else None
 
-    def add_library(self, name: str, path: str, media_type: str) -> Library:
-        cleaned_name = " ".join(name.split())[:80]
-        if not cleaned_name:
-            raise ValueError("Give the library a name")
-        if media_type not in _MEDIA_TYPES:
-            raise ValueError("Choose whether the folder holds movies or TV shows")
-        if not path:
-            raise ValueError("Choose a folder")
+    def add_library(self, name: str, folders: Sequence[tuple[str, str]]) -> Library:
+        """Create a library from ``(path, media_type)`` pairs."""
+
+        cleaned_name = _clean_name(name)
+        _validate_folders(folders)
         with self._connect() as connection:
-            try:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO libraries (name, path, media_type, created_at)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (cleaned_name, path, media_type, utc_now()),
-                )
-            except sqlite3.IntegrityError as exc:
-                raise ValueError("This folder is already a library") from exc
+            cursor = connection.execute(
+                "INSERT INTO libraries (name, created_at) VALUES (?, ?)",
+                (cleaned_name, utc_now()),
+            )
             library_id = int(cursor.lastrowid or 0)
+            _insert_folders(connection, library_id, folders)
         library = self.get_library(library_id)
         assert library is not None
         return library
+
+    def add_folders(self, library_id: int, folders: Sequence[tuple[str, str]]) -> Library:
+        _validate_folders(folders)
+        with self._connect() as connection:
+            if connection.execute("SELECT 1 FROM libraries WHERE id = ?", (library_id,)).fetchone():
+                _insert_folders(connection, library_id, folders)
+            else:
+                raise ValueError("Unknown library")
+        library = self.get_library(library_id)
+        assert library is not None
+        return library
+
+    def remove_folder(self, library_id: int, folder_id: int) -> bool:
+        with self._connect() as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM library_folders WHERE library_id = ?", (library_id,)
+            ).fetchone()[0]
+            exists = connection.execute(
+                "SELECT 1 FROM library_folders WHERE id = ? AND library_id = ?",
+                (folder_id, library_id),
+            ).fetchone()
+            if exists is None:
+                return False
+            if count <= 1:
+                raise ValueError("A library needs at least one folder; remove the library instead")
+            connection.execute("DELETE FROM library_folders WHERE id = ?", (folder_id,))
+        return True
+
+    def rename_library(self, library_id: int, name: str) -> bool:
+        cleaned_name = _clean_name(name)
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE libraries SET name = ? WHERE id = ?", (cleaned_name, library_id)
+            )
+        return cursor.rowcount > 0
 
     def remove_library(self, library_id: int) -> bool:
         with self._connect() as connection:
@@ -182,7 +246,7 @@ class LibraryRepository:
                     """,
                     (
                         library_id,
-                        library.media_type,
+                        draft.media_type,
                         draft.group_key,
                         draft.title,
                         draft.year,
@@ -295,18 +359,70 @@ class LibraryRepository:
             total_results=total,
         )
 
+    def _folders(
+        self, connection: sqlite3.Connection, library_id: int | None = None
+    ) -> dict[int, tuple[LibraryFolder, ...]]:
+        sql = "SELECT id, library_id, path, media_type FROM library_folders"
+        params: tuple[object, ...] = ()
+        if library_id is not None:
+            sql += " WHERE library_id = ?"
+            params = (library_id,)
+        grouped: dict[int, list[LibraryFolder]] = {}
+        for row in connection.execute(f"{sql} ORDER BY id", params):
+            grouped.setdefault(int(row[1]), []).append(
+                LibraryFolder(id=int(row[0]), path=str(row[2]), media_type=str(row[3]))  # type: ignore[arg-type]
+            )
+        return {key: tuple(value) for key, value in grouped.items()}
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=5)
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
 
+# Statements run one by one: ``executescript`` would commit the surrounding transaction.
+_SINGLE_FOLDER_MIGRATION = (
+    """
+    CREATE TABLE libraries_migrated (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_scanned_at TEXT,
+        last_error TEXT
+    )
+    """,
+    """
+    INSERT INTO libraries_migrated (id, name, created_at, last_scanned_at, last_error)
+        SELECT id, name, created_at, last_scanned_at, last_error FROM libraries
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS library_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        library_id INTEGER NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+        path TEXT NOT NULL UNIQUE,
+        media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv'))
+    )
+    """,
+    """
+    INSERT INTO library_folders (library_id, path, media_type)
+        SELECT id, path, media_type FROM libraries ORDER BY id
+    """,
+    "DROP TABLE libraries",
+    "ALTER TABLE libraries_migrated RENAME TO libraries",
+)
+
 _LIBRARY_SELECT = """
-    SELECT l.id, l.name, l.path, l.media_type, l.created_at, l.last_scanned_at, l.last_error,
+    SELECT l.id, l.name, l.created_at, l.last_scanned_at, l.last_error,
            (SELECT COUNT(*) FROM library_items i WHERE i.library_id = l.id),
            (SELECT COALESCE(SUM(i.file_count), 0) FROM library_items i WHERE i.library_id = l.id),
            (SELECT COUNT(*) FROM library_items i
-             WHERE i.library_id = l.id AND i.tmdb_id IS NULL)
+             WHERE i.library_id = l.id AND i.tmdb_id IS NULL),
+           (SELECT COUNT(*) FROM library_items i
+             WHERE i.library_id = l.id AND i.media_type = 'movie'),
+           (SELECT COUNT(*) FROM library_items i
+             WHERE i.library_id = l.id AND i.media_type = 'tv'),
+           (SELECT COALESCE(SUM(i.file_count), 0) FROM library_items i
+             WHERE i.library_id = l.id AND i.media_type = 'tv')
     FROM libraries l
 """
 
@@ -343,18 +459,56 @@ def _genre_clause(
     return f"({' OR '.join(options)})", params
 
 
-def _library_from_row(row: sqlite3.Row | tuple[object, ...]) -> Library:
+def _clean_name(name: str) -> str:
+    cleaned = " ".join(name.split())[:80]
+    if not cleaned:
+        raise ValueError("Give the library a name")
+    return cleaned
+
+
+def _validate_folders(folders: Sequence[tuple[str, str]]) -> None:
+    if not folders:
+        raise ValueError("Choose a folder")
+    seen: set[str] = set()
+    for path, media_type in folders:
+        if not path:
+            raise ValueError("Choose a folder")
+        if media_type not in _MEDIA_TYPES:
+            raise ValueError("Choose whether each folder holds movies or TV shows")
+        if path in seen:
+            raise ValueError(f"{path} was added twice")
+        seen.add(path)
+
+
+def _insert_folders(
+    connection: sqlite3.Connection, library_id: int, folders: Sequence[tuple[str, str]]
+) -> None:
+    for path, media_type in folders:
+        try:
+            connection.execute(
+                "INSERT INTO library_folders (library_id, path, media_type) VALUES (?, ?, ?)",
+                (library_id, path, media_type),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise ValueError(f"{path} is already in a library") from exc
+
+
+def _library_from_row(
+    row: sqlite3.Row | tuple[object, ...], folders: tuple[LibraryFolder, ...]
+) -> Library:
     return Library(
         id=int(row[0]),
         name=str(row[1]),
-        path=str(row[2]),
-        media_type=str(row[3]),  # type: ignore[arg-type]
-        created_at=str(row[4]),
-        last_scanned_at=str(row[5]) if row[5] else None,
-        last_error=str(row[6]) if row[6] else None,
-        item_count=int(row[7]),
-        file_count=int(row[8]),
-        unmatched_count=int(row[9]),
+        created_at=str(row[2]),
+        folders=folders,
+        last_scanned_at=str(row[3]) if row[3] else None,
+        last_error=str(row[4]) if row[4] else None,
+        item_count=int(row[5]),
+        file_count=int(row[6]),
+        unmatched_count=int(row[7]),
+        movie_count=int(row[8]),
+        show_count=int(row[9]),
+        episode_count=int(row[10]),
     )
 
 

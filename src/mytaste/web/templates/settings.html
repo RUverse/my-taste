@@ -18,11 +18,26 @@
         <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
       </span>
       <span class="source-choice-copy">
-        <strong>Local folder</strong>
-        <small>Movies or shows on this device, a USB drive, or a network share</small>
+        <strong>Local library</strong>
+        <small>Folders of movies and shows on this device, a USB drive, or a network share</small>
       </span>
       <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
     </button>
+  {%- endmacro %}
+  {% macro folder_row(index, folder, removable) -%}
+    <li class="folder-row" data-folder-row{% if folder.path %} data-type-chosen{% endif %}>
+      <div class="path-control">
+        <input id="library-path-{{ index }}" name="path" type="text" value="{{ folder.path }}" placeholder="/mnt/media/Movies" aria-label="Folder path" autocomplete="off" spellcheck="false" required data-folder-path>
+        <button class="button button-secondary" type="button" data-folder-browse aria-expanded="false" aria-controls="folder-picker">Browse</button>
+        <button class="icon-button folder-row-remove" type="button" data-folder-remove-row aria-label="Remove this folder" title="Remove this folder" {% if not removable %}hidden{% endif %}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+        </button>
+      </div>
+      <div class="size-options folder-type" role="radiogroup" aria-label="This folder contains">
+        <label><input type="radio" name="media_type_{{ index }}" value="movie" {% if folder.media_type != 'tv' %}checked{% endif %}><span>Movies</span></label>
+        <label><input type="radio" name="media_type_{{ index }}" value="tv" {% if folder.media_type == 'tv' %}checked{% endif %}><span>TV Shows</span></label>
+      </div>
+    </li>
   {%- endmacro %}
 
   <div class="services-page">
@@ -87,10 +102,36 @@
             </span>
             <div class="source-copy">
               <h2 class="source-name">{{ row.name }}</h2>
+              <form class="source-rename" method="post" action="/settings/libraries/{{ row.id }}/rename" data-library-rename-form hidden>
+                <label class="sr-only" for="library-name-{{ row.id }}">Library name</label>
+                <input id="library-name-{{ row.id }}" name="name" type="text" value="{{ row.name }}" maxlength="80" autocomplete="off" required>
+                <button class="button button-primary" type="submit">Save</button>
+                <button class="button button-secondary" type="button" data-library-rename-cancel>Cancel</button>
+              </form>
               <p class="source-kind">Local · <span class="source-status" data-library-status role="status" aria-live="polite">{{ row.text }}</span></p>
-              <p class="source-path" title="{{ row.path }}">{{ row.path }}</p>
+              <ul class="source-folders" aria-label="Folders in {{ row.name }}">
+                {% for folder in row.folders %}
+                  <li class="source-folder">
+                    <span class="source-folder-type">{{ 'Movies' if folder.media_type == 'movie' else 'TV' }}</span>
+                    <span class="source-path" title="{{ folder.path }}">{{ folder.path }}</span>
+                    {% if row.folders|length > 1 %}
+                      <form method="post" action="/settings/libraries/{{ row.id }}/folders/{{ folder.id }}/remove" data-confirm="Remove {{ folder.path }} from “{{ row.name }}”? Your files are not touched.">
+                        <button class="source-folder-remove" type="submit" aria-label="Remove {{ folder.path }} from {{ row.name }}" title="Remove folder">
+                          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+                        </button>
+                      </form>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
             </div>
             <div class="source-actions">
+              <button class="icon-button source-action" type="button" data-open-add="local" data-library-target="{{ row.id }}" data-library-name="{{ row.name }}" data-library-near="{{ row.folders[-1].path if row.folders else '' }}" aria-haspopup="dialog" aria-label="Add a folder to {{ row.name }}" title="Add folder">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+              </button>
+              <button class="icon-button source-action" type="button" data-library-rename aria-label="Rename {{ row.name }}" title="Rename">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10a2.83 2.83 0 0 0-4-4l-10 10v4Z"></path><path d="m13 7 4 4"></path></svg>
+              </button>
               <form method="post" action="/settings/libraries/{{ row.id }}/rescan">
                 <button class="icon-button source-action" type="submit" data-library-rescan aria-label="Rescan {{ row.name }}" title="Rescan" {% if row.state == 'scanning' %}disabled{% endif %}>
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9"></path><path d="M19.5 4v5h-5"></path></svg>
@@ -111,7 +152,7 @@
             </span>
             <span class="source-add-copy">
               <strong>Add</strong>
-              <small>Streaming service or local folder</small>
+              <small>Streaming service or local library</small>
             </span>
           </button>
         </li>
@@ -187,25 +228,20 @@
           </form>
         </section>
 
-        <section class="add-panel" data-add-panel="local" data-title="Add a local folder" hidden>
-          <form class="add-form" method="post" action="/settings/libraries" data-library-form>
+        {% set target_id = library_form.library_id %}
+        <section class="add-panel" data-add-panel="local" data-title="{% if target_id %}Add folders to {{ library_form.name }}{% else %}Add a local library{% endif %}" hidden>
+          <form class="add-form" method="post" action="{% if target_id %}/settings/libraries/{{ target_id }}/folders{% else %}/settings/libraries{% endif %}" data-library-form>
             <div class="add-panel-body">
-              <p class="add-lede">MyTaste scans the folder, matches each title on TMDB, and mixes it into your catalog. Your files are never changed.</p>
+              <p class="add-lede">Add one or more folders. MyTaste scans them, matches each title on TMDB, and mixes it into your catalog. Your files are never changed.</p>
               {% if library_error %}<div class="alert" role="alert">{{ library_error }}</div>{% endif %}
               <fieldset class="add-field">
-                <legend>This folder contains</legend>
-                <div class="size-options">
-                  <label><input type="radio" name="media_type" value="movie" {% if library_form.media_type != 'tv' %}checked{% endif %}><span>Movies</span></label>
-                  <label><input type="radio" name="media_type" value="tv" {% if library_form.media_type == 'tv' %}checked{% endif %}><span>TV Shows</span></label>
-                </div>
-              </fieldset>
-              <div class="add-field">
-                <label for="library-path">Folder</label>
-                <div class="path-control">
-                  <input id="library-path" name="path" type="text" value="{{ library_form.path }}" placeholder="/mnt/media/Movies" autocomplete="off" spellcheck="false" required>
-                  <button class="button button-secondary" type="button" data-folder-browse aria-expanded="false" aria-controls="folder-picker">Browse</button>
-                </div>
-                {% if library_roots %}<p class="field-note">Folders must be inside {{ library_roots|join(', ') }}.</p>{% endif %}
+                <legend>Folders</legend>
+                <ol class="folder-rows" data-folder-rows>
+                  {% for folder in library_form.folders %}
+                    {{ folder_row(loop.index0, folder, library_form.folders|length > 1) }}
+                  {% endfor %}
+                </ol>
+                <template data-folder-row-template>{{ folder_row("new", {"path": "", "media_type": "movie"}, true) }}</template>
                 <div class="folder-picker" id="folder-picker" data-folder-picker hidden>
                   <div class="folder-picker-bar">
                     <button class="icon-button" type="button" data-folder-up aria-label="Parent folder" title="Parent folder">
@@ -217,14 +253,19 @@
                   <ul class="folder-picker-list" data-folder-entries role="list"></ul>
                   <p class="folder-picker-status" data-folder-status role="status" aria-live="polite"></p>
                 </div>
-              </div>
-              <div class="add-field">
+                <button class="folder-add-row" type="button" data-folder-add-row>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+                  Add another folder
+                </button>
+                {% if library_roots %}<p class="field-note">Folders must be inside {{ library_roots|join(', ') }}.</p>{% endif %}
+              </fieldset>
+              <div class="add-field" data-library-name-field {% if target_id %}hidden{% endif %}>
                 <label for="library-name">Name <span class="field-optional">Optional</span></label>
-                <input id="library-name" name="name" type="text" value="{{ library_form.name }}" placeholder="Uses the folder name" maxlength="80" autocomplete="off">
+                <input id="library-name" name="name" type="text" value="{% if not target_id %}{{ library_form.name }}{% endif %}" placeholder="{% if library_form.folders|length > 1 %}Local library{% else %}Uses the folder name{% endif %}" maxlength="80" autocomplete="off" {% if target_id %}disabled{% endif %}>
               </div>
             </div>
             <footer class="add-form-footer">
-              <button class="button button-primary" type="submit">Add and scan</button>
+              <button class="button button-primary" type="submit" data-library-submit>{% if target_id %}Add and rescan{% else %}Add and scan{% endif %}</button>
             </footer>
           </form>
         </section>

@@ -95,6 +95,7 @@ def _movie_file(path: Path, root: Path, size: int, modified_at: str) -> ScannedF
         group_key=f"movie:{ordered[0].casefold()}:{year or ''}",
         titles=ordered,
         year=year,
+        media_type="movie",
     )
 
 
@@ -132,6 +133,7 @@ def _episode_file(path: Path, root: Path, size: int, modified_at: str) -> Scanne
         year=year,
         season=season,
         episode=episode,
+        media_type="tv",
     )
 
 

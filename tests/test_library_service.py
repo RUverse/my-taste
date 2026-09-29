@@ -74,8 +74,9 @@ def test_scan_matches_groups_and_browses(tmp_path: Path) -> None:
 
     async def run() -> None:
         service = make_service(tmp_path, catalog)
-        movie_library = service.add("Movies", str(movies), "movie")
-        show_library = service.add("Shows", str(shows), "tv")
+        movie_library = service.add("", [(str(movies), "movie")])
+        show_library = service.add("Shows", [(str(shows), "tv")])
+        assert movie_library.name == "Movies", "a single folder names the library"
         await asyncio.gather(service.scan(movie_library.id), service.scan(show_library.id))
 
         status = service.status(movie_library.id)
@@ -133,7 +134,7 @@ def test_scan_survives_tmdb_outage_and_missing_folder(tmp_path: Path) -> None:
 
     async def run() -> None:
         service = make_service(tmp_path, catalog)
-        library = service.add("Movies", str(movies), "movie")
+        library = service.add("Movies", [(str(movies), "movie")])
         status = await service.scan(library.id)
         assert status.state == "idle"
         assert "TMDB" in status.message
@@ -150,6 +151,57 @@ def test_scan_survives_tmdb_outage_and_missing_folder(tmp_path: Path) -> None:
         stored = service.library(library.id)
         assert stored is not None
         assert stored.item_count == 1, "items are kept while the folder is unavailable"
+        await service.stop()
+
+    asyncio.run(run())
+
+
+def test_one_library_scans_movie_and_show_folders(tmp_path: Path) -> None:
+    movies = tmp_path / "drive" / "Movies"
+    touch(movies / "Parasite.2019.1080p.mkv")
+    shows = tmp_path / "drive" / "TV Shows"
+    touch(shows / "Silicon Valley" / "Season 1" / "Silicon.Valley.S01E01.mkv")
+    touch(shows / "Silicon Valley" / "Season 1" / "Silicon.Valley.S01E02.mkv")
+    catalog = FakeCatalog()
+
+    async def run() -> None:
+        service = make_service(tmp_path, catalog)
+        library = service.add("", [(str(movies), "movie"), (str(shows), "tv")])
+        assert library.name == "Local library"
+        await service.scan(library.id)
+
+        stored = service.library(library.id)
+        assert stored is not None
+        assert (stored.movie_count, stored.show_count, stored.episode_count) == (1, 1, 2)
+        assert stored.item_count == 2
+        assert service.matched_keys() == {("movie", 496243), ("tv", 60573)}
+        shows_only = await service.browse(BrowseQuery(media_type="tv", category="popular"))
+        assert [item.title for item in shows_only.items] == ["Silicon Valley"]
+
+        with pytest.raises(ValueError, match="already in the library"):
+            service.add("Again", [(str(movies), "movie")])
+        with pytest.raises(ValueError, match="overlaps"):
+            service.add("Drive", [(str(tmp_path / "drive"), "movie")])
+        with pytest.raises(ValueError, match="overlaps"):
+            service.add_folders(library.id, [(str(shows / "Silicon Valley"), "tv")])
+
+        # Removing a folder rescans the library without that folder's titles.
+        movie_folder = next(folder for folder in stored.folders if folder.media_type == "movie")
+        assert service.remove_folder(library.id, movie_folder.id) is True
+        await asyncio.gather(*service._scan_tasks.values())
+        stored = service.library(library.id)
+        assert stored is not None
+        assert (stored.movie_count, stored.show_count) == (0, 1)
+        assert stored.media_label == "TV Shows"
+
+        # Adding it back restores the movie, and existing show matches are reused.
+        calls_before = len(catalog.calls)
+        service.add_folders(library.id, [(str(movies), "movie")])
+        await asyncio.gather(*service._scan_tasks.values())
+        stored = service.library(library.id)
+        assert stored is not None
+        assert (stored.movie_count, stored.show_count) == (1, 1)
+        assert all(media == "movie" for media, _, _ in catalog.calls[calls_before:])
         await service.stop()
 
     asyncio.run(run())

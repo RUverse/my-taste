@@ -44,7 +44,8 @@ point `MYTASTE_LIBRARY_ROOTS` at the mount points:
 
 Scans run inside the web process in a background task. Matching contacts TMDB once per new
 title, and results are stored in the SQLite database so rescans are cheap. If a folder is
-unplugged the previous index is kept and the library is marked unavailable until the next scan.
+unplugged the previous index of its library is kept and the library is marked unavailable until
+the next scan.
 
 ## Network exposure
 

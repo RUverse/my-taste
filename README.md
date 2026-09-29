@@ -63,10 +63,14 @@ network.
 
 ## Storage libraries
 
-The Services page lists what you have enabled: streaming subscriptions and local folders side by
-side. Choose **Add**, pick **Local folder**, browse to the folder, and say whether it holds movies
-or TV shows. MyTaste scans it in the background, groups files into titles, and matches each one
-on TMDB so posters, trailers, and cast work exactly like streaming titles.
+The Services page lists what you have enabled: streaming subscriptions and local libraries side
+by side. Choose **Add**, pick **Local library**, browse to a folder, and say whether it holds
+movies or TV shows. A library can span several folders, for example a `Movies` and a `TV Shows`
+folder on the same drive: use **Add another folder** in the dialog, or the **+** button on an
+existing library card; the pencil button next to it renames the library. MyTaste scans every
+folder in the background, groups files into titles, and matches each one on TMDB so posters,
+trailers, and cast work exactly like streaming titles. A folder can belong to only one library,
+and folders may not be nested inside each other.
 
 Local titles are not a separate catalog. Every category mixes them with your streaming titles in
 one order, so a local movie appears exactly where it ranks by release date or popularity, and a
