@@ -99,6 +99,12 @@ uv run ruff check .
 
 The test suite does not call TMDB; external services are replaced with deterministic test doubles.
 
+## Contributing
+
+Work happens on branches from `dev`, and pull requests target `dev`; `main` only receives
+releases. See [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and the checks to run
+before opening a pull request.
+
 ## License
 
 MyTaste is released under the [MIT License](LICENSE).

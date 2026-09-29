@@ -5,6 +5,15 @@ available on a user's selected streaming services. Read `README.md` before chang
 `docs/deployment.md` before changing runtime or networking. Machine-specific notes, such as a
 live instance on the current host, belong in an untracked `AGENTS.local.md`; read it when present.
 
+## Git workflow
+
+Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and releases:
+
+- Start every change on a new branch from `origin/dev` (`feature/…`, `fix/…`, `docs/…`, `chore/…`).
+- Open pull requests against `dev` (`gh pr create --base dev`), never against `main`.
+- Never commit or push directly to `dev` or `main`. Only the release process updates `main`, by
+  merging `dev` into it.
+
 ## Project map
 
 - `src/mytaste/config.py` — environment parsing and application settings.
