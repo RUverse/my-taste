@@ -9,3 +9,4 @@ build/
 .env
 AGENTS.local.md
 
+.worktrees/

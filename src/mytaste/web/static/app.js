@@ -803,7 +803,7 @@
     let activeRow = null;
     let suggestedName = nameInput?.value || "";
     let libraryTarget = libraryForm.getAttribute("action").match(/libraries\/(\d+)\/folders/)?.[1] || "";
-    let startNear = libraryForm.dataset.startNear || "";
+    let startNear = "";
 
     const rows = () => Array.from(folderRows.querySelectorAll("[data-folder-row]"));
     const pathOf = (row) => row.querySelector("[data-folder-path]");
