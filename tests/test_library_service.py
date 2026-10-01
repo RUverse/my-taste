@@ -207,6 +207,48 @@ def test_one_library_scans_movie_and_show_folders(tmp_path: Path) -> None:
     asyncio.run(run())
 
 
+def test_folders_in_one_request_may_not_repeat_or_nest(tmp_path: Path) -> None:
+    movies = tmp_path / "drive" / "Movies"
+    movies.mkdir(parents=True)
+
+    async def run() -> None:
+        service = make_service(tmp_path, FakeCatalog())
+        with pytest.raises(ValueError, match="already in this list"):
+            service.add("", [(str(movies), "movie"), (str(movies), "tv")])
+        with pytest.raises(ValueError, match="overlaps .* in this list"):
+            service.add("", [(str(movies), "movie"), (str(tmp_path / "drive"), "tv")])
+        assert service.libraries() == ()
+        await service.stop()
+
+    asyncio.run(run())
+
+
+def test_changing_folders_replaces_a_running_scan(tmp_path: Path) -> None:
+    movies = tmp_path / "Movies"
+    touch(movies / "Parasite.2019.1080p.mkv")
+    shows = tmp_path / "TV Shows"
+    touch(shows / "Silicon Valley" / "Season 1" / "Silicon.Valley.S01E01.mkv")
+
+    async def run() -> None:
+        service = make_service(tmp_path, FakeCatalog())
+        library = service.add("", [(str(movies), "movie")])
+        first_scan = service._scan_tasks[library.id]
+        service.add_folders(library.id, [(str(shows), "tv")])
+        second_scan = service._scan_tasks[library.id]
+        assert second_scan is not first_scan
+        await asyncio.gather(first_scan, return_exceptions=True)
+        assert first_scan.cancelled()
+        assert service._scan_tasks.get(library.id) is second_scan, "old scan kept the new one"
+
+        await second_scan
+        stored = service.library(library.id)
+        assert stored is not None
+        assert (stored.movie_count, stored.show_count) == (1, 1)
+        await service.stop()
+
+    asyncio.run(run())
+
+
 def test_path_validation_and_roots(tmp_path: Path) -> None:
     allowed = tmp_path / "allowed"
     (allowed / "Movies").mkdir(parents=True)
