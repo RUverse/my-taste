@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 import os
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -69,6 +69,7 @@ class LibraryService:
         self._scan_tasks: dict[int, asyncio.Task[LibraryStatus]] = {}
         self._periodic: asyncio.Task[None] | None = None
         self._matched_keys: frozenset[tuple[str, int]] | None = None
+        self.scan_listeners: list[Callable[[int], None]] = []
 
     # Lifecycle -------------------------------------------------------------------------
 
@@ -327,6 +328,8 @@ class LibraryService:
         drafts = await asyncio.gather(*(build(key, files) for key, files in groups.items()))
         self.repository.replace_items(library_id, drafts, scanned_at=utc_now())
         self._matched_keys = None
+        for listener in self.scan_listeners:
+            listener(library_id)
         message = ""
         if tmdb_failures:
             message = "Some titles could not be matched because TMDB was unavailable."

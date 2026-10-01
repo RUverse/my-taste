@@ -140,6 +140,8 @@
   const detailVideo = detailDialog?.querySelector("[data-detail-video]");
   const detailSound = detailDialog?.querySelector("[data-detail-sound]");
   const detailTrailer = detailDialog?.querySelector("[data-detail-trailer]");
+  const detailPlay = detailDialog?.querySelector("[data-detail-play]");
+  const detailPlayLabel = detailDialog?.querySelector("[data-detail-play-label]");
   const detailWatch = detailDialog?.querySelector("[data-watch]");
   const detailWatchPrimary = detailDialog?.querySelector("[data-watch-primary]");
   const detailWatchProvider = detailDialog?.querySelector("[data-watch-provider]");
@@ -261,7 +263,10 @@
     detailTrailer.hidden = true;
     detailTrailer.removeAttribute("href");
     detailTrailer.classList.add("detail-action-primary");
+    setDetailPlay(card.dataset.playUrl, card.dataset.resume ? "Resume" : "Play");
+    detailTrailer.classList.toggle("detail-action-primary", detailPlay.hidden);
     detailWatch.hidden = true;
+    detailWatchPrimary.classList.toggle("detail-action-primary", detailPlay.hidden);
     detailWatchPrimary.removeAttribute("href");
     detailWatchProvider.replaceChildren();
     detailWatchAlternatives.replaceChildren();
@@ -272,6 +277,18 @@
     detailEpisodesSummary.textContent = "";
     detailEpisodesStatus.textContent = isSeries ? "Loading episodes…" : "";
     detailSeasons.replaceChildren();
+  };
+
+  // Local titles play in MyTaste's own player; streaming links stay available beside it.
+  const setDetailPlay = (url, label) => {
+    detailPlay.hidden = !url;
+    if (url) {
+      detailPlay.href = url;
+      detailPlayLabel.textContent = label;
+      detailPlay.setAttribute("aria-label", `${label} from your library`);
+    } else {
+      detailPlay.removeAttribute("href");
+    }
   };
 
   const providerLogo = (option, className) => {
@@ -313,12 +330,13 @@
       detailWatchAlternatives.append(link);
     });
     detailWatch.hidden = false;
+    detailWatchPrimary.classList.toggle("detail-action-primary", detailPlay.hidden);
     detailTrailer.classList.remove("detail-action-primary");
     detailSeasons.querySelectorAll("[data-episode-link]").forEach(linkEpisode);
   };
 
   const linkEpisode = (card) => {
-    if (!watchUrl || card.dataset.upcoming === "true") {
+    if (!watchUrl || card.dataset.upcoming === "true" || card.dataset.local === "true") {
       return;
     }
     card.href = watchUrl;
@@ -361,6 +379,20 @@
     number.className = "episode-number";
     number.textContent = String(episode.episode_number);
     still.append(number);
+    if (episode.watched) {
+      const watched = document.createElement("span");
+      watched.className = "episode-watched";
+      watched.title = "Watched";
+      watched.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg>';
+      still.append(watched);
+    } else if (episode.progress > 0) {
+      const progress = document.createElement("span");
+      progress.className = "card-progress";
+      const bar = document.createElement("span");
+      bar.style.width = `${Math.round(episode.progress * 1000) / 10}%`;
+      progress.append(bar);
+      still.append(progress);
+    }
     if (episode.in_library) {
       const local = document.createElement("span");
       local.className = "episode-local";
@@ -392,9 +424,15 @@
       `${label} ${episode.episode_number}: ${name.textContent}`,
       meta.textContent,
       episode.in_library ? "in your local library" : "",
+      episode.watched ? "watched" : "",
     ].filter(Boolean);
     card.dataset.label = context.join(", ");
     card.append(still, copy);
+    if (episode.play_url) {
+      card.dataset.local = "true";
+      card.href = episode.play_url;
+      card.setAttribute("aria-label", `Play ${card.dataset.label}`);
+    }
     linkEpisode(card);
     item.append(card);
     return item;
@@ -603,6 +641,12 @@
         .then((payload) => {
           if (isCurrent()) {
             renderSeasons(Array.isArray(payload.seasons) ? payload.seasons : []);
+            if (payload.next_up?.url) {
+              setDetailPlay(
+                payload.next_up.url,
+                `${payload.next_up.resume ? "Resume" : "Play"} ${payload.next_up.label.replace(" · ", " ")}`,
+              );
+            }
           }
         })
         .catch(() => {

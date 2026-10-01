@@ -47,3 +47,27 @@ def test_library_settings_are_parsed(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("MYTASTE_LIBRARY_RESCAN_MINUTES", "-1")
     with pytest.raises(ConfigurationError, match="zero or greater"):
         load_app_settings()
+
+
+def test_playback_settings_are_parsed(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("MYTASTE_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("MYTASTE_CACHE_DIR", str(tmp_path / "cache"))
+    monkeypatch.setenv("MYTASTE_FFMPEG", "/opt/ffmpeg/bin/ffmpeg")
+    monkeypatch.setenv("MYTASTE_MAX_TRANSCODES", "2")
+    monkeypatch.setenv("MYTASTE_HWACCEL", "None")
+
+    settings = load_app_settings()
+
+    assert settings.cache_dir == tmp_path / "cache"
+    assert settings.ffmpeg == "/opt/ffmpeg/bin/ffmpeg"
+    assert settings.ffprobe == "ffprobe"
+    assert settings.max_transcodes == 2
+    assert settings.hwaccel == "none"
+
+    monkeypatch.setenv("MYTASTE_HWACCEL", "cuda")
+    with pytest.raises(ConfigurationError, match="MYTASTE_HWACCEL"):
+        load_app_settings()
+    monkeypatch.setenv("MYTASTE_HWACCEL", "auto")
+    monkeypatch.setenv("MYTASTE_MAX_TRANSCODES", "-1")
+    with pytest.raises(ConfigurationError, match="zero or greater"):
+        load_app_settings()

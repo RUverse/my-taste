@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+_HWACCEL_MODES = frozenset({"auto", "none", "drm"})
+
 
 class ConfigurationError(ValueError):
     """Raised when application configuration is absent or invalid."""
@@ -18,6 +20,15 @@ def default_database_path() -> Path:
         root = Path(xdg_data).expanduser() if xdg_data else Path.home() / ".local" / "share"
         root /= "mytaste"
     return root / "mytaste.db"
+
+
+def default_cache_dir() -> Path:
+    configured = os.environ.get("MYTASTE_CACHE_DIR")
+    if configured:
+        return Path(configured).expanduser()
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    root = Path(xdg_cache).expanduser() if xdg_cache else Path.home() / ".cache"
+    return root / "mytaste"
 
 
 def _parse_port(value: str | None) -> int:
@@ -40,6 +51,11 @@ class AppSettings:
     request_timeout: float = 10.0
     library_roots: tuple[Path, ...] = ()
     library_rescan_minutes: int = 60
+    cache_dir: Path | None = None
+    ffmpeg: str = "ffmpeg"
+    ffprobe: str = "ffprobe"
+    max_transcodes: int = 1
+    hwaccel: str = "auto"
 
     def require_tmdb_token(self) -> str:
         token = (self.tmdb_token or "").strip()
@@ -67,6 +83,19 @@ def load_app_settings() -> AppSettings:
     if rescan_minutes < 0:
         raise ConfigurationError("MYTASTE_LIBRARY_RESCAN_MINUTES must be zero or greater")
 
+    transcodes_value = os.environ.get("MYTASTE_MAX_TRANSCODES", "1")
+    try:
+        max_transcodes = int(transcodes_value)
+    except ValueError as exc:
+        raise ConfigurationError("MYTASTE_MAX_TRANSCODES must be an integer") from exc
+    if max_transcodes < 0:
+        raise ConfigurationError("MYTASTE_MAX_TRANSCODES must be zero or greater")
+
+    hwaccel = os.environ.get("MYTASTE_HWACCEL", "auto").strip().lower()
+    if hwaccel not in _HWACCEL_MODES:
+        choices = ", ".join(sorted(_HWACCEL_MODES))
+        raise ConfigurationError(f"MYTASTE_HWACCEL must be one of: {choices}")
+
     return AppSettings(
         tmdb_token=os.environ.get("MYTASTE_TMDB_TOKEN"),
         database_path=default_database_path(),
@@ -76,6 +105,11 @@ def load_app_settings() -> AppSettings:
         request_timeout=timeout,
         library_roots=_parse_library_roots(os.environ.get("MYTASTE_LIBRARY_ROOTS")),
         library_rescan_minutes=rescan_minutes,
+        cache_dir=default_cache_dir(),
+        ffmpeg=os.environ.get("MYTASTE_FFMPEG", "ffmpeg"),
+        ffprobe=os.environ.get("MYTASTE_FFPROBE", "ffprobe"),
+        max_transcodes=max_transcodes,
+        hwaccel=hwaccel,
     )
 
 

@@ -588,6 +588,7 @@ def test_episodes_endpoint_marks_episodes_in_the_library(tmp_path: Path) -> None
         episode["in_library"] for episode in without_library.json()["seasons"][0]["episodes"]
     ] == [False, False]
     assert response.json() == {
+        "next_up": None,
         "seasons": [
             {
                 "season_number": 1,
@@ -610,10 +611,13 @@ def test_episodes_endpoint_marks_episodes_in_the_library(tmp_path: Path) -> None
                         "runtime_minutes": None,
                         "still_url": None,
                         "in_library": True,
+                        "play_url": "/watch/tv/13/1/2",
+                        "watched": False,
+                        "progress": 0,
                     },
                 ],
             }
-        ]
+        ],
     }
     assert failed.status_code == 502
 

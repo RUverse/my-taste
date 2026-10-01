@@ -2,9 +2,14 @@ FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    MYTASTE_DATA_DIR=/data
+    MYTASTE_DATA_DIR=/data \
+    MYTASTE_CACHE_DIR=/data/cache
 
-RUN addgroup --system mytaste && adduser --system --ingroup mytaste mytaste
+# ffmpeg streams local libraries (remuxing, transcoding, subtitles).
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && addgroup --system mytaste && adduser --system --ingroup mytaste mytaste
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
