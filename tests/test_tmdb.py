@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 from datetime import date
+from urllib.parse import quote
 
 import httpx
 
@@ -290,3 +293,134 @@ def test_lookup_passes_year_hint_per_media_type() -> None:
     assert "first_air_date_year" not in captured[1]
     assert movies[0].id == 496243
     assert shows[0].media_type == "tv"
+
+
+def _justwatch_href(provider_id: int, provider: str, monetization: str, target: str) -> str:
+    context = {
+        "data": [
+            {
+                "schema": "clickout",
+                "data": {
+                    "provider": provider,
+                    "providerId": provider_id,
+                    "monetizationType": monetization,
+                },
+            },
+            {"schema": "title", "data": {"titleId": 2, "objectType": "show"}},
+        ]
+    }
+    encoded = base64.urlsafe_b64encode(json.dumps(context).encode()).decode().rstrip("=")
+    return (
+        f'<a href="https://click.justwatch.com/a?cx={encoded}&amp;r={quote(target, safe="")}'
+        f'&amp;uct_country=de" title="Watch on {provider}">'
+    )
+
+
+def test_watch_links_read_provider_pages_without_the_api_credential() -> None:
+    requests: list[httpx.Request] = []
+    markup = "".join(
+        (
+            _justwatch_href(10, "Amazon Video", "rent", "https://watch.amazon.de/rent"),
+            _justwatch_href(8, "Netflix", "flatrate", "https://www.netflix.com/title/80057281"),
+            _justwatch_href(8, "Netflix", "flatrate", "https://www.netflix.com/title/other"),
+            _justwatch_href(10, "Amazon Video", "flatrate", "https://watch.amazon.de/prime"),
+            _justwatch_href(
+                2706,
+                "Disney Plus",
+                "flatrate",
+                "https://disneyplus.bn5x.net/c/1?u="
+                + quote("https://www.disneyplus.com/x", safe=""),
+            ),
+            _justwatch_href(66, "Unsafe", "flatrate", "javascript:alert(1)"),
+            '<a href="https://click.justwatch.com/a?cx=not-base64!&amp;r=https%3A%2F%2Fx.test">',
+        )
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=f"<html><body>{markup}</body></html>")
+
+    client = TMDBClient("read-access-token", transport=httpx.MockTransport(handler))
+    try:
+        links = asyncio.run(client.watch_links("tv", 66732, "DE"))
+        invalid_region = asyncio.run(client.watch_links("tv", 66732, "de&x=1"))
+    finally:
+        asyncio.run(client.close())
+
+    assert str(requests[0].url) == "https://www.themoviedb.org/tv/66732/watch?locale=DE"
+    assert "authorization" not in requests[0].headers
+    assert len(requests) == 1
+    assert invalid_region == ()
+    assert [(link.provider_id, link.provider_name, link.url) for link in links] == [
+        (10, "Amazon Video", "https://watch.amazon.de/prime"),
+        (8, "Netflix", "https://www.netflix.com/title/80057281"),
+        (2706, "Disney Plus", "https://www.disneyplus.com/x"),
+    ]
+
+
+def test_watch_links_are_empty_when_the_page_fails() -> None:
+    client = TMDBClient(
+        "token", transport=httpx.MockTransport(lambda _request: httpx.Response(503))
+    )
+    try:
+        assert asyncio.run(client.watch_links("movie", 1, "DE")) == ()
+    finally:
+        asyncio.run(client.close())
+
+
+def test_seasons_batch_requests_and_list_specials_last() -> None:
+    appended: list[str] = []
+
+    def episode(number: int, **extra: object) -> dict[str, object]:
+        return {"episode_number": number, "name": f"Episode {number}", **extra}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        append = request.url.params.get("append_to_response")
+        if append is None:
+            return httpx.Response(
+                200,
+                json={
+                    "seasons": [
+                        {"season_number": 0, "episode_count": 1},
+                        {"season_number": 1, "episode_count": 2},
+                        {"season_number": 2, "episode_count": 0},
+                    ]
+                },
+            )
+        appended.append(append)
+        return httpx.Response(
+            200,
+            json={
+                "season/0": {"name": "Specials", "episodes": [episode(1)]},
+                "season/1": {
+                    "name": "Season 1",
+                    "episodes": [
+                        episode(2, runtime=0, air_date="2026-02-01"),
+                        episode(
+                            1,
+                            name="Pilot",
+                            runtime=58,
+                            still_path="/still.jpg",
+                            air_date="2026-01-01",
+                        ),
+                        {"name": "No number"},
+                    ],
+                },
+            },
+        )
+
+    client = TMDBClient("token", transport=httpx.MockTransport(handler))
+    try:
+        seasons = asyncio.run(client.seasons(1399))
+    finally:
+        asyncio.run(client.close())
+
+    assert appended == ["season/0,season/1"]
+    assert [(season.season_number, season.name) for season in seasons] == [
+        (1, "Season 1"),
+        (0, "Specials"),
+    ]
+    pilot, second = seasons[0].episodes
+    assert (pilot.episode_number, pilot.name, pilot.runtime_minutes) == (1, "Pilot", 58)
+    assert pilot.still_url == "https://image.tmdb.org/t/p/w300/still.jpg"
+    assert second.runtime_minutes is None

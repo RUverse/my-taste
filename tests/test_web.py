@@ -11,9 +11,12 @@ from mytaste.catalog.models import (
     CastMember,
     CatalogItem,
     CatalogPage,
+    Episode,
     MediaDetails,
     Provider,
     Region,
+    Season,
+    WatchOption,
 )
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
@@ -90,6 +93,38 @@ class FakeCatalog:
         if item_id == 404:
             raise TMDBError("Availability unavailable")
         return frozenset({8, 337, 99}) if media_type == "movie" else frozenset({337})
+
+    async def watch_options(
+        self, region: str, media_type: str, item_id: int, provider_ids: tuple[int, ...]
+    ) -> tuple[WatchOption, ...]:
+        assert region == "DE"
+        if item_id == 404:
+            raise TMDBError("Availability unavailable")
+        netflix = Provider(8, "Netflix", "/netflix.jpg", 1)
+        return (
+            (WatchOption(netflix, "https://www.netflix.com/title/12"),) if 8 in provider_ids else ()
+        )
+
+    async def seasons(self, item_id: int) -> tuple[Season, ...]:
+        if item_id == 404:
+            raise TMDBError("Seasons unavailable")
+        return (
+            Season(
+                1,
+                "Season 1",
+                (
+                    Episode(
+                        1,
+                        1,
+                        "Pilot",
+                        air_date="2026-01-01",
+                        runtime_minutes=50,
+                        still_path="/still.jpg",
+                    ),
+                    Episode(1, 2, "Second"),
+                ),
+            ),
+        )
 
     async def details(self, media_type: str, item_id: int) -> MediaDetails:
         return MediaDetails(
@@ -218,6 +253,9 @@ class FakeLibrary:
 
     def matched_keys(self) -> frozenset[tuple[str, int]]:
         return frozenset({("movie", 12)})
+
+    def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
+        return frozenset({(1, 2)}) if tmdb_id == 13 else frozenset()
 
     async def categories(self, media_type: str) -> tuple[BrowseCategory, ...]:
         return (
@@ -512,6 +550,72 @@ def test_details_endpoint_returns_trailer_and_cast(tmp_path: Path) -> None:
             "profile_url": "https://image.tmdb.org/t/p/w185/actor.jpg",
         }
     ]
+
+
+def test_watch_endpoint_lists_selected_services_with_links(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        unconfigured = client.get("/api/items/movie/12/watch")
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        response = client.get("/api/items/movie/12/watch")
+        failed = client.get("/api/items/movie/404/watch")
+        invalid = client.get("/api/items/person/12/watch")
+
+    assert unconfigured.json() == {"options": []}
+    assert response.json() == {
+        "options": [
+            {
+                "provider_id": 8,
+                "name": "Netflix",
+                "logo_url": "https://image.tmdb.org/t/p/w92/netflix.jpg",
+                "url": "https://www.netflix.com/title/12",
+                "direct": True,
+            }
+        ]
+    }
+    assert failed.status_code == 502
+    assert invalid.status_code == 404
+
+
+def test_episodes_endpoint_marks_episodes_in_the_library(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    with make_client(tmp_path, library) as client:
+        without_library = client.get("/api/items/tv/13/episodes")
+        library.add("Shows", [("/media/Shows", "tv")])
+        response = client.get("/api/items/tv/13/episodes")
+        failed = client.get("/api/items/tv/404/episodes")
+
+    assert [
+        episode["in_library"] for episode in without_library.json()["seasons"][0]["episodes"]
+    ] == [False, False]
+    assert response.json() == {
+        "seasons": [
+            {
+                "season_number": 1,
+                "name": "Season 1",
+                "episodes": [
+                    {
+                        "episode_number": 1,
+                        "name": "Pilot",
+                        "overview": "",
+                        "air_date": "2026-01-01",
+                        "runtime_minutes": 50,
+                        "still_url": "https://image.tmdb.org/t/p/w300/still.jpg",
+                        "in_library": False,
+                    },
+                    {
+                        "episode_number": 2,
+                        "name": "Second",
+                        "overview": "",
+                        "air_date": "",
+                        "runtime_minutes": None,
+                        "still_url": None,
+                        "in_library": True,
+                    },
+                ],
+            }
+        ]
+    }
+    assert failed.status_code == 502
 
 
 def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:

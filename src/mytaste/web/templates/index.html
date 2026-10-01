@@ -234,6 +234,31 @@
     {% endif %}
 
     <dialog class="media-details" id="media-details" aria-labelledby="media-detail-title">
+      <div class="media-detail-hero" aria-hidden="true">
+        <div class="media-detail-visual" data-detail-visual>
+          <img data-detail-backdrop alt="">
+          <div class="media-detail-video" data-detail-video></div>
+        </div>
+      </div>
+      <button
+        class="media-detail-sound"
+        type="button"
+        data-detail-sound
+        data-muted="true"
+        aria-label="Unmute trailer"
+        aria-pressed="false"
+        title="Unmute trailer"
+        hidden
+      >
+        <svg data-sound-muted aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+          <path d="m16 9 5 5M21 9l-5 5"></path>
+        </svg>
+        <svg data-sound-on aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+          <path d="M15 9.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10"></path>
+        </svg>
+      </button>
       <div class="media-detail-shell">
         <button class="media-detail-close" type="button" data-close-media-details aria-label="Close media details">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
@@ -251,38 +276,23 @@
           </aside>
 
           <section class="media-detail-stage" aria-live="polite">
-            <div class="media-detail-visual" data-detail-visual aria-hidden="true">
-              <img data-detail-backdrop alt="">
-              <div class="media-detail-video" data-detail-video></div>
-            </div>
-            <button
-              class="media-detail-sound"
-              type="button"
-              data-detail-sound
-              data-muted="true"
-              aria-label="Unmute trailer"
-              aria-pressed="false"
-              title="Unmute trailer"
-              hidden
-            >
-              <svg data-sound-muted aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
-                <path d="m16 9 5 5M21 9l-5 5"></path>
-              </svg>
-              <svg data-sound-on aria-hidden="true" viewBox="0 0 24 24">
-                <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
-                <path d="M15 9.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10"></path>
-              </svg>
-            </button>
             <div class="media-detail-copy">
               <div class="media-detail-status" data-detail-status>Loading details…</div>
               <div class="media-detail-content" data-detail-content hidden>
                 <div class="media-detail-genres" data-detail-genres></div>
                 <p class="media-detail-overview" data-detail-overview></p>
                 <div class="media-detail-actions">
+                  <div class="watch-group" data-watch hidden>
+                    <a class="detail-action detail-action-primary watch-primary" data-watch-primary target="_blank" rel="noopener noreferrer">
+                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                      <span>Watch</span>
+                      <span class="watch-provider" data-watch-provider></span>
+                    </a>
+                    <div class="watch-alternatives" data-watch-alternatives></div>
+                  </div>
                   <a class="detail-action detail-action-primary" data-detail-trailer target="_blank" rel="noreferrer">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z"></path></svg>
-                    Watch trailer
+                    Trailer
                   </a>
                   <button class="detail-action detail-action-add" type="button" data-detail-add aria-label="Add to watchlist" title="Add to watchlist">
                     <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
@@ -296,6 +306,14 @@
             </div>
           </section>
         </div>
+        <section class="media-detail-episodes" data-detail-episodes aria-labelledby="media-detail-episodes-title" hidden>
+          <header class="episodes-head">
+            <h3 id="media-detail-episodes-title">Episodes</h3>
+            <p data-episodes-summary></p>
+          </header>
+          <p class="episodes-status" data-episodes-status role="status"></p>
+          <div class="season-rows" data-episodes-seasons></div>
+        </section>
       </div>
     </dialog>
       </main>

@@ -11,6 +11,8 @@ matching releases in a clean poster grid.
 - Latest, Most Popular, and common genre categories
 - Title search restricted to the configured streaming subscriptions and local folders
 - Animated movie and show details with YouTube trailers, descriptions, and cast
+- A Watch button that opens the title on each of your services that carries it, and an episode
+  grid for series with one row per season, marking the episodes you have in a local library
 - Collapsible filters and display sidebar: sources with one-click “Only”, release-year presets,
   rating steps, and removable active-filter chips; filters apply instantly and stay in the URL
 - Storage libraries: connect local folders (USB drive, NAS share, the same folders Plex uses),
@@ -24,6 +26,10 @@ matching releases in a clean poster grid.
 Catalog metadata comes from TMDB. Streaming availability data is provided by JustWatch via
 TMDB and varies by country. “Latest” means newest released or first-aired titles currently
 listed for the selected services, not the date a service added a title.
+
+TMDB's API does not provide links to a title on each service, so Watch reads them from the title's
+public TMDB watch page. If that page changes or has no link for a service, Watch falls back to the
+TMDB page, which lists every offer.
 
 ## Quick start
 

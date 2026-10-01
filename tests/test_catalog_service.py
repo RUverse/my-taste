@@ -9,6 +9,8 @@ from mytaste.catalog.models import (
     CatalogPage,
     Genre,
     MediaDetails,
+    Provider,
+    WatchLink,
 )
 from mytaste.catalog.service import CatalogService
 
@@ -81,6 +83,20 @@ class FakeTMDBClient:
     ) -> frozenset[int]:
         assert region == "DE"
         return frozenset({8}) if item_id == 1 else frozenset({337})
+
+    async def providers(self, region: str) -> tuple[Provider, ...]:
+        return (
+            Provider(337, "Disney Plus", "/disney.jpg", 3),
+            Provider(8, "Netflix", "/netflix.jpg", 1),
+            Provider(9, "Amazon Prime Video", "/prime.jpg", 2),
+        )
+
+    async def watch_links(self, media_type: str, item_id: int, region: str):
+        self.watch_link_calls = getattr(self, "watch_link_calls", 0) + 1
+        return (
+            WatchLink(8, "Netflix", "https://www.netflix.com/title/1"),
+            WatchLink(2706, "Disney Plus", "https://www.disneyplus.com/x"),
+        )
 
     async def details(self, media_type: str, item_id: int) -> MediaDetails:
         self.detail_calls += 1
@@ -159,6 +175,30 @@ def test_details_are_cached() -> None:
 
     assert first is second
     assert client.detail_calls == 1
+
+
+def test_watch_options_rank_selected_carriers_and_match_links() -> None:
+    client = FakeTMDBClient()
+
+    async def carriers(media_type: str, item_id: int, region: str) -> frozenset[int]:
+        return frozenset({8, 9, 337}) if item_id == 1 else frozenset()
+
+    client.watch_provider_ids = carriers  # type: ignore[method-assign]
+    service = CatalogService(client)
+
+    options = asyncio.run(service.watch_options("DE", "movie", 1, (337, 9, 8)))
+    again = asyncio.run(service.watch_options("DE", "movie", 1, (8,)))
+    unavailable = asyncio.run(service.watch_options("DE", "movie", 2, (8,)))
+
+    assert [(option.provider.id, option.url, option.direct) for option in options] == [
+        (8, "https://www.netflix.com/title/1", True),
+        (9, "https://www.themoviedb.org/movie/1/watch?locale=DE", False),
+        # The page lists Disney Plus under JustWatch's own provider id.
+        (337, "https://www.disneyplus.com/x", True),
+    ]
+    assert [option.provider.id for option in again] == [8]
+    assert unavailable == ()
+    assert client.watch_link_calls == 1
 
 
 def test_match_title_prefers_exact_title_and_year() -> None:

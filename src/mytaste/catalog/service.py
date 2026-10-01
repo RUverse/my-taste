@@ -20,6 +20,9 @@ from mytaste.catalog.models import (
     MediaType,
     Provider,
     Region,
+    Season,
+    WatchLink,
+    WatchOption,
 )
 from mytaste.catalog.tmdb import TMDBClient
 
@@ -66,6 +69,8 @@ class CatalogService:
         self._availability: dict[tuple[str, MediaType, int], _CacheEntry[frozenset[int]]] = {}
         self._people: dict[tuple[MediaType, int], _CacheEntry[tuple[str, tuple[str, ...]]]] = {}
         self._details: dict[tuple[MediaType, int], _CacheEntry[MediaDetails]] = {}
+        self._watch_links: dict[tuple[str, MediaType, int], _CacheEntry[tuple[WatchLink, ...]]] = {}
+        self._seasons: dict[int, _CacheEntry[tuple[Season, ...]]] = {}
         self._matches: dict[tuple[MediaType, str, int | None], _CacheEntry[CatalogItem | None]] = {}
         self._availability_limit = asyncio.Semaphore(8)
 
@@ -344,6 +349,64 @@ class CatalogService:
         details = await self.client.details(media_type, item_id)
         self._details[cache_key] = _CacheEntry(details, now + self.enrichment_ttl)
         return details
+
+    async def watch_options(
+        self,
+        region: str,
+        media_type: MediaType,
+        item_id: int,
+        provider_ids: Sequence[int],
+    ) -> tuple[WatchOption, ...]:
+        """Return the selected services that carry a title, best-ranked first, with links."""
+
+        providers, available_ids = await asyncio.gather(
+            self.providers(region),
+            self.available_provider_ids(region, media_type, item_id),
+        )
+        selected = set(provider_ids) & available_ids
+        carriers = sorted(
+            (provider for provider in providers if provider.id in selected),
+            key=lambda provider: provider.priority,
+        )
+        if not carriers:
+            return ()
+        links = await self._cached_watch_links(region, media_type, item_id)
+        by_id = {link.provider_id: link for link in links}
+        by_name = {_normalize_title(link.provider_name): link for link in links}
+        fallback = f"https://www.themoviedb.org/{media_type}/{item_id}/watch?locale={region}"
+        options: list[WatchOption] = []
+        for provider in carriers:
+            # TMDB's page uses JustWatch provider IDs, which differ for some services.
+            link = by_id.get(provider.id) or by_name.get(_normalize_title(provider.name))
+            if link is None:
+                options.append(WatchOption(provider, fallback, direct=False))
+            else:
+                options.append(WatchOption(provider, link.url))
+        return tuple(options)
+
+    async def _cached_watch_links(
+        self, region: str, media_type: MediaType, item_id: int
+    ) -> tuple[WatchLink, ...]:
+        cache_key = (region, media_type, item_id)
+        now = time.monotonic()
+        cached = self._watch_links.get(cache_key)
+        if cached is not None and cached.expires_at > now:
+            return cached.value
+        async with self._availability_limit:
+            links = await self.client.watch_links(media_type, item_id, region)
+        # A page that yields nothing may be a transient failure, so retry it sooner.
+        ttl = self.enrichment_ttl if links else min(self.enrichment_ttl, self.catalog_ttl)
+        self._watch_links[cache_key] = _CacheEntry(links, now + ttl)
+        return links
+
+    async def seasons(self, item_id: int) -> tuple[Season, ...]:
+        now = time.monotonic()
+        cached = self._seasons.get(item_id)
+        if cached is not None and cached.expires_at > now:
+            return cached.value
+        seasons = await self.client.seasons(item_id)
+        self._seasons[item_id] = _CacheEntry(seasons, now + self.enrichment_ttl)
+        return seasons
 
     async def match_title(
         self,
