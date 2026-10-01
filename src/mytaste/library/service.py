@@ -370,6 +370,9 @@ class LibraryService:
             self._matched_keys = self.repository.matched_keys()
         return self._matched_keys
 
+    def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
+        return self.repository.episode_keys(tmdb_id)
+
     async def categories(self, media_type: BrowseMediaType) -> tuple[BrowseCategory, ...]:
         movie_counts = self.repository.genre_ids("movie") if media_type != "tv" else {}
         tv_counts = self.repository.genre_ids("tv") if media_type != "movie" else {}

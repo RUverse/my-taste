@@ -287,6 +287,24 @@ class LibraryRepository:
             ).fetchall()
         return frozenset((str(row[0]), int(row[1])) for row in rows)
 
+    def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
+        """Return the ``(season, episode)`` pairs on disk for a matched series."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT DISTINCT library_files.season, library_files.episode
+                FROM library_files
+                JOIN library_items ON library_items.id = library_files.item_id
+                WHERE library_items.media_type = 'tv'
+                    AND library_items.tmdb_id = ?
+                    AND library_files.season IS NOT NULL
+                    AND library_files.episode IS NOT NULL
+                """,
+                (tmdb_id,),
+            ).fetchall()
+        return frozenset((int(row[0]), int(row[1])) for row in rows)
+
     def genre_ids(self, media_type: MediaType) -> dict[int, int]:
         """Return genre ids present for a media type with the number of matching items."""
 

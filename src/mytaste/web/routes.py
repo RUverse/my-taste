@@ -601,6 +601,71 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             }
         )
 
+    @router.get("/api/items/{media_type}/{item_id}/watch", response_class=JSONResponse)
+    async def item_watch(media_type: str, item_id: int, request: Request) -> JSONResponse:
+        """List the user's services that carry a title, with a link to it on each."""
+
+        if media_type not in {"movie", "tv"} or item_id <= 0:
+            return JSONResponse({"error": "Invalid media item"}, status_code=404)
+        preferences: Preferences = request.app.state.preferences.get()
+        if not preferences.configured:
+            return JSONResponse({"options": []})
+        try:
+            options = await request.app.state.catalog.watch_options(
+                preferences.region, media_type, item_id, preferences.provider_ids
+            )
+        except TMDBError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse(
+            {
+                "options": [
+                    {
+                        "provider_id": option.provider.id,
+                        "name": option.provider.name,
+                        "logo_url": option.provider.logo_url,
+                        "url": option.url,
+                        "direct": option.direct,
+                    }
+                    for option in options
+                ]
+            }
+        )
+
+    @router.get("/api/items/tv/{item_id}/episodes", response_class=JSONResponse)
+    async def item_episodes(item_id: int, request: Request) -> JSONResponse:
+        if item_id <= 0:
+            return JSONResponse({"error": "Invalid media item"}, status_code=404)
+        try:
+            seasons = await request.app.state.catalog.seasons(item_id)
+        except TMDBError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        library = request.app.state.library
+        local = library.episode_keys(item_id) if library.has_libraries else frozenset()
+        return JSONResponse(
+            {
+                "seasons": [
+                    {
+                        "season_number": season.season_number,
+                        "name": season.name,
+                        "episodes": [
+                            {
+                                "episode_number": episode.episode_number,
+                                "name": episode.name,
+                                "overview": episode.overview,
+                                "air_date": episode.air_date,
+                                "runtime_minutes": episode.runtime_minutes,
+                                "still_url": episode.still_url,
+                                "in_library": (season.season_number, episode.episode_number)
+                                in local,
+                            }
+                            for episode in season.episodes
+                        ],
+                    }
+                    for season in seasons
+                ]
+            }
+        )
+
     return router
 
 

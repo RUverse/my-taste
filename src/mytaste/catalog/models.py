@@ -138,6 +138,52 @@ class MediaDetails:
 
 
 @dataclass(frozen=True, slots=True)
+class WatchLink:
+    """A provider's page for one title, keyed by the provider name used on that page."""
+
+    provider_id: int
+    provider_name: str
+    url: str
+
+
+@dataclass(frozen=True, slots=True)
+class WatchOption:
+    """An enabled service that carries a title, and where to watch it there.
+
+    ``direct`` is false when no provider page was found and ``url`` falls back to TMDB's list
+    of offers for the title.
+    """
+
+    provider: Provider
+    url: str
+    direct: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class Episode:
+    season_number: int
+    episode_number: int
+    name: str
+    overview: str = ""
+    air_date: str = ""
+    runtime_minutes: int | None = None
+    still_path: str | None = None
+
+    @property
+    def still_url(self) -> str | None:
+        if not self.still_path:
+            return None
+        return f"https://image.tmdb.org/t/p/w300{self.still_path}"
+
+
+@dataclass(frozen=True, slots=True)
+class Season:
+    season_number: int
+    name: str
+    episodes: tuple[Episode, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class Catalog:
     movies: tuple[CatalogItem, ...]
     shows: tuple[CatalogItem, ...]

@@ -137,6 +137,8 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
     assert items[0].summary == "2 seasons · 3 episodes"
     assert repository.matched_keys() == {("movie", 496243), ("tv", 70523)}
     assert repository.genre_ids("movie") == {35: 1, 53: 1, 18: 1}
+    assert repository.episode_keys(70523) == {(1, 1), (1, 2), (3, 1)}
+    assert repository.episode_keys(496243) == frozenset()
 
     popular = repository.browse(
         BrowseQuery(category="popular"), BrowseCategory("popular", "Popular")

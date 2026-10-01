@@ -140,7 +140,16 @@
   const detailVideo = detailDialog?.querySelector("[data-detail-video]");
   const detailSound = detailDialog?.querySelector("[data-detail-sound]");
   const detailTrailer = detailDialog?.querySelector("[data-detail-trailer]");
+  const detailWatch = detailDialog?.querySelector("[data-watch]");
+  const detailWatchPrimary = detailDialog?.querySelector("[data-watch-primary]");
+  const detailWatchProvider = detailDialog?.querySelector("[data-watch-provider]");
+  const detailWatchAlternatives = detailDialog?.querySelector("[data-watch-alternatives]");
+  const detailEpisodes = detailDialog?.querySelector("[data-detail-episodes]");
+  const detailEpisodesSummary = detailDialog?.querySelector("[data-episodes-summary]");
+  const detailEpisodesStatus = detailDialog?.querySelector("[data-episodes-status]");
+  const detailSeasons = detailDialog?.querySelector("[data-episodes-seasons]");
   const detailCache = new Map();
+  let watchUrl = "";
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let activeDetailCard;
   let detailRevision = 0;
@@ -188,42 +197,36 @@
     });
   };
 
-  const animatePoster = async (source, fromRect, toRect) => {
-    const visual = posterVisual(source);
-    if (!visual || reducedMotion.matches || !("animate" in Element.prototype)) {
-      return;
+  const posterShadows = {
+    card: "0 14px 34px rgba(0, 0, 0, 0.34)",
+    detail: "0 28px 70px rgba(0, 0, 0, 0.62)",
+  };
+
+  // FLIP the dialog's own poster between its resting place and a card's poster, so the cover
+  // reads as one object moving rather than a copy cross-fading with the original.
+  const flyPoster = (cardRect, { reverse = false } = {}) => {
+    detailPoster.getAnimations().forEach((animation) => animation.cancel());
+    const restRect = detailPoster.getBoundingClientRect();
+    if (!cardRect?.width || !restRect.width || reducedMotion.matches || !("animate" in Element.prototype)) {
+      return null;
     }
-    const clone = document.createElement("div");
-    clone.className = "poster-transition-clone";
-    clone.append(visual);
-    Object.assign(clone.style, {
-      left: `${fromRect.left}px`,
-      top: `${fromRect.top}px`,
-      width: `${fromRect.width}px`,
-      height: `${fromRect.height}px`,
+    const scaleX = cardRect.width / restRect.width;
+    const scaleY = cardRect.height / restRect.height;
+    const atCard = {
+      transform: `translate(${cardRect.left - restRect.left}px, ${cardRect.top - restRect.top}px) scale(${scaleX}, ${scaleY})`,
+      borderRadius: `${11 / scaleX}px / ${11 / scaleY}px`,
+      boxShadow: posterShadows.card,
+    };
+    const atRest = {
+      transform: "translate(0px, 0px) scale(1, 1)",
+      borderRadius: "12px / 12px",
+      boxShadow: posterShadows.detail,
+    };
+    return detailPoster.animate(reverse ? [atRest, atCard] : [atCard, atRest], {
+      duration: reverse ? 420 : 560,
+      easing: reverse ? "cubic-bezier(0.32, 0, 0.18, 1)" : "cubic-bezier(0.16, 1, 0.3, 1)",
+      fill: "both",
     });
-    detailDialog.append(clone);
-    const animation = clone.animate(
-      [
-        { transform: "translate(0, 0) scale(1)", borderRadius: "11px" },
-        {
-          transform: `translate(${toRect.left - fromRect.left}px, ${toRect.top - fromRect.top}px) scale(${toRect.width / fromRect.width}, ${toRect.height / fromRect.height})`,
-          borderRadius: "12px",
-        },
-      ],
-      {
-        duration: 390,
-        easing: "cubic-bezier(0.2, 0.82, 0.2, 1)",
-        fill: "forwards",
-      },
-    );
-    try {
-      await animation.finished;
-    } catch {
-      // A superseding open/close action may cancel the visual transition.
-    } finally {
-      clone.remove();
-    }
   };
 
   const resetDetailContent = (card) => {
@@ -257,6 +260,179 @@
     setTrailerMuted(true);
     detailTrailer.hidden = true;
     detailTrailer.removeAttribute("href");
+    detailTrailer.classList.add("detail-action-primary");
+    detailWatch.hidden = true;
+    detailWatchPrimary.removeAttribute("href");
+    detailWatchProvider.replaceChildren();
+    detailWatchAlternatives.replaceChildren();
+    watchUrl = "";
+    const isSeries = card.dataset.detailUrl?.startsWith("/api/items/tv/") ?? false;
+    detailDialog.classList.toggle("is-series", isSeries);
+    detailEpisodes.hidden = !isSeries;
+    detailEpisodesSummary.textContent = "";
+    detailEpisodesStatus.textContent = isSeries ? "Loading episodes…" : "";
+    detailSeasons.replaceChildren();
+  };
+
+  const providerLogo = (option, className) => {
+    const logo = document.createElement("span");
+    logo.className = className;
+    if (option.logo_url) {
+      const image = document.createElement("img");
+      image.src = option.logo_url;
+      image.alt = "";
+      logo.append(image);
+    } else {
+      logo.textContent = option.name?.charAt(0) || "?";
+    }
+    return logo;
+  };
+
+  const watchTitle = (option) =>
+    option.direct ? `Watch on ${option.name}` : `Find ${option.name} offers on TMDB`;
+
+  const renderWatchOptions = (options) => {
+    const [primary, ...others] = options.filter((option) => option.url?.startsWith("https://"));
+    if (!primary) {
+      return;
+    }
+    watchUrl = primary.url;
+    detailWatchPrimary.href = primary.url;
+    detailWatchPrimary.title = watchTitle(primary);
+    detailWatchPrimary.setAttribute("aria-label", watchTitle(primary));
+    detailWatchProvider.replaceChildren(providerLogo(primary, "watch-provider-logo"));
+    others.forEach((option) => {
+      const link = document.createElement("a");
+      link.className = "watch-alternative";
+      link.href = option.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = watchTitle(option);
+      link.setAttribute("aria-label", watchTitle(option));
+      link.append(providerLogo(option, "watch-provider-logo"));
+      detailWatchAlternatives.append(link);
+    });
+    detailWatch.hidden = false;
+    detailTrailer.classList.remove("detail-action-primary");
+    detailSeasons.querySelectorAll("[data-episode-link]").forEach(linkEpisode);
+  };
+
+  const linkEpisode = (card) => {
+    if (!watchUrl || card.dataset.upcoming === "true") {
+      return;
+    }
+    card.href = watchUrl;
+    card.target = "_blank";
+    card.rel = "noopener noreferrer";
+    card.setAttribute("aria-label", card.dataset.label);
+  };
+
+  const airDateFormat = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const formatAirDate = (value) => {
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(value || "") ? new Date(`${value}T00:00:00`) : null;
+    return parsed && !Number.isNaN(parsed.getTime()) ? airDateFormat.format(parsed) : "";
+  };
+
+  const renderEpisode = (episode, seasonNumber, today) => {
+    const item = document.createElement("li");
+    const card = document.createElement("a");
+    card.className = "episode-card";
+    card.dataset.episodeLink = "";
+    // Undated regular episodes are announced but not out yet; undated specials are just old.
+    const upcoming = episode.air_date ? episode.air_date > today : seasonNumber > 0;
+    card.dataset.upcoming = String(upcoming);
+
+    const still = document.createElement("div");
+    still.className = "episode-still";
+    if (episode.still_url) {
+      const image = document.createElement("img");
+      image.src = episode.still_url;
+      image.alt = "";
+      image.loading = "lazy";
+      image.decoding = "async";
+      still.append(image);
+    }
+    const number = document.createElement("span");
+    number.className = "episode-number";
+    number.textContent = String(episode.episode_number);
+    still.append(number);
+    if (episode.in_library) {
+      const local = document.createElement("span");
+      local.className = "episode-local";
+      local.title = "In your local library";
+      local.innerHTML = '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4.2l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9Z"></path></svg>';
+      still.append(local);
+    }
+    const play = document.createElement("span");
+    play.className = "episode-play";
+    play.setAttribute("aria-hidden", "true");
+    play.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>';
+    still.append(play);
+
+    const copy = document.createElement("div");
+    copy.className = "episode-copy";
+    const name = document.createElement("strong");
+    name.textContent = episode.name || `Episode ${episode.episode_number}`;
+    const meta = document.createElement("small");
+    const airDate = formatAirDate(episode.air_date);
+    meta.textContent = upcoming
+      ? airDate ? `Coming ${airDate}` : "Not yet aired"
+      : [runtimeLabel(episode.runtime_minutes), airDate].filter(Boolean).join(" · ");
+    copy.append(name, meta);
+    if (episode.overview) {
+      card.title = episode.overview;
+    }
+    const label = seasonNumber === 0 ? "Special" : `Season ${seasonNumber}, episode`;
+    const context = [
+      `${label} ${episode.episode_number}: ${name.textContent}`,
+      meta.textContent,
+      episode.in_library ? "in your local library" : "",
+    ].filter(Boolean);
+    card.dataset.label = context.join(", ");
+    card.append(still, copy);
+    linkEpisode(card);
+    item.append(card);
+    return item;
+  };
+
+  const renderSeasons = (seasons) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const regular = seasons.filter((season) => season.season_number > 0);
+    const episodeCount = regular.reduce((total, season) => total + season.episodes.length, 0);
+    const plural = (count, noun) => `${count} ${noun}${count === 1 ? "" : "s"}`;
+    detailEpisodesSummary.textContent = regular.length
+      ? `${plural(regular.length, "season")} · ${plural(episodeCount, "episode")}`
+      : "";
+    detailSeasons.replaceChildren(
+      ...seasons.map((season) => {
+        const row = document.createElement("section");
+        row.className = "season-row";
+        const head = document.createElement("header");
+        head.className = "season-row-head";
+        const title = document.createElement("h4");
+        title.id = `season-${season.season_number}-title`;
+        title.textContent = season.name;
+        row.setAttribute("aria-labelledby", title.id);
+        const meta = document.createElement("span");
+        const local = season.episodes.filter((episode) => episode.in_library).length;
+        meta.textContent = [
+          plural(season.episodes.length, "episode"),
+          local ? `${local} in library` : "",
+        ].filter(Boolean).join(" · ");
+        head.append(title, meta);
+        const strip = document.createElement("ol");
+        strip.className = "episode-strip";
+        strip.append(...season.episodes.map((episode) => renderEpisode(episode, season.season_number, today)));
+        row.append(head, strip);
+        return row;
+      }),
+    );
+    detailEpisodesStatus.textContent = seasons.length ? "" : "No episode list is available yet.";
   };
 
   const runtimeLabel = (minutes) => {
@@ -304,7 +480,8 @@
     detailYear.textContent = payload.year === "—" ? "" : payload.year || "";
     detailRuntime.textContent = runtimeLabel(payload.runtime_minutes);
     detailRating.textContent = payload.rating ? `★ ${payload.rating}` : "";
-    if (payload.poster_url) {
+    // The card's cover is usually the same image; swapping it would flash mid-flight.
+    if (payload.poster_url && detailPoster.querySelector("img")?.src !== payload.poster_url) {
       const poster = document.createElement("img");
       poster.src = payload.poster_url;
       poster.alt = "";
@@ -385,24 +562,54 @@
     activeDetailCard = card;
     const revision = ++detailRevision;
     const motionRevision = ++posterMotionRevision;
-    const sourcePoster = card.querySelector(".poster");
-    const sourceRect = sourcePoster.getBoundingClientRect();
+    const sourceRect = card.querySelector(".poster").getBoundingClientRect();
     resetDetailContent(card);
-    detailDialog.classList.remove("is-closing");
-    detailDialog.classList.add("is-poster-moving");
+    detailDialog.classList.remove("is-closing", "is-visible", "is-poster-fading");
     detailDialog.showModal();
+    detailDialog.scrollTop = 0;
     document.body.classList.add("media-details-open");
-    requestAnimationFrame(async () => {
-      const targetRect = detailPoster.getBoundingClientRect();
-      await animatePoster(sourcePoster, sourceRect, targetRect);
-      if (motionRevision === posterMotionRevision) {
-        detailDialog.classList.remove("is-poster-moving");
-      }
-    });
+    card.classList.add("is-detail-source");
+    // flyPoster measures layout, so the hidden starting styles are applied before is-visible.
+    const flight = flyPoster(sourceRect);
+    detailDialog.classList.add("is-visible");
+    flight?.finished
+      .then(() => {
+        if (motionRevision === posterMotionRevision) {
+          flight.cancel();
+        }
+      })
+      .catch(() => {
+        // A close that starts mid-flight cancels this animation.
+      });
 
     if (!card.dataset.detailUrl) {
       detailStatus.textContent = "This title is not matched on TMDB yet, so extra details are unavailable.";
       return;
+    }
+
+    const itemUrl = card.dataset.detailUrl.replace(/\/details$/, "");
+    const isCurrent = () => revision === detailRevision && detailDialog.open;
+    fetchDetails(`${itemUrl}/watch`)
+      .then((payload) => {
+        if (isCurrent() && Array.isArray(payload.options)) {
+          renderWatchOptions(payload.options);
+        }
+      })
+      .catch(() => {
+        // Watch links are optional; the details stay usable without them.
+      });
+    if (detailDialog.classList.contains("is-series")) {
+      fetchDetails(`${itemUrl}/episodes`)
+        .then((payload) => {
+          if (isCurrent()) {
+            renderSeasons(Array.isArray(payload.seasons) ? payload.seasons : []);
+          }
+        })
+        .catch(() => {
+          if (isCurrent()) {
+            detailEpisodesStatus.textContent = "Episodes are unavailable right now.";
+          }
+        });
     }
 
     try {
@@ -426,24 +633,32 @@
     detailVideo.replaceChildren();
     detailVideo.classList.remove("is-active");
     detailSound.hidden = true;
-    detailDialog.classList.add("is-closing", "is-poster-moving");
-    const sourceRect = detailPoster.getBoundingClientRect();
-    const destination = activeDetailCard?.querySelector(".poster");
-    const destinationRect = destination?.getBoundingClientRect();
+    const card = activeDetailCard;
+    const destinationRect = card?.querySelector(".poster")?.getBoundingClientRect();
     const destinationVisible =
       destinationRect && destinationRect.bottom > 0 && destinationRect.top < window.innerHeight;
-    if (destinationVisible) {
-      await animatePoster(detailPoster, sourceRect, destinationRect);
+    detailDialog.classList.add("is-closing");
+    detailDialog.classList.remove("is-visible");
+    const flight = destinationVisible ? flyPoster(destinationRect, { reverse: true }) : null;
+    if (flight) {
+      try {
+        await flight.finished;
+      } catch {
+        // Superseded by another open or close.
+      }
     } else {
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
+      detailDialog.classList.add("is-poster-fading");
+      await new Promise((resolve) => window.setTimeout(resolve, 340));
     }
     if (motionRevision !== posterMotionRevision) {
       return;
     }
     detailDialog.close();
-    detailDialog.classList.remove("is-closing", "is-poster-moving");
+    flight?.cancel();
+    detailDialog.classList.remove("is-closing", "is-poster-fading");
+    card?.classList.remove("is-detail-source");
     document.body.classList.remove("media-details-open");
-    activeDetailCard?.querySelector("[data-open-media-details]")?.focus();
+    card?.querySelector("[data-open-media-details]")?.focus();
   };
 
   if (detailDialog) {

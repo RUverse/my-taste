@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
+import html
+import json
 import re
 from collections.abc import Mapping, Sequence
 from datetime import date
 from typing import Any, cast
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -12,15 +17,24 @@ from mytaste.catalog.models import (
     CastMember,
     CatalogItem,
     CatalogPage,
+    Episode,
     Genre,
     MediaDetails,
     MediaType,
     Provider,
     Region,
+    Season,
+    WatchLink,
 )
 
 _API_BASE_URL = "https://api.themoviedb.org/3"
+_WEB_BASE_URL = "https://www.themoviedb.org"
 _V3_API_KEY_PATTERN = re.compile(r"^[0-9a-fA-F]{32}$")
+_REGION_PATTERN = re.compile(r"^[A-Z]{2}$")
+# TMDB's public watch page links each offer through JustWatch's click tracker. The tracker URL
+# carries the provider's own title page in ``r`` and the offer context as base64 JSON in ``cx``.
+_JUSTWATCH_LINK_PATTERN = re.compile(r'href="(https://click\.justwatch\.com/a\?[^"]+)"')
+_SEASONS_PER_REQUEST = 20
 
 
 class TMDBError(RuntimeError):
@@ -50,9 +64,18 @@ class TMDBClient:
             timeout=timeout,
             transport=transport,
         )
+        # The website never receives the API credential.
+        self._web_client = httpx.AsyncClient(
+            base_url=_WEB_BASE_URL,
+            headers={"Accept": "text/html", "User-Agent": "MyTaste/0.3"},
+            timeout=timeout,
+            transport=transport,
+            follow_redirects=True,
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
+        await self._web_client.aclose()
 
     async def _get(self, path: str, params: Mapping[str, object] | None = None) -> dict[str, Any]:
         request_params = dict(params or {})
@@ -322,6 +345,71 @@ class TMDBClient:
             raise TMDBError("TMDB returned incomplete media details")
         return details
 
+    async def watch_links(
+        self,
+        media_type: MediaType,
+        item_id: int,
+        region: str,
+    ) -> tuple[WatchLink, ...]:
+        """Read direct provider links from TMDB's public watch page for a title.
+
+        The API only links to TMDB's own watch page, so this parses that page. It returns an
+        empty tuple when the page is unavailable or its markup no longer matches.
+        """
+
+        if not _REGION_PATTERN.fullmatch(region):
+            return ()
+        try:
+            response = await self._web_client.get(
+                f"/{media_type}/{item_id}/watch", params={"locale": region}
+            )
+            response.raise_for_status()
+        except httpx.HTTPError:
+            return ()
+        return _watch_links_from_html(response.text)
+
+    async def seasons(self, item_id: int) -> tuple[Season, ...]:
+        """Return every season of a series with its episodes, regular seasons first."""
+
+        params = {"language": self.language}
+        show = await self._get(f"/tv/{item_id}", params)
+        numbers: list[int] = []
+        for raw in _object_list(show.get("seasons")):
+            try:
+                number = int(raw["season_number"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if number >= 0 and int(raw.get("episode_count") or 0) > 0:
+                numbers.append(number)
+        chunks = [
+            numbers[start : start + _SEASONS_PER_REQUEST]
+            for start in range(0, len(numbers), _SEASONS_PER_REQUEST)
+        ]
+        payloads = await asyncio.gather(
+            *(
+                self._get(
+                    f"/tv/{item_id}",
+                    {
+                        **params,
+                        "append_to_response": ",".join(f"season/{number}" for number in chunk),
+                    },
+                )
+                for chunk in chunks
+            )
+        )
+        seasons: list[Season] = []
+        for chunk, payload in zip(chunks, payloads, strict=True):
+            for number in chunk:
+                raw_season = payload.get(f"season/{number}")
+                if isinstance(raw_season, dict):
+                    season = _season_from_payload(raw_season, number)
+                    if season.episodes:
+                        seasons.append(season)
+        # Specials (season 0) go last, the way streaming apps list them.
+        return tuple(
+            sorted(seasons, key=lambda season: (season.season_number == 0, season.season_number))
+        )
+
     async def latest(
         self,
         media_type: MediaType,
@@ -345,6 +433,97 @@ def _object_list(value: object) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
+
+
+def _watch_links_from_html(markup: str) -> tuple[WatchLink, ...]:
+    links: dict[int, WatchLink] = {}
+    subscription: set[int] = set()
+    for match in _JUSTWATCH_LINK_PATTERN.finditer(markup):
+        query = parse_qs(urlsplit(html.unescape(match.group(1))).query)
+        target = _unwrap_affiliate((query.get("r") or [""])[0])
+        offer = _justwatch_offer(query.get("cx", [""])[0])
+        if offer is None or not _is_safe_link(target):
+            continue
+        provider_id, provider_name, monetization = offer
+        is_subscription = monetization in {"flatrate", "ads", "free"}
+        # Keep the first link per provider, but let a subscription offer replace a rent/buy one.
+        if provider_id not in links or (is_subscription and provider_id not in subscription):
+            links[provider_id] = WatchLink(provider_id, provider_name, target)
+        if is_subscription:
+            subscription.add(provider_id)
+    return tuple(links.values())
+
+
+def _justwatch_offer(context: str) -> tuple[int, str, str] | None:
+    try:
+        decoded = base64.urlsafe_b64decode(context + "=" * (-len(context) % 4))
+        payload = json.loads(decoded)
+    except (binascii.Error, ValueError):
+        return None
+    entries = payload.get("data") if isinstance(payload, dict) else None
+    for entry in _object_list(entries):
+        data = entry.get("data")
+        if not isinstance(data, dict) or "providerId" not in data:
+            continue
+        try:
+            provider_id = int(data["providerId"])
+        except (TypeError, ValueError):
+            return None
+        name = str(data.get("provider") or "").strip()
+        if provider_id <= 0 or not name:
+            return None
+        return provider_id, name, str(data.get("monetizationType") or "")
+    return None
+
+
+def _unwrap_affiliate(url: str) -> str:
+    """Prefer the provider page over an affiliate redirect that carries it in ``u``."""
+
+    destination = (parse_qs(urlsplit(url).query).get("u") or [""])[0]
+    return destination if _is_safe_link(destination) else url
+
+
+def _is_safe_link(url: str) -> bool:
+    parts = urlsplit(url)
+    return (
+        parts.scheme == "https"
+        and bool(parts.hostname)
+        and not parts.username
+        and not parts.password
+    )
+
+
+def _season_from_payload(payload: dict[str, Any], season_number: int) -> Season:
+    episodes: list[Episode] = []
+    for raw in _object_list(payload.get("episodes")):
+        try:
+            episode_number = int(raw["episode_number"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        try:
+            runtime = int(raw.get("runtime") or 0) or None
+        except (TypeError, ValueError):
+            runtime = None
+        still_path = raw.get("still_path")
+        episodes.append(
+            Episode(
+                season_number=season_number,
+                episode_number=episode_number,
+                name=str(raw.get("name") or "").strip() or f"Episode {episode_number}",
+                overview=str(raw.get("overview") or "").strip(),
+                air_date=str(raw.get("air_date") or "").strip(),
+                runtime_minutes=runtime if runtime and runtime > 0 else None,
+                still_path=str(still_path) if still_path else None,
+            )
+        )
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        name = "Specials" if season_number == 0 else f"Season {season_number}"
+    return Season(
+        season_number=season_number,
+        name=name,
+        episodes=tuple(sorted(episodes, key=lambda episode: episode.episode_number)),
+    )
 
 
 def _provider_from_payload(payload: dict[str, Any], region: str) -> Provider | None:
