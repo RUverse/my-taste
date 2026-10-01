@@ -231,6 +231,13 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             sources_url=all_sources_url if sources_changed else None,
             url=url,
         )
+        playback = request.app.state.playback
+        play_states = playback.states(_card_state_keys(page)) if libraries else {}
+        continue_items = (
+            _continue_items(playback, query.media_type)
+            if libraries and query.page == 1 and not query.search
+            else ()
+        )
         statuses: tuple[LibraryStatus, ...] = library.statuses() if libraries else ()
         library_scanning = any(status.state == "scanning" for status in statuses)
         return render(
@@ -276,6 +283,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "rating_options": (None, 5, 6, 7, 8),
                 "active_filters": active_filters,
                 "current_year": this_year,
+                "play_states": play_states,
+                "continue_items": continue_items,
             },
         )
 
@@ -641,8 +650,36 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": str(exc)}, status_code=502)
         library = request.app.state.library
         local = library.episode_keys(item_id) if library.has_libraries else frozenset()
+        playback = request.app.state.playback
+        states = (
+            playback.states(f"tv:{item_id}:{season}:{episode}" for season, episode in local)
+            if local
+            else {}
+        )
+        next_up = playback.next_up(item_id) if local else None
+        next_state = states.get(next_up.key) if next_up is not None else None
+
+        def local_fields(season: int, episode: int) -> dict[str, object]:
+            if (season, episode) not in local:
+                return {}
+            state = states.get(f"tv:{item_id}:{season}:{episode}")
+            return {
+                "play_url": f"/watch/tv/{item_id}/{season}/{episode}",
+                "watched": bool(state and state.watched),
+                "progress": round(state.progress, 3)
+                if state and state.resumable and not state.watched
+                else 0,
+            }
+
         return JSONResponse(
             {
+                "next_up": {
+                    "url": next_up.url,
+                    "label": next_up.episode_label,
+                    "resume": bool(next_state and next_state.resumable and not next_state.watched),
+                }
+                if next_up is not None
+                else None,
                 "seasons": [
                     {
                         "season_number": season.season_number,
@@ -657,16 +694,54 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                                 "still_url": episode.still_url,
                                 "in_library": (season.season_number, episode.episode_number)
                                 in local,
+                                **local_fields(season.season_number, episode.episode_number),
                             }
                             for episode in season.episodes
                         ],
                     }
                     for season in seasons
-                ]
+                ],
             }
         )
 
     return router
+
+
+def _card_state_keys(page: CatalogPage) -> list[str]:
+    keys: list[str] = []
+    for item in page.items:
+        if item.media_type == "movie" and item.id > 0:
+            keys.append(f"movie:{item.id}")
+        elif item.id == 0 and item.local_file_id is not None:
+            keys.append(f"file:{item.local_file_id}")
+    return keys
+
+
+def _continue_items(playback: Any, media_type: BrowseMediaType) -> tuple[dict[str, object], ...]:
+    items: list[dict[str, object]] = []
+    for entry in playback.continue_watching():
+        target = entry.target
+        if media_type != "all" and target.media_type != media_type:
+            continue
+        state = entry.state
+        parts = [target.episode_label] if target.episode_label else []
+        if entry.up_next:
+            parts.insert(0, "Up next")
+        elif state is not None and state.duration > state.position:
+            minutes = max(1, round((state.duration - state.position) / 60))
+            parts.append(f"{minutes} min left")
+        items.append(
+            {
+                "title": target.title,
+                "detail": " · ".join(parts),
+                "url": target.url,
+                "poster_url": f"https://image.tmdb.org/t/p/w342{target.poster_path}"
+                if target.poster_path
+                else None,
+                "progress": round(state.progress * 100, 1) if state and not entry.up_next else 0,
+            }
+        )
+    return tuple(items)
 
 
 def _empty_library_form() -> dict[str, object]:

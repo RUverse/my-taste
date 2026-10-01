@@ -47,11 +47,42 @@ title, and results are stored in the SQLite database so rescans are cheap. If a 
 unplugged the previous index of its library is kept and the library is marked unavailable until
 the next scan.
 
+## Playing local videos
+
+The player streams library files from the server, so ffmpeg and ffprobe must be installed (the
+Docker image includes them; on Debian or Raspberry Pi OS run `sudo apt install ffmpeg`). Without
+them the app still browses libraries, but files can only be played when the browser supports
+them as they are.
+
+For each file the browser reports which codecs it can decode, and the server picks the cheapest
+method that works:
+
+- **Direct play** sends the original file with byte-range requests. It costs nothing.
+- **Direct stream** copies the video into HLS (fragmented MP4) segments that start on the file's
+  own keyframes, converting only unsupported audio such as DTS to AAC. This is typical for MKV
+  files and uses little CPU.
+- **Converting** re-encodes the video with x264 at up to 720p (or the quality chosen in the
+  player) for codecs the browser cannot decode, such as HEVC in Chrome on Linux, or when an image
+  subtitle has to be drawn into the picture.
+
+Conversion is CPU-heavy. `MYTASTE_MAX_TRANSCODES` (default 1) limits how many run at once; when a
+new viewer needs one, the oldest is stopped. ffmpeg runs at lower priority, stays only a short
+way ahead of the viewer, and is stopped when nobody has requested a segment for two minutes. On a
+Raspberry Pi 5, a 1080p HEVC film converts to 720p at about 2.5 times real time using the Pi's
+HEVC decoder, which is detected automatically (`MYTASTE_HWACCEL=auto`); set it to `none` to
+decode in software.
+
+Segments and extracted subtitles are written to `MYTASTE_CACHE_DIR` (by default
+`$XDG_CACHE_HOME/mytaste`). Segments are deleted when a session ends, and nothing in the cache
+needs a backup. Each file is inspected with ffprobe once, in the background after a scan, and the
+result is stored in the database.
+
 ## Network exposure
 
 Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. The app does
 not provide accounts or authentication in this release. For Internet or untrusted-LAN exposure,
-put it behind a reverse proxy that provides HTTPS and access control.
+put it behind a reverse proxy that provides HTTPS and access control. With a storage library,
+anyone who can reach the app can also play its files.
 
 Run one application worker against a database. The in-memory TMDB cache is intentionally local to
 the process, and the workload does not benefit from multiple workers for a household deployment.

@@ -17,6 +17,10 @@ matching releases in a clean poster grid.
   rating steps, and removable active-filter chips; filters apply instantly and stay in the URL
 - Storage libraries: connect local folders (USB drive, NAS share, the same folders Plex uses),
   scan and match them on TMDB, and see them mixed into every category with your streaming picks
+- A built-in player for local movies and episodes: direct play, or streamed with ffmpeg when the
+  browser needs it; resume where you stopped; subtitles (files next to the video and embedded
+  tracks); audio and quality choices; Continue watching and Up next; and links such as
+  `/watch/tv/1399/1/3` that always open that exact episode
 - Persisted display controls for card metadata, sizing, trailer autoplay, and the sidebar state,
   including optional icons of the subscribed services that carry each title
 - Single-profile preferences persisted in SQLite
@@ -66,6 +70,10 @@ network.
 | `MYTASTE_REQUEST_TIMEOUT` | `10` | TMDB request timeout in seconds |
 | `MYTASTE_LIBRARY_ROOTS` | unset | Colon-separated folders that storage libraries must live inside |
 | `MYTASTE_LIBRARY_RESCAN_MINUTES` | `60` | Automatic library rescan interval; `0` disables it |
+| `MYTASTE_CACHE_DIR` | XDG cache directory | Stream segments and extracted subtitles |
+| `MYTASTE_FFMPEG` / `MYTASTE_FFPROBE` | `ffmpeg` / `ffprobe` | Programs used for playback |
+| `MYTASTE_MAX_TRANSCODES` | `1` | Conversions that may run at once; `0` turns conversion off |
+| `MYTASTE_HWACCEL` | `auto` | Hardware video decoding for conversions: `auto`, `drm`, or `none` |
 
 ## Storage libraries
 
@@ -87,11 +95,36 @@ Added** and **A–Z** tabs become available.
 The scanner understands common layouts: loose files named `Title.2019.1080p.mkv`, one folder per
 movie such as `Title (2019)/`, director folders like `Nolan/2010 - Inception/`, and shows laid out
 as `Show/S01/Show.S01E01.mkv` or `Show/Season 1/`. Titles that cannot be matched still appear
-with a placeholder poster. Files are only read for their names and sizes; nothing is played or
-copied.
+with a placeholder poster. Files are never modified or copied.
 
-Because the app has no authentication, anyone who can reach it can add folders and see file
-names. Set `MYTASTE_LIBRARY_ROOTS` to limit which folders may be connected.
+Because the app has no authentication, anyone who can reach it can add folders, see file names,
+and play the files. Set `MYTASTE_LIBRARY_ROOTS` to limit which folders may be connected.
+
+## Watching local files
+
+Titles in a local library have a **Play** button in their details (**Resume** when you stopped
+part way, **Play S1 E3** for the next episode of a series), and each episode on disk can be
+played from the episode rows. The player opens at a link you can copy anywhere:
+
+| Link | Opens |
+| --- | --- |
+| `/watch/movie/<TMDB id>` | The movie; add `?file=<id>` to pick one of several versions |
+| `/watch/tv/<TMDB id>/<season>/<episode>` | That episode |
+| `/watch/tv/<TMDB id>` | The next episode to watch |
+| `/watch/local/<file id>` | A file that is not matched on TMDB |
+
+Add `?t=<seconds>` to start at a given time. The player has keyboard shortcuts (Space or K to
+pause, ←/→ or J/L to skip 10 seconds, ↑/↓ for volume, F for full screen, M to mute, C to cycle
+subtitles, N for the next episode), remembers your volume, subtitle, audio-language and quality
+choices on each device, offers to resume, and counts down to the next episode at the end.
+Progress is saved as you watch; a title counts as watched at 90 %.
+
+The server uses the least work that the browser can play: the original file when possible,
+otherwise the video copied into an HLS stream, and only as a last resort a conversion. Subtitles
+next to the video (`.srt`, `.ass`, `.vtt`, also in a `Subs` folder) and text subtitles inside the
+file are converted to WebVTT, including Persian and Arabic files saved in Windows-1256. Image
+subtitles (PGS, VobSub) are drawn into a converted video. Playback needs ffmpeg on the server; see
+[deployment](docs/deployment.md#playing-local-videos) for how streaming works and what it costs.
 
 See [deployment options](docs/deployment.md) for Docker and native-host guidance.
 

@@ -59,6 +59,7 @@ class CatalogItem:
     popularity: float = 0.0
     library_summary: str = ""
     in_library: bool = False
+    local_file_id: int | None = None
 
     @property
     def year(self) -> str:

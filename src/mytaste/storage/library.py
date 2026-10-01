@@ -13,7 +13,13 @@ from mytaste.catalog.models import (
     CatalogPage,
     MediaType,
 )
-from mytaste.library.models import Library, LibraryFolder, LibraryItem, ScannedFile
+from mytaste.library.models import (
+    Library,
+    LibraryFile,
+    LibraryFolder,
+    LibraryItem,
+    ScannedFile,
+)
 
 _MEDIA_TYPES: frozenset[str] = frozenset({"movie", "tv"})
 
@@ -109,6 +115,7 @@ class LibraryRepository:
                     episode INTEGER
                 );
                 CREATE INDEX IF NOT EXISTS library_files_item ON library_files (item_id);
+                CREATE INDEX IF NOT EXISTS library_files_path ON library_files (path);
                 """
             )
 
@@ -229,56 +236,141 @@ class LibraryRepository:
         *,
         scanned_at: str | None = None,
     ) -> None:
+        """Write a scan's titles, keeping the ids of titles and files that are still present.
+
+        Titles are matched by group key and files by path, so a rescan updates rows in place.
+        Watch progress and links such as ``/watch/local/<file id>`` survive rescans.
+        """
+
         library = self.get_library(library_id)
         if library is None:
             raise ValueError("Unknown library")
         with self._connect() as connection:
-            keys = tuple(draft.group_key for draft in drafts)
-            connection.execute("DELETE FROM library_items WHERE library_id = ?", (library_id,))
+            item_ids = {
+                str(row[0]): int(row[1])
+                for row in connection.execute(
+                    "SELECT group_key, id FROM library_items WHERE library_id = ?", (library_id,)
+                )
+            }
+            file_ids = {
+                str(row[0]): int(row[1])
+                for row in connection.execute(
+                    """
+                    SELECT f.path, f.id FROM library_files f
+                    JOIN library_items i ON i.id = f.item_id WHERE i.library_id = ?
+                    """,
+                    (library_id,),
+                )
+            }
+            kept_items: set[int] = set()
+            kept_files: set[int] = set()
             for draft in drafts:
-                cursor = connection.execute(
-                    """
-                    INSERT INTO library_items (
-                        library_id, media_type, group_key, title, year, tmdb_id,
-                        release_date, overview, rating, poster_path, genre_ids, popularity,
-                        added_at, file_count, season_count, episode_count
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        library_id,
-                        draft.media_type,
-                        draft.group_key,
-                        draft.title,
-                        draft.year,
-                        draft.tmdb_id,
-                        draft.release_date,
-                        draft.overview,
-                        draft.rating,
-                        draft.poster_path,
-                        "," + ",".join(str(value) for value in draft.genre_ids) + ",",
-                        draft.popularity,
-                        draft.added_at,
-                        len(draft.files),
-                        draft.season_count,
-                        draft.episode_count,
-                    ),
+                values = (
+                    draft.media_type,
+                    draft.title,
+                    draft.year,
+                    draft.tmdb_id,
+                    draft.release_date,
+                    draft.overview,
+                    draft.rating,
+                    draft.poster_path,
+                    "," + ",".join(str(value) for value in draft.genre_ids) + ",",
+                    draft.popularity,
+                    draft.added_at,
+                    len(draft.files),
+                    draft.season_count,
+                    draft.episode_count,
                 )
-                item_id = cursor.lastrowid
-                connection.executemany(
-                    """
-                    INSERT INTO library_files (item_id, path, size, modified_at, season, episode)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        (item_id, file.path, file.size, file.modified_at, file.season, file.episode)
-                        for file in draft.files
-                    ),
-                )
-            del keys
+                item_id = item_ids.get(draft.group_key)
+                if item_id is None:
+                    cursor = connection.execute(
+                        """
+                        INSERT INTO library_items (
+                            media_type, title, year, tmdb_id, release_date, overview, rating,
+                            poster_path, genre_ids, popularity, added_at, file_count,
+                            season_count, episode_count, library_id, group_key
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (*values, library_id, draft.group_key),
+                    )
+                    item_id = int(cursor.lastrowid or 0)
+                    item_ids[draft.group_key] = item_id
+                else:
+                    connection.execute(
+                        """
+                        UPDATE library_items SET
+                            media_type = ?, title = ?, year = ?, tmdb_id = ?, release_date = ?,
+                            overview = ?, rating = ?, poster_path = ?, genre_ids = ?,
+                            popularity = ?, added_at = ?, file_count = ?, season_count = ?,
+                            episode_count = ?
+                        WHERE id = ?
+                        """,
+                        (*values, item_id),
+                    )
+                kept_items.add(item_id)
+                for file in draft.files:
+                    row = (item_id, file.size, file.modified_at, file.season, file.episode)
+                    file_id = file_ids.get(file.path)
+                    if file_id is None or file_id in kept_files:
+                        cursor = connection.execute(
+                            """
+                            INSERT INTO library_files
+                                (item_id, size, modified_at, season, episode, path)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (*row, file.path),
+                        )
+                        file_id = int(cursor.lastrowid or 0)
+                    else:
+                        connection.execute(
+                            """
+                            UPDATE library_files
+                            SET item_id = ?, size = ?, modified_at = ?, season = ?, episode = ?
+                            WHERE id = ?
+                            """,
+                            (*row, file_id),
+                        )
+                    kept_files.add(file_id)
+            stale_files = set(file_ids.values()) - kept_files
+            connection.executemany(
+                "DELETE FROM library_files WHERE id = ?", ((value,) for value in stale_files)
+            )
+            stale_items = set(item_ids.values()) - kept_items
+            connection.executemany(
+                "DELETE FROM library_items WHERE id = ?", ((value,) for value in stale_items)
+            )
             connection.execute(
                 "UPDATE libraries SET last_scanned_at = ?, last_error = NULL WHERE id = ?",
                 (scanned_at or utc_now(), library_id),
             )
+
+    def get_file(self, file_id: int) -> LibraryFile | None:
+        with self._connect() as connection:
+            row = connection.execute(f"{_FILE_SELECT} WHERE f.id = ?", (file_id,)).fetchone()
+        return _file_from_row(row) if row else None
+
+    def files_for_item(self, item_id: int) -> tuple[LibraryFile, ...]:
+        return self._files("f.item_id = ?", (item_id,))
+
+    def movie_files(self, tmdb_id: int) -> tuple[LibraryFile, ...]:
+        return self._files("i.media_type = 'movie' AND i.tmdb_id = ?", (tmdb_id,))
+
+    def show_files(self, tmdb_id: int) -> tuple[LibraryFile, ...]:
+        """Every episode file of a matched series, across libraries, in episode order."""
+
+        return self._files("i.media_type = 'tv' AND i.tmdb_id = ?", (tmdb_id,))
+
+    def _files(self, where: str, params: tuple[object, ...]) -> tuple[LibraryFile, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                {_FILE_SELECT} WHERE {where}
+                ORDER BY f.season IS NULL, f.season = 0, f.season, f.episode IS NULL, f.episode,
+                         f.path, f.id
+                """,
+                params,
+            ).fetchall()
+        return tuple(_file_from_row(row) for row in rows)
 
     def matched_keys(self) -> frozenset[tuple[str, int]]:
         with self._connect() as connection:
@@ -447,8 +539,16 @@ _LIBRARY_SELECT = """
 _ITEM_SELECT = """
     SELECT i.id, i.library_id, i.media_type, i.group_key, i.title, i.year, i.tmdb_id,
            i.release_date, i.overview, i.rating, i.poster_path, i.genre_ids, i.popularity,
-           i.added_at, i.file_count, i.season_count, i.episode_count
+           i.added_at, i.file_count, i.season_count, i.episode_count,
+           (SELECT f.id FROM library_files f WHERE f.item_id = i.id
+             ORDER BY f.season IS NULL, f.season = 0, f.season, f.episode, f.path LIMIT 1)
     FROM library_items i
+"""
+
+_FILE_SELECT = """
+    SELECT f.id, f.item_id, i.library_id, f.path, f.size, f.modified_at, f.season, f.episode,
+           i.media_type, i.tmdb_id, i.title, i.year, i.poster_path
+    FROM library_files f JOIN library_items i ON i.id = f.item_id
 """
 
 _ORDERINGS = {
@@ -550,4 +650,23 @@ def _item_from_row(row: sqlite3.Row | tuple[object, ...]) -> LibraryItem:
         file_count=int(row[14]),
         season_count=int(row[15]),
         episode_count=int(row[16]),
+        first_file_id=int(row[17]) if row[17] is not None else None,
+    )
+
+
+def _file_from_row(row: sqlite3.Row | tuple[object, ...]) -> LibraryFile:
+    return LibraryFile(
+        id=int(row[0]),
+        item_id=int(row[1]),
+        library_id=int(row[2]),
+        path=str(row[3]),
+        size=int(row[4]),
+        modified_at=str(row[5]),
+        season=int(row[6]) if row[6] is not None else None,
+        episode=int(row[7]) if row[7] is not None else None,
+        media_type=str(row[8]),  # type: ignore[arg-type]
+        tmdb_id=int(row[9]) if row[9] is not None else None,
+        title=str(row[10]),
+        year=int(row[11]) if row[11] is not None else None,
+        poster_path=str(row[12]) if row[12] else None,
     )

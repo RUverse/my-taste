@@ -104,6 +104,7 @@ class LibraryItem:
     file_count: int = 0
     season_count: int = 0
     episode_count: int = 0
+    first_file_id: int | None = None
 
     @property
     def matched(self) -> bool:
@@ -138,4 +139,28 @@ class LibraryItem:
             popularity=self.popularity,
             library_summary=self.summary,
             in_library=True,
+            local_file_id=self.first_file_id,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryFile:
+    """An indexed video file with its title. Paths are internal and never sent to clients."""
+
+    id: int
+    item_id: int
+    library_id: int
+    path: str
+    size: int = 0
+    modified_at: str = ""
+    season: int | None = None
+    episode: int | None = None
+    media_type: MediaType = "movie"
+    tmdb_id: int | None = None
+    title: str = ""
+    year: int | None = None
+    poster_path: str | None = None
+
+    @property
+    def name(self) -> str:
+        return self.path.rsplit("/", 1)[-1]

@@ -42,6 +42,8 @@ def serve(
         host=host or settings.host,
         port=port or settings.port,
         reload=reload,
+        # Segment requests can wait for ffmpeg; do not let them hold up a restart.
+        timeout_graceful_shutdown=5,
     )
 
 
