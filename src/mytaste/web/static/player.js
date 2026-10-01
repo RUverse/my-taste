@@ -79,18 +79,8 @@
     return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
   };
 
-  const playerId = (() => {
-    try {
-      let id = window.sessionStorage.getItem("mytaste.player.id");
-      if (!id) {
-        id = randomId();
-        window.sessionStorage.setItem("mytaste.player.id", id);
-      }
-      return id;
-    } catch {
-      return randomId();
-    }
-  })();
+  // One id per page: a duplicated tab must not take over this tab's stream.
+  const playerId = randomId();
 
   const formatTime = (seconds) => {
     if (!Number.isFinite(seconds) || seconds < 0) {
@@ -178,7 +168,7 @@
     position: 0,
     duration: Number(config.duration) || 0,
     scrubbing: false,
-    networkRestarts: 0,
+    restarts: [],
     mediaRecovered: false,
     upNextDismissed: false,
     upNextTimer: null,
@@ -358,9 +348,11 @@
         return;
       }
       const status = data.response?.code;
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && status === 404 && state.networkRestarts < 3) {
+      const now = Date.now();
+      state.restarts = state.restarts.filter((time) => now - time < 300000);
+      if (data.type === Hls.ErrorTypes.NETWORK_ERROR && status === 404 && state.restarts.length < 3) {
         // The server stopped an idle session; start a new one where we were.
-        state.networkRestarts += 1;
+        state.restarts.push(now);
         begin(currentPosition());
         return;
       }
@@ -405,6 +397,8 @@
     if (attempt?.catch) {
       attempt.catch((error) => {
         if (error?.name === "NotAllowedError") {
+          // Waiting for a tap is not a failure to load (iOS loads nothing until then).
+          window.clearTimeout(startupTimer);
           setLoading(false);
           elements.bigPlay.hidden = false;
           showControls();
@@ -535,7 +529,6 @@
       state.started = true;
       root.classList.add("has-started");
     }
-    state.networkRestarts = 0;
   });
   video.addEventListener("play", () => {
     root.classList.add("is-playing");
@@ -625,6 +618,7 @@
 
   elements.bigPlay.addEventListener("click", () => {
     elements.bigPlay.hidden = true;
+    watchStartup(state.token, { direct: 10, remux: 30, transcode: 60 }[state.mode] || 30);
     play();
   });
   elements.play.addEventListener("click", togglePlay);
@@ -1135,7 +1129,7 @@
   // Start ------------------------------------------------------------------------------------
 
   elements.retry.addEventListener("click", () => {
-    state.networkRestarts = 0;
+    state.restarts = [];
     begin(currentPosition());
   });
 

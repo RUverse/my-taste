@@ -69,6 +69,7 @@ def probe_file(
     return MediaInfo(
         container=info.container,
         duration=info.duration,
+        start_time=info.start_time,
         size=info.size,
         bit_rate=info.bit_rate,
         video=info.video,
@@ -112,6 +113,7 @@ def parse_probe(payload: dict[str, Any]) -> MediaInfo:
                 frame_rate=_rate(stream.get("avg_frame_rate") or stream.get("r_frame_rate")),
                 codec_tag=str(stream.get("codec_tag_string") or "").strip("[]0 "),
                 hdr=str(stream.get("color_transfer") or "") in _HDR_TRANSFERS,
+                duration=_float(stream.get("duration")),
             )
         elif kind == "audio" and codec:
             audio.append(
@@ -151,6 +153,7 @@ def parse_probe(payload: dict[str, Any]) -> MediaInfo:
     return MediaInfo(
         container=str(format_info.get("format_name") or "").split(",")[0],
         duration=_float(format_info.get("duration")),
+        start_time=_float(format_info.get("start_time")),
         size=_int(format_info.get("size")),
         bit_rate=_int(format_info.get("bit_rate")),
         video=video,

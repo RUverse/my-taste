@@ -46,6 +46,10 @@ class SessionError(RuntimeError):
     """Raised when a session cannot produce a requested segment."""
 
 
+class ServerBusyError(RuntimeError):
+    """Raised when the session limit is reached by streams that are being watched."""
+
+
 @dataclass(frozen=True, slots=True)
 class SegmentPlan:
     starts: tuple[float, ...]
@@ -113,7 +117,9 @@ def build_command(
         command += ["-hwaccel", hwaccel]
     if start > 0:
         command += ["-ss", f"{start:.3f}"]
-    command += ["-copyts", "-i", str(path)]
+    # Source timestamps are kept so restarts line up, but counted from the file's start:
+    # recordings often begin at an arbitrary time such as 101.4 seconds.
+    command += ["-copyts", "-start_at_zero", "-i", str(path)]
 
     if decision.copy_video:
         command += ["-map", f"0:{video.index}", "-c:v", "copy"]
@@ -170,6 +176,9 @@ def build_command(
         command += ["-map", f"0:{audio.index}"]
         if decision.copy_audio:
             command += ["-c:a", "copy"]
+            if audio.codec == "aac":
+                # MPEG-TS carries AAC with ADTS headers, which MP4 cannot hold.
+                command += ["-bsf:a", "aac_adtstoasc"]
         else:
             command += ["-c:a", "aac", "-ac", "2", "-b:a", "192k"]
     command += [
@@ -279,6 +288,12 @@ class Session:
                 return path
             if self._error and self._producer_start <= index:
                 raise SessionError(self._error)
+            if (
+                self._complete
+                and self._producer_start <= index
+                and (self._current is None or index > self._current)
+            ):
+                raise SessionError("The stream ended before this segment")
             if not self._covers(index):
                 if serial != self._request_serial:
                     # A newer request (the viewer seeked) owns ffmpeg now; the player has
@@ -341,13 +356,23 @@ class Session:
 
     async def _produce(self, start_index: int, generation: int) -> None:
         start = self.plan.starts[start_index]
-        process = await asyncio.create_subprocess_exec(
-            *self._command(start),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            start_new_session=True,
+        spawn = asyncio.ensure_future(
+            asyncio.create_subprocess_exec(
+                *self._command(start),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                start_new_session=True,
+            )
         )
+        try:
+            # Cancelling asyncio while it starts a process can leave it waiting forever on
+            # Python 3.11, so let the start finish and stop ffmpeg properly instead.
+            process = await asyncio.shield(spawn)
+        except asyncio.CancelledError:
+            with contextlib.suppress(Exception):
+                await _terminate(await spawn, None)
+            raise
         self._process = process
         with contextlib.suppress(OSError, AttributeError):
             os.setpriority(os.PRIO_PROCESS, process.pid, 10)
@@ -380,7 +405,12 @@ class Session:
                 elif kind == b"mdat" and moof is not None and timing is not None:
                     seconds = fragment_start(moof, timing)
                     if seconds is None:
-                        raise BoxError("fragment without a video timestamp")
+                        # Audio that outlasts the video: keep it with the segment being cut.
+                        if self._current is not None:
+                            buffer += moof
+                            buffer += data
+                        moof = None
+                        continue
                     seconds -= TIMESTAMP_OFFSET
                     index = self.plan.index_for(seconds)
                     if self._current is None:
@@ -488,8 +518,10 @@ class SessionManager:
         max_transcodes: int = 1,
         max_sessions: int = 4,
         idle_timeout: float = 120.0,
+        busy_grace: float = 25.0,
     ) -> None:
         self.workdir = workdir
+        self.busy_grace = busy_grace
         self.max_transcodes = max_transcodes
         self.max_sessions = max_sessions
         self.idle_timeout = idle_timeout
@@ -537,7 +569,15 @@ class SessionManager:
             limit = self.max_transcodes if transcoding else self.max_sessions
             if len(busy) < max(limit, 1):
                 break
-            await self.stop(min(busy, key=lambda item: item.last_active).id)
+            oldest = min(busy, key=lambda item: item.last_active)
+            if time.monotonic() - oldest.last_active < self.busy_grace:
+                # Someone is still watching it; do not take their stream away.
+                raise ServerBusyError(
+                    "The server is already converting another video. Try again when it ends."
+                    if transcoding
+                    else "Too many videos are playing at once. Try again in a moment."
+                )
+            await self.stop(oldest.id)
         session_id = secrets.token_urlsafe(12)
         session = Session(
             session_id=session_id,
@@ -589,7 +629,9 @@ def _remove_stale_folders(workdir: Path) -> None:
             continue
 
 
-async def _terminate(process: asyncio.subprocess.Process, stderr_task: asyncio.Task[None]) -> None:
+async def _terminate(
+    process: asyncio.subprocess.Process, stderr_task: asyncio.Task[None] | None
+) -> None:
     """Kill ffmpeg and drain its pipes.
 
     A throttled session has stopped reading stdout, and asyncio only reports the exit once
@@ -604,14 +646,19 @@ async def _terminate(process: asyncio.subprocess.Process, stderr_task: asyncio.T
         if process.stdout is not None:
             while await process.stdout.read(1 << 16):
                 pass
-        with contextlib.suppress(asyncio.CancelledError):
-            await stderr_task
+        if stderr_task is not None:
+            with contextlib.suppress(asyncio.CancelledError):
+                await stderr_task
+        elif process.stderr is not None:
+            while await process.stderr.read(1 << 16):
+                pass
         await process.wait()
 
     try:
         await asyncio.wait_for(asyncio.shield(asyncio.ensure_future(drain())), timeout=10)
     except (TimeoutError, OSError, ValueError):
-        stderr_task.cancel()
+        if stderr_task is not None:
+            stderr_task.cancel()
         logger.warning("ffmpeg (pid %s) did not exit cleanly", process.pid)
 
 

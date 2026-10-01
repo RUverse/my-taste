@@ -126,6 +126,7 @@ class VideoStream:
     frame_rate: float = 0.0
     codec_tag: str = ""
     hdr: bool = False
+    duration: float = 0.0
 
     @property
     def resolution_label(self) -> str:
@@ -212,6 +213,7 @@ class Chapter:
 class MediaInfo:
     container: str
     duration: float
+    start_time: float = 0.0
     size: int = 0
     bit_rate: int = 0
     video: VideoStream | None = None
@@ -243,6 +245,7 @@ class MediaInfo:
         return cls(
             container=str(payload.get("container", "")),
             duration=float(payload.get("duration", 0)),
+            start_time=float(payload.get("start_time", 0)),
             size=int(payload.get("size", 0)),
             bit_rate=int(payload.get("bit_rate", 0)),
             video=VideoStream(**video) if video else None,

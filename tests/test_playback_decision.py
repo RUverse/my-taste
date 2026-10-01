@@ -177,7 +177,7 @@ def test_ffmpeg_commands_copy_or_convert_only_what_is_needed(tmp_path) -> None:
     )
 
     joined = " ".join(remux)
-    assert "-ss 12.500 -copyts -i" in joined
+    assert "-ss 12.500 -copyts -start_at_zero -i" in joined
     assert "-c:v copy -tag:v hvc1" in joined
     assert "-c:a aac -ac 2" in joined
     assert joined.endswith("-use_editlist 0 pipe:1")

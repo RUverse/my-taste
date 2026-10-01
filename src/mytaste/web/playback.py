@@ -33,7 +33,7 @@ from mytaste.playback.service import (
     WatchTarget,
     watch_url,
 )
-from mytaste.playback.sessions import SessionError
+from mytaste.playback.sessions import ServerBusyError, SessionError
 
 _OWNER = re.compile(r"^[A-Za-z0-9_-]{8,64}$")
 _TARGET = re.compile(r"^/watch/(?:(movie)/(\d+)|(tv)/(\d+)/(\d+)/(\d+)|(local)/(\d+))$")
@@ -153,9 +153,10 @@ def create_playback_router(templates: Jinja2Templates) -> APIRouter:
                     }
                     for stream in info.audio
                 ],
-                "subtitles": _subtitle_options(chosen, info),
+                "subtitles": _subtitle_options(chosen, info, can_burn=playback.can_transcode),
                 "chapters": [
-                    {"start": chapter.start, "title": chapter.title} for chapter in info.chapters
+                    {"start": max(chapter.start - info.start_time, 0), "title": chapter.title}
+                    for chapter in info.chapters
                 ],
                 "qualities": [
                     height
@@ -233,6 +234,8 @@ def create_playback_router(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": "This file could not be read"}, status_code=422)
         except UnplayableError as exc:
             return JSONResponse({"error": str(exc)}, status_code=415)
+        except ServerBusyError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
         decision = started.decision
         return JSONResponse(
             {
@@ -447,7 +450,9 @@ def _media_summary(info: MediaInfo) -> str:
     return " · ".join(parts)
 
 
-def _subtitle_options(file: LibraryFile, info: MediaInfo) -> list[dict[str, Any]]:
+def _subtitle_options(
+    file: LibraryFile, info: MediaInfo, *, can_burn: bool
+) -> list[dict[str, Any]]:
     options: list[dict[str, Any]] = []
     for index, subtitle in enumerate(info.external_subtitles):
         options.append(
@@ -462,6 +467,8 @@ def _subtitle_options(file: LibraryFile, info: MediaInfo) -> list[dict[str, Any]
             }
         )
     for stream in info.subtitles:
+        if not stream.text and not can_burn:
+            continue
         option: dict[str, Any] = {
             "id": f"s{stream.index}",
             "label": stream.label,

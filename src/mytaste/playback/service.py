@@ -173,13 +173,25 @@ class PlaybackService:
             await self._probe_wanted.wait()
             self._probe_wanted.clear()
             await asyncio.to_thread(self.repository.forget_missing_files)
+            tried: set[int] = set()
             while ids := await asyncio.to_thread(self.repository.files_needing_probe, 20):
-                for file_id in ids:
+                fresh = [file_id for file_id in ids if file_id not in tried]
+                if not fresh:
+                    break
+                for file_id in fresh:
+                    tried.add(file_id)
                     file = self.library.get_file(file_id)
                     if file is None:
                         continue
-                    with contextlib.suppress(PlaybackUnavailableError, ProbeError):
+                    try:
                         await self.media_info(file)
+                    except PlaybackUnavailableError:
+                        # Remember it so the pass moves on; playing it later tries again.
+                        self.repository.save_probe(
+                            file.id, file.size, file.modified_at, None, UNAVAILABLE
+                        )
+                    except ProbeError:
+                        pass
                     await asyncio.sleep(0.1)
 
     # Targets ---------------------------------------------------------------------------
@@ -258,7 +270,8 @@ class PlaybackService:
         if record and (record.size, record.modified_at) == (file.size, file.modified_at):
             if record.info is not None:
                 return record.info
-            raise ProbeError(record.error or "This file could not be read")
+            if record.error != UNAVAILABLE:
+                raise ProbeError(record.error or "This file could not be read")
         if self.ffprobe is None:
             raise ProbeError("ffprobe is not installed, so this file cannot be inspected")
         lock = self._probe_locks.setdefault(file.id, asyncio.Lock())
@@ -314,11 +327,7 @@ class PlaybackService:
         if decision.mode == "direct":
             return PlaybackStart(decision, f"/api/playback/files/{file.id}/stream")
         assert self.ffmpeg is not None
-        plan = (
-            SegmentPlan.from_keyframes(info.keyframes, info.duration)
-            if decision.copy_video
-            else SegmentPlan.fixed(info.duration)
-        )
+        plan = segment_plan(info, decision)
         command = CommandFactory(
             self.ffmpeg,
             path,
@@ -540,6 +549,27 @@ class PlaybackService:
         if kind == "file" and rest.isdigit():
             return self.local(int(rest))
         return None
+
+
+def segment_plan(info: MediaInfo, decision: Decision) -> SegmentPlan:
+    """Remuxes cut on the source keyframes, conversions on a fixed grid of forced ones.
+
+    ffmpeg runs with ``-start_at_zero``, so times are measured from the file's start.
+    """
+
+    if decision.copy_video:
+        keyframes = [time - info.start_time for time in info.keyframes]
+        return SegmentPlan.from_keyframes(keyframes, info.duration)
+    return SegmentPlan.fixed(_picture_duration(info))
+
+
+def _picture_duration(info: MediaInfo) -> float:
+    """Converted streams end with the picture; trailing audio joins the last segment."""
+
+    video = info.video
+    if video is not None and 1.0 < video.duration < info.duration - 1.0:
+        return video.duration
+    return info.duration
 
 
 def _episodes(files: Sequence[LibraryFile]) -> tuple[WatchTarget, ...]:

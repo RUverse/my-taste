@@ -274,3 +274,26 @@ def test_real_files_play_directly_or_through_a_session(media_dir: Path, tmp_path
             await service.stop()
 
     asyncio.run(asyncio.wait_for(scenario(), timeout=60))
+
+
+def test_background_probing_moves_past_unreadable_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    service, library, _ = build(tmp_path)
+    service.ffprobe = "ffprobe"
+    service.roots = (tmp_path / "elsewhere",)  # every file is now outside the allowed roots
+    monkeypatch.setattr(service_module, "_PROBE_START_DELAY", 0)
+
+    async def scenario() -> None:
+        service.background_probe = True
+        await service.start()
+        try:
+            await asyncio.sleep(1.5)
+            assert service.repository.files_needing_probe() == (), "the pass finished"
+        finally:
+            await service.stop()
+
+    asyncio.run(asyncio.wait_for(scenario(), timeout=30))
+    file = library.movie_files(10)[0]
+    with pytest.raises(PlaybackUnavailableError):
+        asyncio.run(service.media_info(file))

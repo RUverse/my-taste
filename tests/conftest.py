@@ -76,4 +76,37 @@ def media_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
         str(folder / "Clip.mkv"),
     )
     (folder / "subs.srt").unlink()
+    # A broadcast-style recording: MPEG-TS with ADTS audio and clocks starting at 101.4 s.
+    _ffmpeg(
+        *sources,
+        "-t",
+        "12",
+        *video,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "64k",
+        "-output_ts_offset",
+        "100",
+        "-f",
+        "mpegts",
+        str(folder / "Recording.ts"),
+    )
+    # Audio that carries on for eight seconds after the picture ends.
+    _ffmpeg(
+        "-f",
+        "lavfi",
+        "-i",
+        "testsrc2=size=320x180:rate=24:duration=12",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:sample_rate=48000:duration=20",
+        *video,
+        "-c:a",
+        "aac",
+        "-b:a",
+        "64k",
+        str(folder / "LongAudio.mp4"),
+    )
     return folder

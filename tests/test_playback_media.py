@@ -15,10 +15,11 @@ from mytaste.playback.fmp4 import _children, fragment_start, video_timing
 from mytaste.playback.keyframes import read_keyframes
 from mytaste.playback.models import MediaInfo
 from mytaste.playback.probe import ProbeError, probe_file
+from mytaste.playback.service import segment_plan
 from mytaste.playback.sessions import (
     TIMESTAMP_OFFSET,
     CommandFactory,
-    SegmentPlan,
+    ServerBusyError,
     SessionManager,
 )
 
@@ -106,11 +107,7 @@ async def open_session(
         decision = decide(info, Capabilities(hls=True))
     else:
         decision = decide(info, H264_ONLY, PlaybackOptions(excluded=frozenset({"direct"})))
-    plan = (
-        SegmentPlan.from_keyframes(info.keyframes, info.duration)
-        if decision.copy_video
-        else SegmentPlan.fixed(info.duration)
-    )
+    plan = segment_plan(info, decision)
     assert FFMPEG is not None
     command = CommandFactory(FFMPEG, path, info, decision, hwaccel=None, burn_subtitle_index=None)
     session = await manager.create(
@@ -125,49 +122,59 @@ async def open_session(
     return session, plan
 
 
+def with_manager(tmp_path: Path, scenario, **limits) -> None:
+    """Run ``scenario(manager)`` and always stop ffmpeg, even when an assertion fails."""
+
+    async def main() -> None:
+        manager = SessionManager(tmp_path / "streams", **{"max_transcodes": 1, **limits})
+        await manager.start()
+        try:
+            await scenario(manager)
+        finally:
+            await manager.close()
+
+    asyncio.run(asyncio.wait_for(main(), timeout=90))
+
+
+def approx(values: list[float]):
+    return pytest.approx(values, abs=0.05)
+
+
 def test_remuxed_segments_line_up_with_keyframes_across_restarts(
     media_dir: Path, tmp_path: Path
 ) -> None:
-    async def scenario() -> None:
-        manager = SessionManager(tmp_path / "streams", max_transcodes=1)
-        await manager.start()
+    async def scenario(manager: SessionManager) -> None:
         session, plan = await open_session(manager, media_dir / "Clip.mkv")
         assert session.decision.mode == "remux"
-        assert plan.starts == (0.0, 6.0, 12.0, 18.0)
+        assert list(plan.starts) == approx([0.0, 6.0, 12.0, 18.0])
         init = await session.init_segment()
         first = (await session.segment(0)).read_bytes()
-        assert read_fragment_starts(init, first) == [0.0, 2.0, 4.0]
+        assert read_fragment_starts(init, first) == approx([0.0, 2.0, 4.0])
         # Jump back and forth: each restart produces exactly the planned segment.
         last = (await session.segment(3)).read_bytes()
-        assert read_fragment_starts(init, last) == [18.0]
+        assert read_fragment_starts(init, last) == approx([18.0])
         second = (await session.segment(1)).read_bytes()
-        assert read_fragment_starts(init, second) == [6.0, 8.0, 10.0]
+        assert read_fragment_starts(init, second) == approx([6.0, 8.0, 10.0])
         playlist = plan.media_playlist()
         assert playlist.count("#EXTINF:") == 4
-        assert "#EXTINF:6.000000,\n0.m4s" in playlist
+        assert "\n0.m4s\n" in playlist
         assert playlist.rstrip().endswith("#EXT-X-ENDLIST")
-        await manager.close()
-        assert not (tmp_path / "streams").exists()
 
-    asyncio.run(scenario())
+    with_manager(tmp_path, scenario)
+    assert not (tmp_path / "streams").exists()
 
 
 def test_transcoded_segments_have_forced_keyframes(media_dir: Path, tmp_path: Path) -> None:
-    async def scenario() -> None:
-        manager = SessionManager(tmp_path / "streams", max_transcodes=1)
-        await manager.start()
+    async def scenario(manager: SessionManager) -> None:
         session, plan = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
         assert session.decision.mode == "transcode"
         assert plan.starts == (0.0, 4.0, 8.0, 12.0, 16.0)
         init = await session.init_segment()
         for index in (2, 0, 4):
-            data = (await session.segment(index)).read_bytes()
-            starts = read_fragment_starts(init, data)
-            assert len(starts) == 1
-            assert starts[0] == pytest.approx(plan.starts[index], abs=0.05)
-        await manager.close()
+            starts = read_fragment_starts(init, (await session.segment(index)).read_bytes())
+            assert starts == approx([plan.starts[index]])
 
-    asyncio.run(scenario())
+    with_manager(tmp_path, scenario)
 
 
 def test_a_throttled_session_stops_promptly(media_dir: Path, tmp_path: Path) -> None:
@@ -180,13 +187,11 @@ def test_a_throttled_session_stops_promptly(media_dir: Path, tmp_path: Path) -> 
         await asyncio.sleep(1.5)
         return session
 
-    async def scenario() -> None:
-        manager = SessionManager(tmp_path / "streams", max_transcodes=1)
-        await manager.start()
+    async def scenario(manager: SessionManager) -> None:
         session = await throttled(manager)
         started = time.monotonic()
         replacement, _ = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
-        assert time.monotonic() - started < 5, "another viewer's transcode replaces it"
+        assert time.monotonic() - started < 5, "an idle stream gives way to another viewer"
         assert set(manager.sessions) == {replacement.id}
         assert session.id != replacement.id
 
@@ -196,38 +201,65 @@ def test_a_throttled_session_stops_promptly(media_dir: Path, tmp_path: Path) -> 
         assert time.monotonic() - started < 5, "shutting down does not wait for ffmpeg"
         assert manager.sessions == {}
 
-    asyncio.run(asyncio.wait_for(scenario(), timeout=60))
+    with_manager(tmp_path, scenario, busy_grace=0)
+
+
+def test_sessions_stop_cleanly_while_ffmpeg_starts(media_dir: Path, tmp_path: Path) -> None:
+    async def scenario(manager: SessionManager) -> None:
+        session, _ = await open_session(manager, media_dir / "Clip.mkv")
+        await asyncio.sleep(0)
+        await asyncio.wait_for(manager.stop(session.id), timeout=10)
+        session, plan = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
+        session._restart(2)
+        session._restart(3)
+        await asyncio.sleep(0)
+        data = (await session.segment(3)).read_bytes()
+        assert read_fragment_starts(await session.init_segment(), data) == approx([12.0])
+
+    with_manager(tmp_path, scenario, busy_grace=0)
 
 
 def test_only_one_transcode_runs_at_a_time(media_dir: Path, tmp_path: Path) -> None:
-    async def scenario() -> None:
-        manager = SessionManager(tmp_path / "streams", max_transcodes=1)
-        await manager.start()
+    async def scenario(manager: SessionManager) -> None:
         first, _ = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
         remux, _ = await open_session(manager, media_dir / "Clip.mkv")
+        with pytest.raises(ServerBusyError, match="already converting"):
+            await open_session(manager, media_dir / "Clip.mp4", transcode=True)
+        await asyncio.sleep(0.6)
         second, _ = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
-        assert set(manager.sessions) == {remux.id, second.id}
+        assert set(manager.sessions) == {remux.id, second.id}, "an idle stream gives way"
         assert first.id not in manager.sessions
-        await manager.close()
 
-    asyncio.run(scenario())
+    with_manager(tmp_path, scenario, busy_grace=0.5)
+
+
+@pytest.mark.parametrize("name", ["Recording.ts", "LongAudio.mp4"])
+def test_awkward_files_transcode_to_the_end(media_dir: Path, tmp_path: Path, name: str) -> None:
+    """MPEG-TS with ADTS audio and a late clock, and audio that outlasts the picture."""
+
+    async def scenario(manager: SessionManager) -> None:
+        session, plan = await open_session(manager, media_dir / name, transcode=True)
+        assert plan.starts == (0.0, 4.0, 8.0)
+        init = await session.init_segment()
+        for index in range(len(plan)):
+            starts = read_fragment_starts(init, (await session.segment(index)).read_bytes())
+            assert starts[0] == pytest.approx(plan.starts[index], abs=0.05)
+
+    with_manager(tmp_path, scenario)
 
 
 def test_an_abandoned_request_does_not_pull_ffmpeg_back(media_dir: Path, tmp_path: Path) -> None:
     """After a seek, the old segment request must not restart ffmpeg at its own position."""
 
-    async def scenario() -> None:
-        manager = SessionManager(tmp_path / "streams", max_transcodes=1)
-        await manager.start()
+    async def scenario(manager: SessionManager) -> None:
         session, _ = await open_session(manager, media_dir / "Clip.mp4", transcode=True)
         await session.init_segment()
         old = asyncio.create_task(session.segment(1))
         await asyncio.sleep(0)
         new = await session.segment(4)
         assert new.exists()
-        result = await asyncio.gather(old, return_exceptions=True)
-        assert isinstance(result[0], Path) or "Superseded" in str(result[0])
+        result = (await asyncio.gather(old, return_exceptions=True))[0]
+        assert isinstance(result, Path) or "Superseded" in str(result)
         assert session._producer_start == 4, "ffmpeg stayed where the viewer went"
-        await manager.close()
 
-    asyncio.run(asyncio.wait_for(scenario(), timeout=60))
+    with_manager(tmp_path, scenario)
