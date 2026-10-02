@@ -242,6 +242,8 @@ class BrowseQuery:
     # ``None`` keeps the collection's default sort and that sort's natural direction.
     sort: SortKey | None = None
     descending: bool | None = None
+    # Rows to split the titles into (see ``catalog.grouping``); empty shows one grid.
+    group: str = ""
 
     def sort_for(self, default: SortKey) -> tuple[SortKey, bool]:
         sort = self.sort or default

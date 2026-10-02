@@ -1840,11 +1840,13 @@ body[data-sidebar="closed"] .browse-sidebar {
 .browse-toolbar .sidebar-toggle { display: none; }
 
 /* Sidebar: the open collection, then sources, sort, filters, and appearance. */
-.sidebar-collection { padding: 18px 0 14px; border-bottom: 1px solid var(--faint-border); }
+/* The title row lines up with the collection bar beside it. */
+.sidebar-collection { padding: 0 0 14px; border-bottom: 1px solid var(--faint-border); }
 
 .sidebar-collection-head {
   display: flex;
-  align-items: flex-start;
+  min-height: var(--toolbar-height);
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
@@ -1852,10 +1854,10 @@ body[data-sidebar="closed"] .browse-sidebar {
 .sidebar-collection h1 {
   display: flex;
   min-width: 0;
-  margin: 6px 0 0;
+  margin: 0;
   align-items: center;
   gap: 9px;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
   font-weight: 800;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -1864,8 +1866,8 @@ body[data-sidebar="closed"] .browse-sidebar {
 .sidebar-collection h1 span { overflow-wrap: anywhere; }
 
 .sidebar-collection h1 .collection-icon {
-  width: 21px;
-  height: 21px;
+  width: 19px;
+  height: 19px;
   flex: none;
   fill: none;
   stroke: currentcolor;
@@ -1878,7 +1880,7 @@ body[data-sidebar="closed"] .browse-sidebar {
 .sidebar-collapse svg { width: 20px; height: 20px; stroke-width: 1.7; }
 
 .sidebar-collection-description {
-  margin: 6px 0 0;
+  margin: -4px 0 0;
   color: var(--muted);
   font-size: 0.8rem;
   line-height: 1.45;
@@ -2055,7 +2057,7 @@ body[data-sidebar="closed"] .browse-sidebar {
   inset: 0 auto 0 0;
   display: flex;
   width: var(--rail-width);
-  padding-top: 8px;
+  padding-top: calc((var(--toolbar-height) - 40px) / 2);
   flex-direction: column;
   align-items: center;
   gap: 6px;
@@ -2212,6 +2214,56 @@ body[data-sidebar="closed"] .sidebar-rail {
 
 .collection-more-button[aria-expanded="true"] svg { transform: rotate(90deg); }
 .collection-more .popover { top: calc(100% - 4px); right: auto; left: -10px; }
+
+.pagination[hidden],
+.load-more[hidden] { display: none; }
+
+.load-more {
+  display: grid;
+  min-height: 64px;
+  margin-top: 28px;
+  place-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.load-more-status:empty { display: none; }
+
+/* Grouped titles: one scrollable row per director, genre, decade, or type. */
+.group-rows { display: grid; gap: 34px; }
+.group-note { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.group-row { min-width: 0; }
+
+.group-row-head {
+  display: flex;
+  margin-bottom: 14px;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.group-row-head h2 { margin: 0; font-size: 1.05rem; letter-spacing: -0.01em; }
+.group-row-count { color: var(--muted); font-size: 0.78rem; font-weight: 650; }
+
+.group-strip {
+  --group-card-width: clamp(140px, 12vw, 180px);
+
+  display: grid;
+  grid-auto-columns: var(--group-card-width);
+  grid-auto-flow: column;
+  gap: 18px;
+  margin-inline: calc(var(--content-padding) * -1);
+  padding: 2px var(--content-padding) 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--content-padding);
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+body[data-card-size="compact"] .group-strip { --group-card-width: clamp(118px, 11vw, 150px); gap: 14px; }
+.group-strip .media-card { scroll-snap-align: start; }
 
 .collection-availability {
   display: flex;

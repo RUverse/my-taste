@@ -124,6 +124,7 @@ class CollectionService:
         region: str,
         provider_ids: Sequence[int],
         library_ids: Sequence[int],
+        page_size: int | None = None,
     ) -> CollectionPage:
         """Browse a collection, limited to the user's ``provider_ids`` and ``library_ids``.
 
@@ -183,12 +184,13 @@ class CollectionService:
             replace(title, in_library=True) if (title.media_type, title.id) in local else title
             for title in titles
         ]
-        total_pages = max((len(titles) + self.page_size - 1) // self.page_size, 1)
+        size = page_size or self.page_size
+        total_pages = max((len(titles) + size - 1) // size, 1)
         page = min(max(query.page, 1), total_pages)
-        start = (page - 1) * self.page_size
+        start = (page - 1) * size
         return CollectionPage(
             page=CatalogPage(
-                items=tuple(titles[start : start + self.page_size]),
+                items=tuple(titles[start : start + size]),
                 page=page,
                 total_pages=total_pages,
                 total_results=len(titles),

@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import collection_icon %}
+{% from "_cards.html" import media_card, group_row with context %}
 {% block title %}{{ heading }} · {{ display.site_title }}{% endblock %}
 {% block layout %}
   {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
@@ -9,6 +10,7 @@
   {% set sources_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11.5" rx="2"></rect><path d="m9 3.5 3 3 3-3M8.5 21h7"></path></svg>{% endset %}
   {% set sort_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9M4 12h6M4 17h3M17 5v14M14 16l3 3 3-3"></path></svg>{% endset %}
   {% set filter_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2L4 5.5Z"></path></svg>{% endset %}
+  {% set group_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="6" rx="1.5"></rect><rect x="4" y="13.5" width="16" height="6" rx="1.5"></rect></svg>{% endset %}
   {% set appearance_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"></rect></svg>{% endset %}
   {% set chevron_icon %}<svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>{% endset %}
   {% set collapse_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15"></path></svg>{% endset %}
@@ -174,6 +176,35 @@
               </div>
             </section>
 
+            <section class="sidebar-section" id="sidebar-group" aria-labelledby="group-heading">
+              <div class="sidebar-section-head">
+                <h2 id="group-heading">{{ group_icon }}Grouping</h2>
+                {% if not grouping %}
+                  <div class="popover-anchor">
+                    <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="group-popover" aria-label="Group titles into rows" title="Group titles into rows">{{ plus_icon }}</button>
+                    <div class="popover" id="group-popover" hidden>
+                      {% for option in grouping_options %}
+                        <a href="{{ option.url }}">By {{ option.label|lower }}</a>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+              </div>
+              {% if grouping %}
+                <div class="sort-row">
+                  <label class="select-field">
+                    <span class="sr-only">Group by</span>
+                    <select name="group">
+                      {% for option in grouping_options %}
+                        <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <a class="row-button" href="{{ group_clear_url }}" aria-label="Stop grouping" title="Stop grouping">{{ minus_icon }}</a>
+                </div>
+              {% endif %}
+            </section>
+
             <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
           </form>
 
@@ -241,6 +272,7 @@
           <button class="icon-button rail-button" type="button" data-rail-section="sidebar-sort" aria-label="Sort: {{ sort_label }}{% if sort_changed %} (changed){% endif %}" title="Sort: {{ sort_label }}">{{ sort_icon }}{% if sort_changed %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
         {% endif %}
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-filter" aria-label="Filter{% if filter_dot %} ({{ active_filter_rules }} active){% endif %}" title="Filter">{{ filter_icon }}{% if filter_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
+        <button class="icon-button rail-button" type="button" data-rail-section="sidebar-group" aria-label="Grouping{% if grouping %}: by {{ grouping_label|lower }}{% endif %}" title="Grouping">{{ group_icon }}{% if grouping %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-appearance" aria-label="Appearance" title="Appearance">{{ appearance_icon }}</button>
       </nav>
     </div>
@@ -328,71 +360,15 @@
       </section>
     {% endif %}
 
-    {% if page.items %}
-      <section class="media-grid" aria-label="{{ heading }}">
-        {% for item in page.items %}
-          {% set in_library = item.in_library or (item.media_type, item.id) in library_keys %}
-          {% set on_services = item.id > 0 and preferences.configured %}
-          {% set play_url = '' %}
-          {% set play_state = none %}
-          {% if in_library %}
-            {% if item.id > 0 %}
-              {% set play_url = '/watch/' ~ item.media_type ~ '/' ~ item.id %}
-              {% set play_state = play_states.get('movie:' ~ item.id) if item.media_type == 'movie' else none %}
-            {% elif item.local_file_id %}
-              {% set play_url = '/watch/local/' ~ item.local_file_id %}
-              {% set play_state = play_states.get('file:' ~ item.local_file_id) %}
-            {% endif %}
-          {% endif %}
-          <article
-            class="media-card{% if in_library %} is-in-library{% endif %}"
-            {% if item.id > 0 %}data-detail-url="/api/items/{{ item.media_type }}/{{ item.id }}/details"{% endif %}
-            data-title="{{ item.title }}"
-            data-year="{{ item.year }}"
-            data-rating="{{ item.rating }}"
-            data-media-label="{{ item.media_label }}"
-            data-overview="{{ item.overview }}"
-            data-genres='{{ item.genres|tojson }}'
-            {% if play_url %}data-play-url="{{ play_url }}"{% endif %}
-            {% if play_state and play_state.resumable and not play_state.watched %}data-resume="{{ play_state.position|round|int }}"{% endif %}
-          >
-            <button class="poster-link" type="button" data-open-media-details aria-label="Open details for {{ item.title }}">
-              <div class="poster">
-                {% if item.poster_url %}
-                  <img src="{{ item.poster_url }}" alt="" width="500" height="750" {% if loop.index > 7 %}loading="lazy"{% endif %}>
-                {% else %}
-                  <div class="poster-placeholder" aria-hidden="true"><span>{{ item.title[0] }}</span></div>
-                {% endif %}
-                <span class="type-badge">{{ item.media_label }}</span>
-                {% if play_state and play_state.watched %}
-                  <span class="watched-badge" title="Watched"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg><span class="sr-only">Watched</span></span>
-                {% elif play_state and play_state.resumable %}
-                  <span class="card-progress" title="{{ (play_state.progress * 100)|round|int }}% watched"><span style="width: {{ (play_state.progress * 100)|round(1) }}%"></span></span>
-                {% endif %}
-                {% if on_services or in_library %}
-                  <span class="provider-strip"{% if on_services %} data-providers-key="{{ item.media_type }}:{{ item.id }}"{% endif %}{% if in_library %} title="In your local library"{% endif %}>
-                    {% if in_library %}<span class="source-local"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
-                  </span>
-                {% endif %}
-              </div>
-            </button>
-            <div class="card-copy">
-              <h2><button class="media-title-button" type="button" data-open-media-details>{{ item.title }}</button></h2>
-              {% if on_services or in_library %}<p class="sr-only" data-providers-text>{% if in_library %}In your local library{% endif %}</p>{% endif %}
-              <div class="card-meta">
-                <span class="meta-year">{{ item.year }}</span>
-                {% if item.rating %}<span class="meta-rating" aria-label="Rating {{ item.rating }} out of 10">★ {{ item.rating }}</span>{% endif %}
-              </div>
-              {% if item.genres %}<p class="meta-genres">{{ item.genres|join(' · ') }}</p>{% endif %}
-              {% if item.library_summary %}<p class="meta-library">{{ item.library_summary }}</p>{% endif %}
-              {% if item.id > 0 %}
-                <p class="meta-people" data-people-url="/api/items/{{ item.media_type }}/{{ item.id }}/people" aria-live="polite"><span>Loading credits…</span></p>
-              {% else %}
-                <p class="meta-people meta-unmatched">Not matched on TMDB yet</p>
-              {% endif %}
-            </div>
-          </article>
-        {% endfor %}
+
+    {% if groups %}
+      <div class="group-rows" data-results>
+        {% if grouped_more %}<p class="group-note">Grouping the first {{ grouped_count }} titles in this order.</p>{% endif %}
+        {% for row in groups %}{{ group_row(row, row_offset + loop.index) }}{% endfor %}
+      </div>
+    {% elif page.items %}
+      <section class="media-grid" aria-label="{{ heading }}" data-results>
+        {% for item in page.items %}{{ media_card(item, loop.index <= 7) }}{% endfor %}
       </section>
     {% elif not error %}
       <div class="empty-state">
@@ -415,11 +391,17 @@
     {% endif %}
 
     {% if previous_url or next_url %}
-      <nav class="pagination" aria-label="Catalog pages">
+      <nav class="pagination" aria-label="Catalog pages" data-pagination>
         {% if previous_url %}<a class="button button-secondary" href="{{ previous_url }}">Previous</a>{% endif %}
-        <span>Page {{ page.page }} of {{ page.total_pages }}</span>
-        {% if next_url %}<a class="button button-secondary" href="{{ next_url }}">Next</a>{% endif %}
+        <span>{{ pagination_label }}</span>
+        {% if next_url %}<a class="button button-secondary" href="{{ next_url }}" data-next-page>Next</a>{% endif %}
       </nav>
+    {% endif %}
+    {% if next_url %}
+      <div class="load-more" data-load-more hidden>
+        <span class="load-more-status" data-load-more-status role="status" aria-live="polite"></span>
+        <button class="button button-secondary" type="button" data-load-more-retry hidden>Try again</button>
+      </div>
     {% endif %}
 
     <dialog class="media-details" id="media-details" aria-labelledby="media-detail-title">

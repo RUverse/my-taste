@@ -199,38 +199,39 @@
     syncSidebar();
   }
 
-  // Collapsible sections: collapsed, Sources shows just the service icons. The choice is
-  // remembered on this device.
+  // Collapsible sections start collapsed; Sources then shows just the service icons. After a
+  // source is switched on or off, the reloaded page keeps the section open.
   const disclosures = new Map();
   document.querySelectorAll("[data-disclosure]").forEach((button) => {
     const name = button.dataset.disclosure;
     const body = document.querySelector(`[data-disclosure-body="${name}"]`);
     const summary = document.querySelector(`[data-disclosure-summary="${name}"]`);
-    const storageKey = `mytaste.section.${name}`;
-    const setOpen = (open, { remember = true } = {}) => {
+    const keepOpenKey = `mytaste.keep-open.${name}`;
+    const setOpen = (open) => {
       button.setAttribute("aria-expanded", String(open));
       if (body) body.hidden = !open;
       if (summary) summary.hidden = open;
-      if (remember) {
-        try {
-          localStorage.setItem(storageKey, open ? "open" : "closed");
-        } catch {
-          // Private browsing may refuse storage; the section still works.
-        }
-      }
     };
     button.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
     summary?.addEventListener("click", () => {
       setOpen(true);
       body?.querySelector("input")?.focus();
     });
-    let stored = null;
+    body?.addEventListener("change", () => {
+      try {
+        sessionStorage.setItem(keepOpenKey, "1");
+      } catch {
+        // Without storage the section simply starts collapsed again.
+      }
+    });
+    let keepOpen = false;
     try {
-      stored = localStorage.getItem(storageKey);
+      keepOpen = sessionStorage.getItem(keepOpenKey) === "1";
+      sessionStorage.removeItem(keepOpenKey);
     } catch {
-      stored = null;
+      keepOpen = false;
     }
-    setOpen(stored === "open", { remember: false });
+    setOpen(keepOpen);
     disclosures.set(button.closest(".sidebar-section")?.id, setOpen);
   });
 
@@ -1561,6 +1562,86 @@
 
   observePeople();
   observeProviders();
+
+  // Infinite scroll: near the bottom, the next page's cards (or rows, when grouped) are fetched
+  // and appended. The page links stay in the markup for browsers without JavaScript.
+  const enhanceCards = (cards) => {
+    cards.forEach((card) => {
+      detailCards.push(card);
+      card.querySelectorAll("[data-open-media-details]").forEach((button) => {
+        button.addEventListener("click", () => openMediaDetails(card));
+      });
+      peopleCards.push(...card.querySelectorAll("[data-people-url]"));
+      providerStrips.push(...card.querySelectorAll("[data-providers-key]"));
+    });
+    observePeople();
+    observeProviders();
+  };
+
+  const results = document.querySelector("[data-results]");
+  const loadMore = document.querySelector("[data-load-more]");
+  const pagination = document.querySelector("[data-pagination]");
+  let nextPage = pagination?.querySelector("[data-next-page]")?.href ?? null;
+
+  if (results && loadMore && pagination && nextPage && "IntersectionObserver" in window) {
+    const status = loadMore.querySelector("[data-load-more-status]");
+    const retry = loadMore.querySelector("[data-load-more-retry]");
+    const reach = 1200;
+    let loading = false;
+    let observer;
+
+    const nearBottom = () => loadMore.getBoundingClientRect().top < window.innerHeight + reach;
+
+    const fetchNext = async () => {
+      if (loading || !nextPage) return;
+      loading = true;
+      retry.hidden = true;
+      status.textContent = "Loading more…";
+      let loaded = false;
+      try {
+        const response = await fetch(nextPage, { headers: { "X-MyTaste-Fragment": "results" } });
+        if (!response.ok) throw new Error("More titles are unavailable");
+        const batch = document.createElement("template");
+        batch.innerHTML = await response.text();
+        // Pages can overlap (search results shift between requests), so a title already in the
+        // grid is not added twice. Grouped rows repeat titles on purpose and are kept whole.
+        const shown = new Set(
+          Array.from(results.children, (element) => element.dataset.detailUrl).filter(Boolean),
+        );
+        const added = Array.from(batch.content.children).filter(
+          (element) => !element.dataset.detailUrl || !shown.has(element.dataset.detailUrl),
+        );
+        results.append(...added);
+        enhanceCards(
+          added.flatMap((element) =>
+            element.matches(".media-card") ? [element] : Array.from(element.querySelectorAll(".media-card")),
+          ),
+        );
+        nextPage = response.headers.get("X-Next-Page") || null;
+        status.textContent = nextPage ? "" : "That’s everything.";
+        loaded = true;
+      } catch {
+        status.textContent = "More titles could not be loaded.";
+        retry.hidden = false;
+      } finally {
+        loading = false;
+      }
+      if (!nextPage) {
+        observer.disconnect();
+      } else if (loaded && nearBottom()) {
+        // A short batch can leave the end of the list on screen; keep filling.
+        fetchNext();
+      }
+    };
+
+    pagination.hidden = true;
+    loadMore.hidden = false;
+    observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) fetchNext();
+    }, { rootMargin: `${reach}px 0px` });
+    observer.observe(loadMore);
+    retry.addEventListener("click", fetchNext);
+  }
 
   document.querySelectorAll("form[data-confirm]").forEach((form) => {
     form.addEventListener("submit", (event) => {

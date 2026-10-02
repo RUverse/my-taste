@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import date, datetime
@@ -11,11 +12,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from mytaste.catalog.grouping import GROUP_TITLE_LIMIT, GROUPINGS, TitleGroup, group_titles
 from mytaste.catalog.models import (
     SORT_KEYS,
     BrowseCategory,
     BrowseMediaType,
     BrowseQuery,
+    CatalogItem,
     CatalogPage,
     MediaType,
     Provider,
@@ -60,6 +63,7 @@ _DISPLAY_FLAGS = (
     "sidebar_open",
 )
 _MAX_PROVIDER_ITEMS = 60
+_GROUP_ROWS_PER_PAGE = 12
 
 
 def create_router(templates: Jinja2Templates) -> APIRouter:
@@ -124,9 +128,15 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         all_provider_ids = preferences.provider_ids if preferences.configured else ()
         all_library_ids = tuple(sorted(item.id for item in libraries))
         query = _parse_browse_query(request, all_provider_ids, all_library_ids, key)
+        # Grouped, the page number pages through rows and the services are asked for the first
+        # titles of the collection instead.
+        group = query.group
+        row_page = query.page if group else 1
+        query = replace(query, group="", page=1 if group else query.page)
 
-        def url(value: BrowseQuery) -> str:
-            return _browse_url(value, all_provider_ids, all_library_ids)
+        def url(value: BrowseQuery, *, grouping: str | None = None) -> str:
+            chosen = group if grouping is None else grouping
+            return _browse_url(replace(value, group=chosen), all_provider_ids, all_library_ids)
 
         def collection_url(value: BrowseQuery, collection_key: str) -> str:
             """Open another collection, keeping sources and filters but not the sort."""
@@ -194,6 +204,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             chosen = _SEARCH_CATEGORY if value.search else _pick_category(options, value.category)
             if not value.search:
                 value = replace(value, category=chosen.slug)
+            if group:
+                return (
+                    options,
+                    value,
+                    await library.browse(value, category=chosen, page_size=GROUP_TITLE_LIMIT),
+                )
             return options, value, await library.browse(value, category=chosen)
 
         providers: tuple[Provider, ...] = ()
@@ -212,6 +228,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     region=preferences.region if all_provider_ids else "",
                     provider_ids=all_provider_ids,
                     library_ids=all_library_ids,
+                    page_size=GROUP_TITLE_LIMIT if group else None,
                 ),
             )
             page = result.page
@@ -231,6 +248,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     query = replace(query, category=category.slug)
                     local = _local_source(library, query, category) if query.library_ids else None
                     page = await catalog.browse(preferences.region, query, local=local)
+                    if group:
+                        page = await _first_titles(catalog, preferences.region, query, local, page)
                 else:
                     providers = await load_providers()
                     categories, query, page = await browse_library(query)
@@ -243,6 +262,16 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     categories, query, page = await browse_library(query)
                 else:
                     error = str(exc)
+
+        groups: tuple[TitleGroup, ...] = ()
+        row_pages = 1
+        if group and page.items:
+            people = await _credits(catalog, page.items) if group == "director" else {}
+            every_group = group_titles(page.items, group, people)
+            row_pages = max(math.ceil(len(every_group) / _GROUP_ROWS_PER_PAGE), 1)
+            row_page = min(row_page, row_pages)
+            start = (row_page - 1) * _GROUP_ROWS_PER_PAGE
+            groups = every_group[start : start + _GROUP_ROWS_PER_PAGE]
 
         configured_ids = set(all_provider_ids)
         configured_providers = tuple(
@@ -377,91 +406,117 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         rating_active = query.minimum_rating is not None or query.include_unrated
         sort_changed = query.sort is not None or query.descending is not None
         current_link = next((link for link in collection_links if link["active"]), None)
-        return render(
-            request,
-            "index.html",
-            {
-                "preferences": preferences,
-                "header_providers": configured_providers,
-                "configured_providers": configured_providers,
-                "header_media": query.media_type,
-                "search_query": query.search,
-                "query": query,
-                "page_path": page_path,
-                "media_links": media_links,
-                "collection_links": collection_links,
-                "current_link": current_link,
-                "return_to": url(query),
-                "collection": manual,
-                "collection_payload": _collection_payload(manual) if manual else None,
-                "collection_icons": ICONS,
-                "collection_sort_options": tuple(
-                    (value, _SORT_LABELS[value])
-                    for value in ("added", "popularity", "release", "rating", "title")
-                ),
-                "collection_availability": availability,
-                "page": page,
-                "heading": heading,
-                "description": description,
-                "icon": icon,
-                "sort_options": tuple(
-                    {"value": value, "label": _SORT_LABELS[value], "selected": value == sort}
-                    for value in sort_choices
-                ),
-                "default_sort": default_sort,
-                "sort_descending": descending,
-                "sort_natural_descending": natural_descending(sort),
-                "sort_label": _SORT_LABELS[sort],
-                "sort_changed": sort_changed,
-                "sort_reset_url": url(replace(query, sort=None, descending=None, page=1)),
-                "sort_flip_url": url(
-                    replace(
-                        query,
-                        descending=None if flipped == natural_descending(sort) else flipped,
-                        page=1,
-                    )
-                ),
-                "year_active": year_active,
-                "rating_active": rating_active,
-                "rating_clear_url": url(
-                    replace(query, minimum_rating=None, include_unrated=False, page=1)
-                ),
-                "active_filter_count": active_filter_count,
-                "clear_filters_url": url(
-                    BrowseQuery(
-                        media_type=query.media_type,
-                        category=query.category,
-                        search=query.search,
-                        provider_ids=all_provider_ids,
-                        library_ids=all_library_ids,
-                        sort=query.sort,
-                        descending=query.descending,
-                    )
-                ),
-                "previous_url": url(replace(query, page=query.page - 1))
-                if query.page > 1
-                else None,
-                "next_url": url(replace(query, page=query.page + 1))
-                if query.page < page.total_pages
-                else None,
-                "error": error,
-                "notice": notice,
-                "libraries": libraries,
-                "library_keys": library.matched_keys() if libraries else frozenset(),
-                "library_scanning": library_scanning,
-                "streaming_selected": bool(query.provider_ids),
-                "source_options": source_options,
-                "sources_changed": sources_changed,
-                "all_sources_url": all_sources_url,
-                "year_presets": year_presets,
-                "year_clear_url": url(replace(query, year_from=None, year_to=None, page=1)),
-                "rating_options": (None, 5, 6, 7, 8),
-                "active_filters": active_filters,
-                "current_year": this_year,
-                "play_states": play_states,
-                "continue_items": continue_items,
-            },
-        )
+        context: dict[str, object] = {
+            "preferences": preferences,
+            "header_providers": configured_providers,
+            "configured_providers": configured_providers,
+            "header_media": query.media_type,
+            "search_query": query.search,
+            "query": query,
+            "page_path": page_path,
+            "media_links": media_links,
+            "collection_links": collection_links,
+            "current_link": current_link,
+            "return_to": url(replace(query, page=row_page) if group else query),
+            "collection": manual,
+            "collection_payload": _collection_payload(manual) if manual else None,
+            "collection_icons": ICONS,
+            "collection_sort_options": tuple(
+                (value, _SORT_LABELS[value])
+                for value in ("added", "popularity", "release", "rating", "title")
+            ),
+            "collection_availability": availability,
+            "page": page,
+            "heading": heading,
+            "description": description,
+            "icon": icon,
+            "sort_options": tuple(
+                {"value": value, "label": _SORT_LABELS[value], "selected": value == sort}
+                for value in sort_choices
+            ),
+            "default_sort": default_sort,
+            "sort_descending": descending,
+            "sort_natural_descending": natural_descending(sort),
+            "sort_label": _SORT_LABELS[sort],
+            "sort_changed": sort_changed,
+            "sort_reset_url": url(replace(query, sort=None, descending=None, page=1)),
+            "sort_flip_url": url(
+                replace(
+                    query,
+                    descending=None if flipped == natural_descending(sort) else flipped,
+                    page=1,
+                )
+            ),
+            "year_active": year_active,
+            "rating_active": rating_active,
+            "rating_clear_url": url(
+                replace(query, minimum_rating=None, include_unrated=False, page=1)
+            ),
+            "active_filter_count": active_filter_count,
+            "clear_filters_url": url(
+                BrowseQuery(
+                    media_type=query.media_type,
+                    category=query.category,
+                    search=query.search,
+                    provider_ids=all_provider_ids,
+                    library_ids=all_library_ids,
+                    sort=query.sort,
+                    descending=query.descending,
+                )
+            ),
+            "previous_url": (url(replace(query, page=row_page - 1)) if row_page > 1 else None)
+            if group
+            else url(replace(query, page=query.page - 1))
+            if query.page > 1
+            else None,
+            "next_url": (url(replace(query, page=row_page + 1)) if row_page < row_pages else None)
+            if group
+            else url(replace(query, page=query.page + 1))
+            if query.page < page.total_pages
+            else None,
+            "pagination_label": f"Rows page {row_page} of {row_pages}"
+            if group
+            else f"Page {page.page} of {page.total_pages}",
+            "groups": groups,
+            "row_offset": (row_page - 1) * _GROUP_ROWS_PER_PAGE if group else 0,
+            "grouping": group,
+            "grouping_label": GROUPINGS.get(group, ""),
+            "grouping_options": tuple(
+                {
+                    "value": value,
+                    "label": label,
+                    "selected": value == group,
+                    "url": url(replace(query, page=1), grouping=value),
+                }
+                for value, label in GROUPINGS.items()
+            ),
+            "group_clear_url": url(replace(query, page=1), grouping=""),
+            "grouped_count": len(page.items) if group else 0,
+            "grouped_more": group and page.total_results > len(page.items),
+            "error": error,
+            "notice": notice,
+            "libraries": libraries,
+            "library_keys": library.matched_keys() if libraries else frozenset(),
+            "library_scanning": library_scanning,
+            "streaming_selected": bool(query.provider_ids),
+            "source_options": source_options,
+            "sources_changed": sources_changed,
+            "all_sources_url": all_sources_url,
+            "year_presets": year_presets,
+            "year_clear_url": url(replace(query, year_from=None, year_to=None, page=1)),
+            "rating_options": (None, 5, 6, 7, 8),
+            "active_filters": active_filters,
+            "current_year": this_year,
+            "play_states": play_states,
+            "continue_items": continue_items,
+        }
+        if request.headers.get("x-mytaste-fragment") == "results":
+            # Infinite scroll asks for just the next batch and where the one after it is.
+            response = render(request, "_results_more.html", context)
+            response.headers["X-Next-Page"] = str(context["next_url"] or "")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        return render(request, "index.html", context)
 
     async def settings_context(
         request: Request,
@@ -1021,6 +1076,47 @@ def _return_path(value: object) -> str | None:
     return value
 
 
+async def _first_titles(
+    catalog: Any,
+    region: str,
+    query: BrowseQuery,
+    local: LocalSource | None,
+    first: CatalogPage,
+) -> CatalogPage:
+    """Read the top of a collection, up to the number of titles grouping looks at."""
+
+    items = list(first.items)
+    number = 1
+    while len(items) < GROUP_TITLE_LIMIT and number < first.total_pages:
+        number += 1
+        following = await catalog.browse(region, replace(query, page=number), local=local)
+        if not following.items:
+            break
+        items.extend(following.items)
+    return CatalogPage(
+        items=tuple(items[:GROUP_TITLE_LIMIT]),
+        total_pages=1,
+        total_results=first.total_results,
+    )
+
+
+async def _credits(
+    catalog: Any, items: tuple[CatalogItem, ...]
+) -> dict[tuple[str, int], tuple[str, ...]]:
+    """Look up the directors (or a series' creators) of each matched title."""
+
+    async def one(item: CatalogItem) -> tuple[tuple[str, int], tuple[str, ...]] | None:
+        try:
+            _label, names = await catalog.people(item.media_type, item.id)
+        except TMDBError:
+            return None
+        return (item.media_type, item.id), tuple(names)
+
+    keys = {(item.media_type, item.id): item for item in items if item.id > 0}
+    results = await asyncio.gather(*(one(item) for item in keys.values()))
+    return dict(result for result in results if result is not None)
+
+
 def _collection_payload(collection: Collection) -> dict[str, object]:
     return {
         "id": collection.id,
@@ -1314,6 +1410,7 @@ def _parse_browse_query(
         library_ids=library_ids,
         sort=cast(SortKey, sort_value) if sort_value in SORT_KEYS else None,
         descending={"asc": False, "desc": True}.get(order or ""),
+        group=group if (group := params.get("group") or "") in GROUPINGS else "",
     )
 
 
@@ -1359,6 +1456,8 @@ def _browse_url(
         params["sort"] = query.sort
     if query.descending is not None and not query.search:
         params["order"] = "desc" if query.descending else "asc"
+    if query.group:
+        params["group"] = query.group
     if query.page > 1:
         params["page"] = query.page
     if query.search or query.category == HOME_COLLECTION:

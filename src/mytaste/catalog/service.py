@@ -366,7 +366,8 @@ class CatalogService:
         cached = self._people.get(cache_key)
         if cached is not None and cached.expires_at > now:
             return cached.value
-        people = await self.client.people(media_type, item_id)
+        async with self._availability_limit:
+            people = await self.client.people(media_type, item_id)
         self._people[cache_key] = _CacheEntry(people, now + self.enrichment_ttl)
         return people
 

@@ -1067,3 +1067,63 @@ def test_titles_can_be_saved_and_collections_edited_from_the_page(tmp_path: Path
     assert 'data-edit-collection="{&#34;default_sort&#34;: &#34;added&#34;' in watchlist.text
     assert "&#34;name&#34;: &#34;Watchlist&#34;" in watchlist.text
     assert "choose <strong>Save</strong> to add it here" in watchlist.text
+
+
+def test_titles_are_grouped_into_rows(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    library.add("Shows", [("/media/Shows", "tv")])
+    with make_client(tmp_path, library) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        by_director = client.get("/?group=director")
+        local_only = client.get("/collections/latest?providers=none&group=decade")
+        local_page_size = library.browse_calls[-1][2]
+        by_type = client.get("/collections/1?group=type")
+        unknown = client.get("/?group=colour")
+
+    assert '<h2 id="group-row-1">A Director</h2>' in by_director.text
+    assert 'class="media-grid"' not in by_director.text
+    assert 'href="/collections/latest?group=director"' in by_director.text, "tabs keep grouping"
+    assert '<option value="director" selected>Director</option>' in by_director.text
+    assert 'href="/" aria-label="Stop grouping"' in by_director.text
+    assert '<span class="rail-dot"' in by_director.text
+    assert '<h2 id="group-row-1">2010s</h2>' in local_only.text
+    assert '<h2 id="group-row-2">Unknown year</h2>' in local_only.text
+    assert local_page_size == 100, "grouping reads the top 100 titles"
+    assert "Nothing in Watchlist yet" in by_type.text
+    assert 'class="group-rows"' not in unknown.text
+    assert 'aria-controls="group-popover"' in unknown.text
+    assert 'href="/?group=genre">By genre</a>' in unknown.text
+
+
+class PagedCatalog(FakeCatalog):
+    async def browse(
+        self, region: str, query: BrowseQuery, *, local: LocalSource | None = None
+    ) -> CatalogPage:
+        page = await super().browse(region, query, local=local)
+        return replace(page, page=query.page, total_pages=3)
+
+
+def test_infinite_scroll_fetches_batches_of_cards(tmp_path: Path) -> None:
+    with make_client(tmp_path, catalog=PagedCatalog()) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        first = client.get("/collections/latest?sort=title")
+        second = client.get(
+            "/collections/latest?sort=title&page=2", headers={"X-MyTaste-Fragment": "results"}
+        )
+        last = client.get(
+            "/collections/latest?sort=title&page=3", headers={"X-MyTaste-Fragment": "results"}
+        )
+        grouped = client.get("/?group=decade")
+
+    assert "data-results" in first.text
+    assert "data-load-more" in first.text
+    assert 'href="/collections/latest?sort=title&amp;page=2" data-next-page>Next</a>' in first.text
+    assert second.status_code == 200
+    assert "<html" not in second.text and "browse-sidebar" not in second.text
+    assert second.text.count("<article\n") + second.text.count("<article ") == 2
+    assert 'data-detail-url="/api/items/movie/12/details"' in second.text
+    assert 'loading="lazy"' in second.text
+    assert second.headers["X-Next-Page"] == "/collections/latest?sort=title&page=3"
+    assert last.headers["X-Next-Page"] == ""
+    assert '<div class="group-rows" data-results>' in grouped.text
+    assert 'aria-labelledby="group-row-1"' in grouped.text

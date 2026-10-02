@@ -1,0 +1,7 @@
+{# The next batch for infinite scroll: cards, or rows when grouped. #}
+{% from "_cards.html" import media_card, group_row with context %}
+{% if groups %}
+  {% for row in groups %}{{ group_row(row, row_offset + loop.index) }}{% endfor %}
+{% else %}
+  {% for item in page.items %}{{ media_card(item) }}{% endfor %}
+{% endif %}

@@ -1,0 +1,78 @@
+{# Shared by the browse page and the batches infinite scroll appends to it. #}
+{% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
+
+{% macro media_card(item, eager=false) %}
+  {% set in_library = item.in_library or (item.media_type, item.id) in library_keys %}
+  {% set on_services = item.id > 0 and preferences.configured %}
+  {% set play_url = '' %}
+  {% set play_state = none %}
+  {% if in_library %}
+    {% if item.id > 0 %}
+      {% set play_url = '/watch/' ~ item.media_type ~ '/' ~ item.id %}
+      {% set play_state = play_states.get('movie:' ~ item.id) if item.media_type == 'movie' else none %}
+    {% elif item.local_file_id %}
+      {% set play_url = '/watch/local/' ~ item.local_file_id %}
+      {% set play_state = play_states.get('file:' ~ item.local_file_id) %}
+    {% endif %}
+  {% endif %}
+  <article
+    class="media-card{% if in_library %} is-in-library{% endif %}"
+    {% if item.id > 0 %}data-detail-url="/api/items/{{ item.media_type }}/{{ item.id }}/details"{% endif %}
+    data-title="{{ item.title }}"
+    data-year="{{ item.year }}"
+    data-rating="{{ item.rating }}"
+    data-media-label="{{ item.media_label }}"
+    data-overview="{{ item.overview }}"
+    data-genres='{{ item.genres|tojson }}'
+    {% if play_url %}data-play-url="{{ play_url }}"{% endif %}
+    {% if play_state and play_state.resumable and not play_state.watched %}data-resume="{{ play_state.position|round|int }}"{% endif %}
+  >
+    <button class="poster-link" type="button" data-open-media-details aria-label="Open details for {{ item.title }}">
+      <div class="poster">
+        {% if item.poster_url %}
+          <img src="{{ item.poster_url }}" alt="" width="500" height="750" {% if not eager %}loading="lazy"{% endif %}>
+        {% else %}
+          <div class="poster-placeholder" aria-hidden="true"><span>{{ item.title[0] }}</span></div>
+        {% endif %}
+        <span class="type-badge">{{ item.media_label }}</span>
+        {% if play_state and play_state.watched %}
+          <span class="watched-badge" title="Watched"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg><span class="sr-only">Watched</span></span>
+        {% elif play_state and play_state.resumable %}
+          <span class="card-progress" title="{{ (play_state.progress * 100)|round|int }}% watched"><span style="width: {{ (play_state.progress * 100)|round(1) }}%"></span></span>
+        {% endif %}
+        {% if on_services or in_library %}
+          <span class="provider-strip"{% if on_services %} data-providers-key="{{ item.media_type }}:{{ item.id }}"{% endif %}{% if in_library %} title="In your local library"{% endif %}>
+            {% if in_library %}<span class="source-local"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
+          </span>
+        {% endif %}
+      </div>
+    </button>
+    <div class="card-copy">
+      <h2><button class="media-title-button" type="button" data-open-media-details>{{ item.title }}</button></h2>
+      {% if on_services or in_library %}<p class="sr-only" data-providers-text>{% if in_library %}In your local library{% endif %}</p>{% endif %}
+      <div class="card-meta">
+        <span class="meta-year">{{ item.year }}</span>
+        {% if item.rating %}<span class="meta-rating" aria-label="Rating {{ item.rating }} out of 10">★ {{ item.rating }}</span>{% endif %}
+      </div>
+      {% if item.genres %}<p class="meta-genres">{{ item.genres|join(' · ') }}</p>{% endif %}
+      {% if item.library_summary %}<p class="meta-library">{{ item.library_summary }}</p>{% endif %}
+      {% if item.id > 0 %}
+        <p class="meta-people" data-people-url="/api/items/{{ item.media_type }}/{{ item.id }}/people" aria-live="polite"><span>Loading credits…</span></p>
+      {% else %}
+        <p class="meta-people meta-unmatched">Not matched on TMDB yet</p>
+      {% endif %}
+    </div>
+  </article>
+{% endmacro %}
+
+{% macro group_row(row, number) %}
+  <section class="group-row" aria-labelledby="group-row-{{ number }}">
+    <header class="group-row-head">
+      <h2 id="group-row-{{ number }}">{{ row.label }}</h2>
+      <span class="group-row-count">{{ row.items|length }} {{ 'title' if row.items|length == 1 else 'titles' }}</span>
+    </header>
+    <div class="group-strip">
+      {% for item in row.items %}{{ media_card(item) }}{% endfor %}
+    </div>
+  </section>
+{%- endmacro %}
