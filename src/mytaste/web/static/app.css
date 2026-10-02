@@ -1944,6 +1944,39 @@ body[data-sidebar="closed"] .browse-sidebar {
 .filter-rule .segmented { margin-top: 8px; }
 .filter-rule .chip-row { margin-top: 8px; }
 
+.sidebar-section-head h2:has(.section-disclosure) { flex: 1; }
+
+.section-disclosure {
+  display: flex;
+  width: 100%;
+  min-height: 28px;
+  padding: 0;
+  align-items: center;
+  gap: 9px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.section-disclosure svg:first-child { color: var(--muted); }
+.section-disclosure .disclosure-chevron { margin-left: auto; }
+.section-disclosure[aria-expanded="true"] .disclosure-chevron { transform: rotate(180deg); }
+.section-disclosure:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+
+.source-logos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+.source-logos[hidden] { display: none; }
+.source-logos .is-excluded { opacity: 0.35; filter: grayscale(1); }
+
 .sidebar-appearance summary {
   min-height: 28px;
   list-style: none;

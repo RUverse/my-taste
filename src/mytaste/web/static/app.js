@@ -169,6 +169,7 @@
         const section = document.getElementById(button.dataset.railSection);
         setSidebarOpen(true, { focus: false });
         if (section instanceof HTMLDetailsElement) section.open = true;
+        disclosures.get(button.dataset.railSection)?.(true);
         if (!section) return;
         section.scrollIntoView({ block: "nearest" });
         const controls = section.querySelectorAll("summary, select, input:not([type='hidden']), button, a");
@@ -191,6 +192,41 @@
     });
     syncSidebar();
   }
+
+  // Collapsible sections: collapsed, Sources shows just the service icons. The choice is
+  // remembered on this device.
+  const disclosures = new Map();
+  document.querySelectorAll("[data-disclosure]").forEach((button) => {
+    const name = button.dataset.disclosure;
+    const body = document.querySelector(`[data-disclosure-body="${name}"]`);
+    const summary = document.querySelector(`[data-disclosure-summary="${name}"]`);
+    const storageKey = `mytaste.section.${name}`;
+    const setOpen = (open, { remember = true } = {}) => {
+      button.setAttribute("aria-expanded", String(open));
+      if (body) body.hidden = !open;
+      if (summary) summary.hidden = open;
+      if (remember) {
+        try {
+          localStorage.setItem(storageKey, open ? "open" : "closed");
+        } catch {
+          // Private browsing may refuse storage; the section still works.
+        }
+      }
+    };
+    button.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
+    summary?.addEventListener("click", () => {
+      setOpen(true);
+      body?.querySelector("input")?.focus();
+    });
+    let stored = null;
+    try {
+      stored = localStorage.getItem(storageKey);
+    } catch {
+      stored = null;
+    }
+    setOpen(stored === "open", { remember: false });
+    disclosures.set(button.closest(".sidebar-section")?.id, setOpen);
+  });
 
   // Filter rules: "+" reveals a rule's controls; it only applies once a value is chosen.
   const filterButton = document.querySelector('[aria-controls="filter-popover"]');
