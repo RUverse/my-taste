@@ -17,7 +17,8 @@ matching releases in a clean poster grid.
 - A Watch button that opens the title on each of your services that carries it, and an episode
   grid for series with one row per season, marking the episodes you have in a local library
 - A sidebar for the open collection: its sources (add or remove services and folders right
-  there), sort, release-year and rating filters, and card appearance; changes apply instantly and
+  there), sort, release-year and rating filters, grouping into rows (by director, genre, decade, or
+  type), and card appearance; changes apply instantly and
   stay in the URL. Collapsed, it becomes a rail of icons that marks changed sections with a dot
 - Storage libraries: connect local folders (USB drive, NAS share, the same folders Plex uses),
   scan and match them on TMDB, and see them mixed into every category with your streaming picks
@@ -98,6 +99,11 @@ with checkmarks, and **New collection…** makes one and saves the title into it
 end of the collection bar (or **New collection…** under **Show all**) creates an empty one, and the
 pencil beside a collection's name in the sidebar edits its name, icon, description, and default
 order, or deletes it. Deleting a collection never touches your services or files.
+
+**Grouping** in the sidebar splits a collection into rows that scroll sideways: one row per
+director (or series creator), genre, decade, or type. It looks at the first 100 titles of the
+collection in its current order; directors and genres with the most titles come first, and a title
+by two directors or with two genres appears in each row.
 
 Collections that do not fit in the bar above the grid are listed under **Show all**. The
 sidebar's sources, sort, and filters apply on top of whichever collection is open. Moving to

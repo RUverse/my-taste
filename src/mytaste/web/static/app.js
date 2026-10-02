@@ -199,38 +199,39 @@
     syncSidebar();
   }
 
-  // Collapsible sections: collapsed, Sources shows just the service icons. The choice is
-  // remembered on this device.
+  // Collapsible sections start collapsed; Sources then shows just the service icons. After a
+  // source is switched on or off, the reloaded page keeps the section open.
   const disclosures = new Map();
   document.querySelectorAll("[data-disclosure]").forEach((button) => {
     const name = button.dataset.disclosure;
     const body = document.querySelector(`[data-disclosure-body="${name}"]`);
     const summary = document.querySelector(`[data-disclosure-summary="${name}"]`);
-    const storageKey = `mytaste.section.${name}`;
-    const setOpen = (open, { remember = true } = {}) => {
+    const keepOpenKey = `mytaste.keep-open.${name}`;
+    const setOpen = (open) => {
       button.setAttribute("aria-expanded", String(open));
       if (body) body.hidden = !open;
       if (summary) summary.hidden = open;
-      if (remember) {
-        try {
-          localStorage.setItem(storageKey, open ? "open" : "closed");
-        } catch {
-          // Private browsing may refuse storage; the section still works.
-        }
-      }
     };
     button.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
     summary?.addEventListener("click", () => {
       setOpen(true);
       body?.querySelector("input")?.focus();
     });
-    let stored = null;
+    body?.addEventListener("change", () => {
+      try {
+        sessionStorage.setItem(keepOpenKey, "1");
+      } catch {
+        // Without storage the section simply starts collapsed again.
+      }
+    });
+    let keepOpen = false;
     try {
-      stored = localStorage.getItem(storageKey);
+      keepOpen = sessionStorage.getItem(keepOpenKey) === "1";
+      sessionStorage.removeItem(keepOpenKey);
     } catch {
-      stored = null;
+      keepOpen = false;
     }
-    setOpen(stored === "open", { remember: false });
+    setOpen(keepOpen);
     disclosures.set(button.closest(".sidebar-section")?.id, setOpen);
   });
 

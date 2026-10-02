@@ -1067,3 +1067,29 @@ def test_titles_can_be_saved_and_collections_edited_from_the_page(tmp_path: Path
     assert 'data-edit-collection="{&#34;default_sort&#34;: &#34;added&#34;' in watchlist.text
     assert "&#34;name&#34;: &#34;Watchlist&#34;" in watchlist.text
     assert "choose <strong>Save</strong> to add it here" in watchlist.text
+
+
+def test_titles_are_grouped_into_rows(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    library.add("Shows", [("/media/Shows", "tv")])
+    with make_client(tmp_path, library) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        by_director = client.get("/?group=director")
+        local_only = client.get("/collections/latest?providers=none&group=decade")
+        local_page_size = library.browse_calls[-1][2]
+        by_type = client.get("/collections/1?group=type")
+        unknown = client.get("/?group=colour")
+
+    assert '<h2 id="group-row-1">A Director</h2>' in by_director.text
+    assert 'class="media-grid"' not in by_director.text
+    assert 'href="/collections/latest?group=director"' in by_director.text, "tabs keep grouping"
+    assert '<option value="director" selected>Director</option>' in by_director.text
+    assert 'href="/" aria-label="Stop grouping"' in by_director.text
+    assert '<span class="rail-dot"' in by_director.text
+    assert '<h2 id="group-row-1">2010s</h2>' in local_only.text
+    assert '<h2 id="group-row-2">Unknown year</h2>' in local_only.text
+    assert local_page_size == 100, "grouping reads the top 100 titles"
+    assert "Nothing in Watchlist yet" in by_type.text
+    assert 'class="group-rows"' not in unknown.text
+    assert 'aria-controls="group-popover"' in unknown.text
+    assert 'href="/?group=genre">By genre</a>' in unknown.text
