@@ -311,56 +311,68 @@
             <div class="media-detail-poster" data-detail-poster aria-hidden="true"></div>
             <p class="media-detail-kind" data-detail-kind></p>
             <h2 id="media-detail-title" data-detail-title>Loading…</h2>
+            <p class="media-detail-credit" data-detail-credit hidden>
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10h16v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5V10Z"></path><path d="m4 10-.6-2.6a1.5 1.5 0 0 1 1.1-1.8L17.7 2.5a1.5 1.5 0 0 1 1.8 1.1L20 6 4 10ZM8.5 4.8l2.3 3.6M13.6 3.6l2.3 3.6"></path></svg>
+              <span class="sr-only" data-detail-credit-label></span>
+              <span data-detail-credit-names></span>
+            </p>
             <p class="media-detail-scoreline">
-              <span data-detail-year></span>
-              <span data-detail-runtime></span>
-              <span data-detail-rating></span>
+              <span class="media-detail-rating" data-detail-rating></span>
             </p>
           </aside>
 
           <section class="media-detail-stage" aria-live="polite">
             <div class="media-detail-copy">
-              <div class="media-detail-status" data-detail-status>Loading details…</div>
               <div class="media-detail-content" data-detail-content hidden>
+                <div class="media-detail-head">
+                  <div class="media-detail-links">
+                    <button class="detail-link" type="button" data-detail-add>
+                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
+                      Watchlist
+                    </button>
+                    <a class="detail-link" data-detail-trailer target="_blank" rel="noreferrer" hidden>
+                      <svg class="detail-link-fill" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                      Trailer
+                    </a>
+                  </div>
+                  <div class="media-detail-actions">
+                    <div class="play-group" data-play-group hidden>
+                      <a class="play-primary" data-detail-play>
+                        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                        <span data-detail-play-label>Play</span>
+                        <span class="play-source" data-detail-play-source></span>
+                      </a>
+                      <div class="watch-alternatives" data-watch-alternatives></div>
+                    </div>
+                    <span class="media-detail-runtime" data-detail-runtime></span>
+                  </div>
+                </div>
                 <div class="media-detail-genres" data-detail-genres></div>
                 <p class="media-detail-overview" data-detail-overview></p>
-                <div class="media-detail-actions">
-                  <a class="detail-action detail-action-primary detail-play" data-detail-play hidden>
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
-                    <span data-detail-play-label>Play</span>
-                  </a>
-                  <div class="watch-group" data-watch hidden>
-                    <a class="detail-action detail-action-primary watch-primary" data-watch-primary target="_blank" rel="noopener noreferrer">
-                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
-                      <span>Watch</span>
-                      <span class="watch-provider" data-watch-provider></span>
-                    </a>
-                    <div class="watch-alternatives" data-watch-alternatives></div>
-                  </div>
-                  <a class="detail-action detail-action-primary" data-detail-trailer target="_blank" rel="noreferrer">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7 8 5-8 5V7Z"></path></svg>
-                    Trailer
-                  </a>
-                  <button class="detail-action detail-action-add" type="button" data-detail-add aria-label="Add to watchlist" title="Add to watchlist">
-                    <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-                  </button>
-                </div>
-                <section class="media-detail-cast-section" aria-labelledby="media-detail-cast-title">
-                  <h3 id="media-detail-cast-title">Cast</h3>
-                  <div class="media-detail-cast" data-detail-cast role="list"></div>
-                </section>
+                <button class="media-detail-cast" type="button" data-detail-cast aria-expanded="false" aria-controls="media-detail-cast-list" hidden>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.2a3.2 3.2 0 0 1 0 5.6M17.5 13.7A5.5 5.5 0 0 1 20.5 19"></path></svg>
+                  <span class="sr-only">Starring</span>
+                  <span class="media-detail-cast-names" data-detail-cast-names></span>
+                  <svg class="media-detail-cast-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+                </button>
+                <div class="media-detail-cast-list" id="media-detail-cast-list" data-detail-cast-list role="list" aria-label="Cast" hidden></div>
               </div>
+              <div class="media-detail-status" data-detail-status>Loading details…</div>
             </div>
           </section>
         </div>
-        <section class="media-detail-episodes" data-detail-episodes aria-labelledby="media-detail-episodes-title" hidden>
-          <header class="episodes-head">
-            <h3 id="media-detail-episodes-title">Episodes</h3>
-            <p data-episodes-summary></p>
-          </header>
-          <p class="episodes-status" data-episodes-status role="status"></p>
-          <div class="season-rows" data-episodes-seasons></div>
-        </section>
+      </div>
+      <section class="media-detail-episodes" data-detail-episodes aria-labelledby="media-detail-episodes-title" hidden>
+        <header class="episodes-head sr-only">
+          <h3 id="media-detail-episodes-title">Episodes</h3>
+          <p data-episodes-summary></p>
+        </header>
+        <p class="episodes-status" data-episodes-status role="status"></p>
+        <div class="season-rows" data-episodes-seasons></div>
+      </section>
+      <div class="detail-neighbors">
+        <button class="detail-neighbor detail-neighbor-prev" type="button" data-detail-neighbor="-1" hidden></button>
+        <button class="detail-neighbor detail-neighbor-next" type="button" data-detail-neighbor="1" hidden></button>
       </div>
     </dialog>
       </main>

@@ -140,6 +140,7 @@ class FakeCatalog:
             genres=("Drama",),
             cast=(CastMember(4, "Lead Actor", "The Lead", "/actor.jpg"),),
             trailer_key="trailer-key",
+            directed_by=("A Director",),
         )
 
 
@@ -541,6 +542,8 @@ def test_details_endpoint_returns_trailer_and_cast(tmp_path: Path) -> None:
     payload = response.json()
     assert payload["title"] == "A New Film"
     assert payload["runtime_minutes"] == 126
+    assert payload["years"] == "2026"
+    assert payload["directed_by"] == ["A Director"]
     assert payload["trailer_key"] == "trailer-key"
     assert payload["trailer_url"] == "https://www.youtube.com/watch?v=trailer-key"
     assert payload["cast"] == [

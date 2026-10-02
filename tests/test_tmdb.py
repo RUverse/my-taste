@@ -170,7 +170,12 @@ def test_details_returns_youtube_trailer_and_pictured_cast() -> None:
                             "character": "The Lead",
                             "profile_path": "/actor.jpg",
                         }
-                    ]
+                    ],
+                    "crew": [
+                        {"name": "A Director", "job": "Director"},
+                        {"name": "A Writer", "job": "Screenplay"},
+                        {"name": "A Director", "job": "Director"},
+                    ],
                 },
             )
         if request.url.path.endswith("/videos"):
@@ -225,6 +230,35 @@ def test_details_returns_youtube_trailer_and_pictured_cast() -> None:
     assert details.trailer_key == "trailer-key"
     assert details.cast[0].name == "Lead Actor"
     assert details.cast[0].profile_url == "https://image.tmdb.org/t/p/w185/actor.jpg"
+    assert details.directed_by == ("A Director",)
+    assert details.years == "2026"
+
+
+def test_series_details_name_creators_and_air_year_span() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(("/credits", "/videos")):
+            return httpx.Response(200, json={})
+        return httpx.Response(
+            200,
+            json={
+                "id": 30,
+                "name": "A Show",
+                "first_air_date": "2021-08-31",
+                "last_air_date": "2025-10-28",
+                "episode_run_time": [34],
+                "created_by": [{"name": "First Creator"}, {"name": "Second Creator"}],
+            },
+        )
+
+    client = TMDBClient("token", transport=httpx.MockTransport(handler))
+    try:
+        details = asyncio.run(client.details("tv", 30))
+    finally:
+        asyncio.run(client.close())
+
+    assert details.directed_by == ("First Creator", "Second Creator")
+    assert details.runtime_minutes == 34
+    assert details.years == "2021–2025"
 
 
 def test_video_failure_keeps_base_details_and_cast() -> None:

@@ -228,7 +228,13 @@ def test_progress_feeds_continue_watching_and_cards(
     assert 'data-resume="1800"' in page.text
     assert 'class="card-progress" title="30% watched"' in page.text
     payload = episodes.json()
-    assert payload["next_up"] == {"url": "/watch/tv/13/1/2", "label": "S1 · E2", "resume": False}
+    assert payload["next_up"] == {
+        "url": "/watch/tv/13/1/2",
+        "label": "S1 · E2",
+        "season": 1,
+        "episode": 2,
+        "resume": False,
+    }
     first, second = payload["seasons"][0]["episodes"]
     assert "play_url" not in first, "the fake library only has the second episode"
     assert (second["play_url"], second["watched"], second["progress"]) == (

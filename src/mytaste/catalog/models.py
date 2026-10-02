@@ -109,10 +109,22 @@ class MediaDetails:
     genres: tuple[str, ...] = ()
     cast: tuple[CastMember, ...] = ()
     trailer_key: str | None = None
+    # A movie's directors or a series' creators.
+    directed_by: tuple[str, ...] = ()
+    last_air_date: str = ""
 
     @property
     def year(self) -> str:
         return self.release_date[:4] if len(self.release_date) >= 4 else "—"
+
+    @property
+    def years(self) -> str:
+        """The release year, or a series' first and latest air years such as "2021–2025"."""
+
+        last = self.last_air_date[:4] if len(self.last_air_date) >= 4 else ""
+        if self.year != "—" and last > self.year:
+            return f"{self.year}–{last}"
+        return self.year
 
     @property
     def poster_url(self) -> str | None:

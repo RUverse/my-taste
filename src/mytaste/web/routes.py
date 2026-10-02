@@ -590,6 +590,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "media_label": "Movie" if details.media_type == "movie" else "Series",
                 "title": details.title,
                 "year": details.year,
+                "years": details.years,
+                "directed_by": details.directed_by,
                 "overview": details.overview,
                 "rating": details.rating,
                 "runtime_minutes": details.runtime_minutes,
@@ -676,6 +678,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "next_up": {
                     "url": next_up.url,
                     "label": next_up.episode_label,
+                    "season": next_up.season,
+                    "episode": next_up.episode,
                     "resume": bool(next_state and next_state.resumable and not next_state.watched),
                 }
                 if next_up is not None

@@ -653,6 +653,15 @@ def _media_details_from_payload(
             )
         )
 
+    if media_type == "movie":
+        crew_payload = credits.get("crew") if isinstance(credits, dict) else None
+        makers = (
+            raw.get("name") for raw in _object_list(crew_payload) if raw.get("job") == "Director"
+        )
+    else:
+        makers = (raw.get("name") for raw in _object_list(payload.get("created_by")))
+    directed_by = tuple(dict.fromkeys(name for raw in makers if (name := str(raw or "").strip())))
+
     videos = payload.get("videos")
     video_payload = videos.get("results") if isinstance(videos, dict) else None
     poster_path = payload.get("poster_path")
@@ -668,8 +677,10 @@ def _media_details_from_payload(
         poster_path=str(poster_path) if poster_path else None,
         backdrop_path=str(backdrop_path) if backdrop_path else None,
         genres=genres,
-        cast=tuple(cast_members[:8]),
+        cast=tuple(cast_members[:20]),
         trailer_key=_youtube_trailer_key(_object_list(video_payload)),
+        directed_by=directed_by[:3],
+        last_air_date=str(payload.get("last_air_date") or "").strip() if media_type == "tv" else "",
     )
 
 
