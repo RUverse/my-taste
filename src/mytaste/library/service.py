@@ -19,19 +19,13 @@ from mytaste.catalog.models import (
     MediaType,
 )
 from mytaste.catalog.tmdb import TMDBError
+from mytaste.collections.models import smart_categories
 from mytaste.library.models import Library, LibraryStatus, ScannedFile
 from mytaste.library.scanner import LibraryUnavailableError, scan_directory
 from mytaste.storage.library import ItemDraft, LibraryRepository, utc_now
 
 logger = logging.getLogger(__name__)
 
-_FIXED_CATEGORIES = (
-    BrowseCategory("recent", "Recently Added"),
-    BrowseCategory("latest", "Latest"),
-    BrowseCategory("popular", "Most Popular"),
-    BrowseCategory("alphabetical", "A–Z"),
-)
-_MAX_GENRE_CATEGORIES = 6
 _MAX_FOLDER_ENTRIES = 400
 
 
@@ -368,7 +362,9 @@ class LibraryService:
 
     # Browsing --------------------------------------------------------------------------
 
-    def matched_keys(self) -> frozenset[tuple[str, int]]:
+    def matched_keys(self, library_ids: Sequence[int] | None = None) -> frozenset[tuple[str, int]]:
+        if library_ids is not None:
+            return self.repository.matched_keys(library_ids)
         if self._matched_keys is None:
             self._matched_keys = self.repository.matched_keys()
         return self._matched_keys
@@ -377,30 +373,10 @@ class LibraryService:
         return self.repository.episode_keys(tmdb_id)
 
     async def categories(self, media_type: BrowseMediaType) -> tuple[BrowseCategory, ...]:
-        movie_counts = self.repository.genre_ids("movie") if media_type != "tv" else {}
-        tv_counts = self.repository.genre_ids("tv") if media_type != "movie" else {}
+        """Return the predefined collections; genre ones need TMDB's genre list."""
+
         movie_genres, tv_genres = await self._genres(media_type)
-        movie_by_name = {genre.name.casefold(): genre.id for genre in movie_genres}
-        tv_by_name = {genre.name.casefold(): genre.id for genre in tv_genres}
-        names: dict[str, tuple[str, int]] = {}
-        for genres, counts in ((movie_genres, movie_counts), (tv_genres, tv_counts)):
-            for genre in genres:
-                count = counts.get(genre.id, 0)
-                if count:
-                    key = genre.name.casefold()
-                    names[key] = (genre.name, names.get(key, ("", 0))[1] + count)
-        ranked = sorted(names.values(), key=lambda entry: (-entry[1], entry[0]))
-        categories = list(_FIXED_CATEGORIES)
-        for name, _count in ranked[:_MAX_GENRE_CATEGORIES]:
-            categories.append(
-                BrowseCategory(
-                    slug=_slugify(name),
-                    label=name,
-                    movie_genre_id=movie_by_name.get(name.casefold()),
-                    tv_genre_id=tv_by_name.get(name.casefold()),
-                )
-            )
-        return tuple(categories)
+        return smart_categories(media_type, movie_genres, tv_genres)
 
     async def browse(
         self,
@@ -492,7 +468,3 @@ def _draft_from_match(
 
 def _within(path: Path, root: Path) -> bool:
     return path == root or root in path.parents
-
-
-def _slugify(value: str) -> str:
-    return "-".join(value.casefold().replace("&", "and").split())

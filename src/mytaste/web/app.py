@@ -12,9 +12,11 @@ from fastapi.templating import Jinja2Templates
 from mytaste import __version__
 from mytaste.catalog.service import CatalogService
 from mytaste.catalog.tmdb import TMDBClient
+from mytaste.collections.service import CollectionService
 from mytaste.config import AppSettings, load_app_settings
 from mytaste.library.service import LibraryService
 from mytaste.playback.service import PlaybackService
+from mytaste.storage.collections import CollectionRepository
 from mytaste.storage.library import LibraryRepository
 from mytaste.storage.playback import PlaybackRepository
 from mytaste.storage.preferences import PreferenceRepository
@@ -31,6 +33,7 @@ def create_app(
     preferences: PreferenceRepository | None = None,
     library: Any | None = None,
     playback: PlaybackService | None = None,
+    collections: CollectionService | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_app_settings()
     repository = preferences or PreferenceRepository(resolved_settings.database_path)
@@ -72,6 +75,12 @@ def create_app(
             hwaccel=resolved_settings.hwaccel,
             background_probe=owns_library,
         )
+    owns_collections = collections is None
+    if collections is None:
+        collection_repository = CollectionRepository(resolved_settings.database_path)
+        collection_repository.initialize()
+        collections = CollectionService(collection_repository, catalog, library)
+
     listeners = getattr(library, "scan_listeners", None)
     if isinstance(listeners, list):
         listeners.append(playback.library_changed)
@@ -85,6 +94,8 @@ def create_app(
         try:
             yield
         finally:
+            if owns_collections:
+                await collections.stop()
             if owns_playback:
                 await playback.stop()
             if owns_library:
@@ -103,6 +114,7 @@ def create_app(
     app.state.preferences = repository
     app.state.library = library
     app.state.playback = playback
+    app.state.collections = collections
     app.state.settings = resolved_settings
 
     templates = Jinja2Templates(directory=_WEB_ROOT / "templates")

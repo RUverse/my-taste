@@ -21,6 +21,12 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/catalog/tmdb.py` — raw asynchronous TMDB requests and response normalization.
 - `src/mytaste/catalog/service.py` — browsing, cross-media merging, availability checks,
   enrichment, and in-memory caching.
+- `src/mytaste/collections/models.py` — the predefined smart collections (genre/release-window
+  filters with a default sort), user collection models, and the collection icon set.
+- `src/mytaste/collections/service.py` — user collections: saving titles with a TMDB snapshot,
+  availability on the user's services (stored per region, refreshed after a day), and browsing.
+- `src/mytaste/storage/collections.py` — SQLite persistence for user collections, their titles,
+  and title availability.
 - `src/mytaste/storage/preferences.py` — SQLite persistence for subscriptions and display options.
 - `src/mytaste/storage/library.py` — SQLite persistence for storage libraries, their matched
   items, and local browse queries.
@@ -37,7 +43,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/web/routes.py` — page/API routes, query parsing, and template context construction.
 - `src/mytaste/web/playback.py` — `/watch/...` player pages and the streaming, subtitle, and
   progress APIs.
-- `src/mytaste/web/templates/` — server-rendered Jinja pages.
+- `src/mytaste/web/templates/` — server-rendered Jinja pages; `_icons.html` draws collection icons.
 - `src/mytaste/web/static/` — CSS and vanilla JavaScript with no frontend build step; the only
   third-party file is the vendored hls.js light build in `static/vendor/` (Apache-2.0).
 - `tests/` — unit and route tests. Web tests inject fake catalog implementations through
@@ -49,7 +55,10 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   orchestration in `CatalogService`.
 - When adding catalog data, normally update models, TMDB parsing, service behavior, route context,
   templates, and their corresponding tests in that order.
-- Keep browse state in URL query parameters. Display-only preferences are persisted in SQLite via
+- Browsing is by collection (`/collections/<key>`, home at `/`); keep the remaining browse state
+  (media type, sources, filters, sort) in URL query parameters. Every sort must order local titles
+  exactly like TMDB (`catalog_sort_key` and the library `_ORDERINGS`) so merged pages stay in one
+  global order. Display-only preferences are persisted in SQLite via
   `/api/preferences/display` and should update immediately in the UI.
 - Preserve dependency injection in `create_app()` so tests can supply fake catalog, preference,
   and library implementations. Update the fakes when a service interface changes.

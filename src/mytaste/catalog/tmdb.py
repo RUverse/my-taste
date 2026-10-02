@@ -175,6 +175,8 @@ class TMDBClient:
         year_to: int | None = None,
         minimum_rating: float | None = None,
         include_unrated: bool = False,
+        released_after: date | None = None,
+        minimum_votes: int | None = None,
         page: int = 1,
         today: date | None = None,
     ) -> CatalogPage:
@@ -196,12 +198,17 @@ class TMDBClient:
             params["with_genres"] = genre_id
         if minimum_rating is not None and not include_unrated:
             params["vote_average.gte"] = minimum_rating
+        if minimum_votes is not None:
+            params["vote_count.gte"] = minimum_votes
 
         date_field = "primary_release_date" if media_type == "movie" else "first_air_date"
         if media_type == "tv":
             params["include_null_first_air_dates"] = "false"
-        if year_from is not None:
-            params[f"{date_field}.gte"] = f"{year_from:04d}-01-01"
+        start_date = date(year_from, 1, 1) if year_from is not None else None
+        if released_after is not None:
+            start_date = max(start_date or released_after, released_after)
+        if start_date is not None:
+            params[f"{date_field}.gte"] = start_date.isoformat()
         end_date = current_date
         if year_to is not None:
             end_date = min(end_date, date(year_to, 12, 31))
@@ -632,6 +639,18 @@ def _media_details_from_payload(
             if (name := str(raw.get("name") or "").strip())
         )
     )
+    genre_ids: list[int] = []
+    for raw in _object_list(payload.get("genres")):
+        try:
+            genre_id = int(raw.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if genre_id > 0 and genre_id not in genre_ids:
+            genre_ids.append(genre_id)
+    try:
+        popularity = float(payload.get("popularity") or 0)
+    except (TypeError, ValueError):
+        popularity = 0.0
     credits = payload.get("credits")
     cast_payload = credits.get("cast") if isinstance(credits, dict) else None
     cast_members: list[CastMember] = []
@@ -681,6 +700,8 @@ def _media_details_from_payload(
         trailer_key=_youtube_trailer_key(_object_list(video_payload)),
         directed_by=directed_by[:3],
         last_air_date=str(payload.get("last_air_date") or "").strip() if media_type == "tv" else "",
+        genre_ids=tuple(genre_ids),
+        popularity=popularity,
     )
 
 

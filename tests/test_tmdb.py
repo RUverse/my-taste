@@ -130,7 +130,42 @@ def test_discover_applies_genre_year_and_rating_filters() -> None:
     assert captured["first_air_date.gte"] == "2020-01-01"
     assert captured["first_air_date.lte"] == "2024-12-31"
     assert captured["vote_average.gte"] == "7"
+    assert "vote_count.gte" not in captured
     assert page.page == 2
+
+
+def test_discover_takes_the_later_of_year_and_release_window() -> None:
+    captured: list[dict[str, str]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(dict(request.url.params))
+        return httpx.Response(200, json={"page": 1, "total_pages": 1, "results": []})
+
+    client = TMDBClient("token", transport=httpx.MockTransport(handler))
+    try:
+        for year_from in (None, 2026):
+            asyncio.run(
+                client.discover(
+                    "movie",
+                    "DE",
+                    (8,),
+                    sort_by="vote_average.desc",
+                    year_from=year_from,
+                    released_after=date(2025, 10, 2),
+                    minimum_votes=200,
+                    today=date(2026, 10, 2),
+                )
+            )
+    finally:
+        asyncio.run(client.close())
+
+    assert [call["primary_release_date.gte"] for call in captured] == [
+        "2025-10-02",
+        "2026-01-01",
+    ]
+    assert captured[0]["primary_release_date.lte"] == "2026-10-02"
+    assert captured[0]["vote_count.gte"] == "200"
+    assert captured[0]["sort_by"] == "vote_average.desc"
 
 
 def test_movie_people_returns_directors() -> None:
@@ -209,7 +244,8 @@ def test_details_returns_youtube_trailer_and_pictured_cast() -> None:
                 "runtime": 126,
                 "poster_path": "/poster.jpg",
                 "backdrop_path": "/backdrop.jpg",
-                "genres": [{"id": 18, "name": "Drama"}],
+                "genres": [{"id": 18, "name": "Drama"}, {"id": 53, "name": "Thriller"}],
+                "popularity": 41.5,
             },
         )
 
@@ -232,6 +268,9 @@ def test_details_returns_youtube_trailer_and_pictured_cast() -> None:
     assert details.cast[0].profile_url == "https://image.tmdb.org/t/p/w185/actor.jpg"
     assert details.directed_by == ("A Director",)
     assert details.years == "2026"
+    assert details.genres == ("Drama", "Thriller")
+    assert details.genre_ids == (18, 53)
+    assert details.popularity == 41.5
 
 
 def test_series_details_name_creators_and_air_year_span() -> None:

@@ -324,6 +324,26 @@ select:focus-visible {
 .category-tabs a:hover,
 .category-tabs a[aria-current="page"] { color: var(--text); }
 
+.category-tabs .collection-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.collection-divider {
+  width: 1px;
+  height: 16px;
+  align-self: center;
+  flex: none;
+  background: var(--border);
+}
+
 .category-tabs a[aria-current="page"]::after {
   position: absolute;
   right: 0;
@@ -1724,6 +1744,15 @@ body[data-sidebar="closed"] .browse-sidebar {
 
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
 
+.sort-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sort-row select { min-height: 38px; padding-inline: 10px 4px; font-size: 0.82rem; }
+
 .chip {
   position: relative;
   display: inline-flex;
@@ -2035,6 +2064,19 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 }
 
 .meta-unmatched { color: var(--muted); font-style: italic; }
+
+.collection-intro {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 0 0 20px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.collection-intro p { margin: 0; }
+.collection-availability { color: var(--text); font-weight: 650; }
 
 .notice {
   margin: 0 0 22px;

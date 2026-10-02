@@ -95,11 +95,16 @@
   if (filterForm) {
     const sourceBoxes = Array.from(filterForm.querySelectorAll('.source-toggle input[type="checkbox"]'));
 
+    const sortOrder = filterForm.querySelector("[data-sort-order]");
+    let sortChanged = false;
+
     filterForm.addEventListener("change", (event) => {
       if (sourceBoxes.includes(event.target) && !sourceBoxes.some((box) => box.checked)) {
         event.target.checked = true;
         return;
       }
+      // A new sort starts in its natural direction: newest, most popular, or A to Z first.
+      sortChanged = event.target.matches("[data-sort-field]");
       filterForm.requestSubmit();
     });
 
@@ -107,9 +112,11 @@
       event.preventDefault();
       const params = new URLSearchParams();
       new FormData(filterForm).forEach((value, key) => {
-        if (key !== "providers" && key !== "libraries" && value !== "") {
-          params.append(key, value);
-        }
+        if (key === "providers" || key === "libraries" || value === "") return;
+        if (sortChanged && filterForm.elements[key] === sortOrder) return;
+        // Defaults are left out to keep links short.
+        if (filterForm.elements[key]?.dataset?.default === value) return;
+        params.append(key, value);
       });
       ["providers", "libraries"].forEach((key) => {
         const boxes = sourceBoxes.filter((box) => box.name === key);
@@ -119,7 +126,8 @@
         }
       });
       markNavigating();
-      window.location.assign(`/?${params}`);
+      const path = new URL(filterForm.action).pathname;
+      window.location.assign(params.size ? `${path}?${params}` : path);
     });
   }
 

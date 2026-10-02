@@ -1,10 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import Any, Literal
 
 MediaType = Literal["movie", "tv"]
 BrowseMediaType = Literal["all", "movie", "tv"]
+SortKey = Literal["popularity", "release", "rating", "title", "added"]
+
+SORT_KEYS: tuple[SortKey, ...] = ("popularity", "release", "rating", "title", "added")
+_ASCENDING_BY_DEFAULT: frozenset[SortKey] = frozenset({"title"})
+
+
+def natural_descending(sort: SortKey) -> bool:
+    """Whether a sort normally runs high to low: newest, most popular, best rated first."""
+
+    return sort not in _ASCENDING_BY_DEFAULT
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,10 +47,22 @@ class Genre:
 
 @dataclass(frozen=True, slots=True)
 class BrowseCategory:
+    """A smart collection resolved for browsing: an optional genre and release window over
+    every title, its default sort, and optionally only its ``limit`` most popular titles."""
+
     slug: str
     label: str
     movie_genre_id: int | None = None
     tv_genre_id: int | None = None
+    sort: SortKey = "popularity"
+    released_within_days: int | None = None
+    limit: int | None = None
+    icon: str = ""
+    description: str = ""
+
+    @property
+    def has_genre(self) -> bool:
+        return self.movie_genre_id is not None or self.tv_genre_id is not None
 
     def genre_id_for(self, media_type: MediaType) -> int | None:
         return self.movie_genre_id if media_type == "movie" else self.tv_genre_id
@@ -112,6 +135,8 @@ class MediaDetails:
     # A movie's directors or a series' creators.
     directed_by: tuple[str, ...] = ()
     last_air_date: str = ""
+    genre_ids: tuple[int, ...] = ()
+    popularity: float = 0.0
 
     @property
     def year(self) -> str:
@@ -214,6 +239,34 @@ class BrowseQuery:
     include_unrated: bool = False
     page: int = 1
     library_ids: tuple[int, ...] = ()
+    # ``None`` keeps the collection's default sort and that sort's natural direction.
+    sort: SortKey | None = None
+    descending: bool | None = None
+
+    def sort_for(self, default: SortKey) -> tuple[SortKey, bool]:
+        sort = self.sort or default
+        return sort, natural_descending(sort) if self.descending is None else self.descending
+
+
+def catalog_sort_key(sort: SortKey, descending: bool) -> Callable[[CatalogItem], tuple[Any, ...]]:
+    """Return a key that orders titles the way TMDB and the library queries do.
+
+    The key is meant for ``max`` (or ``sorted(reverse=True)``) when ``descending`` and ``min``
+    otherwise; undated and unrated titles go last either way. ``added`` has no meaning for
+    catalog titles and falls back to popularity.
+    """
+
+    if sort == "release":
+        return lambda item: (
+            bool(item.release_date) == descending,
+            item.release_date,
+            item.popularity,
+        )
+    if sort == "rating":
+        return lambda item: ((item.rating > 0) == descending, item.rating, item.popularity)
+    if sort == "title":
+        return lambda item: (item.title.casefold(), item.release_date)
+    return lambda item: (item.popularity, item.rating)
 
 
 @dataclass(frozen=True, slots=True)

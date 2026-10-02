@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="color-scheme" content="dark">
     <meta name="theme-color" content="#000000">
-    <title>{{ page_title }} · MyTaste</title>
+    <title>{{ page_title }} · {{ display.site_title }}</title>
     <link rel="stylesheet" href="{{ request.url_for('static', path='player.css') }}">
     {% if config %}
       <script src="{{ request.url_for('static', path='vendor/hls.light.min.js') }}" defer></script>

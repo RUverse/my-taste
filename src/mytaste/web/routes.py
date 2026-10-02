@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.templating import Jinja2Templates
 
 from mytaste.catalog.models import (
+    SORT_KEYS,
     BrowseCategory,
     BrowseMediaType,
     BrowseQuery,
@@ -19,20 +20,35 @@ from mytaste.catalog.models import (
     MediaType,
     Provider,
     Region,
+    SortKey,
+    natural_descending,
 )
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
+from mytaste.collections.models import HOME_COLLECTION, Collection, smart_collection
 from mytaste.library.models import Library, LibraryStatus
 from mytaste.storage.preferences import DisplayPreferences, Preferences
 
 _MEDIA_LABELS: tuple[tuple[BrowseMediaType, str], ...] = (
     ("all", "All"),
     ("movie", "Movies"),
-    ("tv", "TV Shows"),
+    ("tv", "Series"),
 )
+_SORT_LABELS: dict[SortKey, str] = {
+    "popularity": "Popularity",
+    "release": "Release date",
+    "rating": "Rating",
+    "title": "Title",
+    "added": "Date added",
+}
+# Categories from before collections: Recently Added and A–Z became sorts.
+_LEGACY_CATEGORIES: dict[str, tuple[str, str | None]] = {
+    "recent": (HOME_COLLECTION, "added"),
+    "alphabetical": (HOME_COLLECTION, "title"),
+}
 _ADD_STEPS = frozenset({"choose", "streaming", "local"})
 _NO_SELECTION = "none"
-_SEARCH_CATEGORY = BrowseCategory("popular", "Most Popular")
+_SEARCH_CATEGORY = BrowseCategory(HOME_COLLECTION, "Popular")
 _DISPLAY_FLAGS = (
     "show_year",
     "show_rating",
@@ -79,19 +95,81 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/", response_class=HTMLResponse)
     async def home(request: Request) -> Response:
+        legacy = request.query_params.get("category")
+        if legacy and not request.query_params.get("q"):
+            # Links from before collections, such as /?category=latest, keep working.
+            slug, sort = _LEGACY_CATEGORIES.get(legacy, (legacy, None))
+            params = [(key, value) for key, value in request.query_params.multi_items()]
+            params = [(key, value) for key, value in params if key != "category"]
+            if sort is not None and "sort" not in request.query_params:
+                params.append(("sort", sort))
+            path = "/" if slug == HOME_COLLECTION else f"/collections/{slug}"
+            target = f"{path}?{urlencode(params)}" if params else path
+            return RedirectResponse(target, status_code=303)
+        return await browse(request, HOME_COLLECTION)
+
+    @router.get("/collections/{key}", response_class=HTMLResponse)
+    async def collection_page(key: str, request: Request) -> Response:
+        return await browse(request, key)
+
+    async def browse(request: Request, key: str) -> Response:
         preferences: Preferences = request.app.state.preferences.get()
         catalog = request.app.state.catalog
         library = request.app.state.library
+        collections = request.app.state.collections
         libraries: tuple[Library, ...] = library.libraries()
         if not preferences.configured and not libraries:
             return RedirectResponse("/settings", status_code=303)
 
         all_provider_ids = preferences.provider_ids if preferences.configured else ()
         all_library_ids = tuple(sorted(item.id for item in libraries))
-        query = _parse_browse_query(request, all_provider_ids, all_library_ids)
+        query = _parse_browse_query(request, all_provider_ids, all_library_ids, key)
 
         def url(value: BrowseQuery) -> str:
             return _browse_url(value, all_provider_ids, all_library_ids)
+
+        def collection_url(value: BrowseQuery, collection_key: str) -> str:
+            """Open another collection, keeping sources and filters but not the sort."""
+
+            return url(
+                replace(
+                    value, category=collection_key, sort=None, descending=None, search="", page=1
+                )
+            )
+
+        user_collections: tuple[Collection, ...] = collections.collections()
+        manual: Collection | None = None
+        smart = None
+        if query.search:
+            query = replace(query, category=HOME_COLLECTION)
+        if query.category.isdigit():
+            manual = next((item for item in user_collections if item.key == query.category), None)
+            if manual is None:
+                return RedirectResponse(collection_url(query, HOME_COLLECTION), status_code=303)
+        else:
+            smart = smart_collection(query.category)
+            if smart is None or not smart.supports(query.media_type):
+                return RedirectResponse(collection_url(query, HOME_COLLECTION), status_code=303)
+
+        # Only library titles have an added date, so that sort needs a list or local-only view.
+        sort_choices = tuple(
+            value
+            for value in SORT_KEYS
+            if value != "added" or manual is not None or not query.provider_ids
+        )
+        default_sort: SortKey = (
+            manual.default_sort if manual is not None else smart.sort if smart else "popularity"
+        )
+        if default_sort not in sort_choices:
+            default_sort = "popularity"
+        if query.sort is not None and query.sort not in sort_choices:
+            query = replace(query, sort=None, descending=None)
+        sort, descending = query.sort_for(default_sort)
+        query = replace(
+            query,
+            sort=None if sort == default_sort else sort,
+            descending=None if descending == natural_descending(sort) else descending,
+        )
 
         async def load_providers() -> tuple[Provider, ...]:
             if not preferences.configured:
@@ -101,12 +179,21 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             except TMDBError:
                 return ()
 
+        async def load_categories(media_type: BrowseMediaType) -> tuple[BrowseCategory, ...]:
+            if all_provider_ids:
+                try:
+                    return await catalog.categories(media_type)
+                except TMDBError:
+                    pass
+            return await library.categories(media_type)
+
         async def browse_library(
             value: BrowseQuery,
         ) -> tuple[tuple[BrowseCategory, ...], BrowseQuery, CatalogPage]:
             options = await library.categories(value.media_type)
-            chosen = _pick_category(options, value.category)
-            value = replace(value, category=chosen.slug)
+            chosen = _SEARCH_CATEGORY if value.search else _pick_category(options, value.category)
+            if not value.search:
+                value = replace(value, category=chosen.slug)
             return options, value, await library.browse(value, category=chosen)
 
         providers: tuple[Provider, ...] = ()
@@ -114,50 +201,88 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         page = CatalogPage(items=())
         error: str | None = None
         notice: str | None = None
-        try:
-            if query.provider_ids:
-                providers, categories = await asyncio.gather(
-                    load_providers(),
-                    catalog.categories(query.media_type),
-                )
-                category = _pick_category(categories, query.category)
-                query = replace(query, category=category.slug)
-                local = _local_source(library, query, category) if query.library_ids else None
-                page = await catalog.browse(preferences.region, query, local=local)
-            else:
-                providers = await load_providers()
-                categories, query, page = await browse_library(query)
-        except TMDBError as exc:
-            if query.library_ids:
-                notice = (
-                    "Streaming results are unavailable right now, so only your library is shown."
-                )
-                categories, query, page = await browse_library(query)
-            else:
-                error = str(exc)
+        availability: tuple[int, int] | None = None
+        if manual is not None:
+            providers, categories, result = await asyncio.gather(
+                load_providers(),
+                load_categories(query.media_type),
+                collections.browse(
+                    manual,
+                    query,
+                    region=preferences.region if all_provider_ids else "",
+                    provider_ids=all_provider_ids,
+                    library_ids=all_library_ids,
+                ),
+            )
+            page = result.page
+            availability = (result.available, result.total)
+        else:
+            try:
+                if query.provider_ids:
+                    providers, categories = await asyncio.gather(
+                        load_providers(),
+                        catalog.categories(query.media_type),
+                    )
+                    category = (
+                        _SEARCH_CATEGORY
+                        if query.search
+                        else _pick_category(categories, query.category)
+                    )
+                    query = replace(query, category=category.slug)
+                    local = _local_source(library, query, category) if query.library_ids else None
+                    page = await catalog.browse(preferences.region, query, local=local)
+                else:
+                    providers = await load_providers()
+                    categories, query, page = await browse_library(query)
+            except TMDBError as exc:
+                if query.library_ids:
+                    notice = (
+                        "Streaming results are unavailable right now, so only your library is "
+                        "shown."
+                    )
+                    categories, query, page = await browse_library(query)
+                else:
+                    error = str(exc)
 
         configured_ids = set(all_provider_ids)
         configured_providers = tuple(
             provider for provider in providers if provider.id in configured_ids
         )
-        default_category = "latest" if query.provider_ids else "recent"
-        category_links = tuple(
-            {
-                "label": category.label,
-                "slug": category.slug,
-                "active": not query.search and category.slug == query.category,
-                "url": url(replace(query, category=category.slug, search="", page=1)),
-            }
-            for category in categories
+        current_category = next(
+            (category for category in categories if category.slug == query.category), None
+        )
+        collection_links = (
+            *(
+                {
+                    "kind": "manual",
+                    "key": item.key,
+                    "label": item.name,
+                    "icon": item.icon,
+                    "active": not query.search and manual is not None and manual.id == item.id,
+                    "url": collection_url(query, item.key),
+                }
+                for item in user_collections
+            ),
+            *(
+                {
+                    "kind": "smart",
+                    "key": category.slug,
+                    "label": category.label,
+                    "icon": category.icon,
+                    "active": not query.search and manual is None and category == current_category,
+                    "url": collection_url(query, category.slug),
+                }
+                for category in categories
+            ),
         )
         media_links = tuple(
             {
                 "label": label,
                 "value": value,
                 "active": query.media_type == value,
-                "url": url(
-                    replace(query, media_type=value, category=default_category, search="", page=1)
-                ),
+                "url": url(replace(query, media_type=value, search="", page=1))
+                if manual is not None or (smart is not None and smart.supports(value))
+                else collection_url(replace(query, media_type=value), HOME_COLLECTION),
             }
             for value, label in _MEDIA_LABELS
         )
@@ -172,11 +297,16 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 query.include_unrated,
             )
         )
-        current_category = next(
-            (category for category in categories if category.slug == query.category),
-            BrowseCategory(query.category, "Latest"),
-        )
-        heading = f"Search results for “{query.search}”" if query.search else current_category.label
+        if query.search:
+            heading, description, icon = f"Search results for “{query.search}”", "", ""
+        elif manual is not None:
+            heading, description, icon = manual.name, manual.description, manual.icon
+        elif current_category is not None:
+            heading = current_category.label
+            description, icon = current_category.description, current_category.icon
+        else:
+            heading = smart.name if smart else ""
+            description, icon = (smart.description, smart.icon) if smart else ("", "")
         all_sources_url = url(
             replace(query, provider_ids=all_provider_ids, library_ids=all_library_ids, page=1)
         )
@@ -233,13 +363,15 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         )
         playback = request.app.state.playback
         play_states = playback.states(_card_state_keys(page)) if libraries else {}
+        is_home = manual is None and query.category == HOME_COLLECTION
         continue_items = (
             _continue_items(playback, query.media_type)
-            if libraries and query.page == 1 and not query.search
+            if libraries and is_home and query.page == 1 and not query.search
             else ()
         )
         statuses: tuple[LibraryStatus, ...] = library.statuses() if libraries else ()
         library_scanning = any(status.state == "scanning" for status in statuses)
+        page_path = url(replace(query, page=1)).partition("?")[0]
         return render(
             request,
             "index.html",
@@ -250,17 +382,32 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "header_media": query.media_type,
                 "search_query": query.search,
                 "query": query,
+                "page_path": page_path,
                 "media_links": media_links,
-                "category_links": category_links,
+                "collection_links": collection_links,
+                "collection": manual,
+                "collection_availability": availability,
                 "page": page,
                 "heading": heading,
+                "description": description,
+                "icon": icon,
+                "sort_options": tuple(
+                    {"value": value, "label": _SORT_LABELS[value], "selected": value == sort}
+                    for value in sort_choices
+                ),
+                "default_sort": default_sort,
+                "sort_descending": descending,
+                "sort_natural_descending": natural_descending(sort),
                 "active_filter_count": active_filter_count,
                 "clear_filters_url": url(
                     BrowseQuery(
                         media_type=query.media_type,
                         category=query.category,
+                        search=query.search,
                         provider_ids=all_provider_ids,
                         library_ids=all_library_ids,
+                        sort=query.sort,
+                        descending=query.descending,
                     )
                 ),
                 "previous_url": url(replace(query, page=query.page - 1))
@@ -518,7 +665,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 key: _required_bool(payload, key) if key in payload else getattr(current, key)
                 for key in _DISPLAY_FLAGS
             }
-            display = DisplayPreferences(
+            display = replace(
+                current,
                 card_size=str(payload.get("card_size") or current.card_size),
                 **values,
             )
@@ -526,6 +674,116 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=422)
         return JSONResponse({"status": "saved"})
+
+    @router.post("/api/preferences/site-title", response_class=JSONResponse)
+    async def save_site_title(request: Request) -> JSONResponse:
+        repository = request.app.state.preferences
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict) or not isinstance(payload.get("title"), str):
+                raise ValueError("Expected a title")
+            display = repository.save_display(
+                replace(repository.get_display(), site_title=payload["title"])
+            )
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse({"site_title": display.site_title})
+
+    @router.get("/api/collections", response_class=JSONResponse)
+    async def list_collections(request: Request) -> JSONResponse:
+        collections = request.app.state.collections.collections()
+        return JSONResponse({"collections": [_collection_payload(item) for item in collections]})
+
+    @router.post("/api/collections", response_class=JSONResponse)
+    async def create_collection(request: Request) -> JSONResponse:
+        try:
+            attributes = await _collection_attributes(request, required=True)
+            name = attributes.pop("name")
+            created = request.app.state.collections.create(name, **attributes)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse({"collection": _collection_payload(created)}, status_code=201)
+
+    @router.patch("/api/collections/{collection_id}", response_class=JSONResponse)
+    async def update_collection(collection_id: int, request: Request) -> JSONResponse:
+        service = request.app.state.collections
+        current = service.get(collection_id)
+        if current is None:
+            return JSONResponse({"error": "Unknown collection"}, status_code=404)
+        try:
+            changes = await _collection_attributes(request, required=False)
+            values = {
+                "name": current.name,
+                "description": current.description,
+                "icon": current.icon,
+                "default_sort": current.default_sort,
+                **changes,
+            }
+            name = values.pop("name")
+            updated = service.update(collection_id, name, **values)
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        if updated is None:
+            return JSONResponse({"error": "Unknown collection"}, status_code=404)
+        return JSONResponse({"collection": _collection_payload(updated)})
+
+    @router.delete("/api/collections/{collection_id}", response_class=JSONResponse)
+    async def delete_collection(collection_id: int, request: Request) -> JSONResponse:
+        if not request.app.state.collections.delete(collection_id):
+            return JSONResponse({"error": "Unknown collection"}, status_code=404)
+        return JSONResponse({"status": "deleted"})
+
+    @router.get("/api/items/{media_type}/{item_id}/collections", response_class=JSONResponse)
+    async def item_collections(media_type: str, item_id: int, request: Request) -> JSONResponse:
+        if media_type not in {"movie", "tv"} or item_id <= 0:
+            return JSONResponse({"error": "Unknown title"}, status_code=404)
+        service = request.app.state.collections
+        saved = service.memberships(cast(MediaType, media_type), item_id)
+        return JSONResponse(
+            {
+                "collections": [
+                    {**_collection_payload(item), "saved": item.id in saved}
+                    for item in service.collections()
+                ]
+            }
+        )
+
+    @router.put(
+        "/api/collections/{collection_id}/items/{media_type}/{item_id}",
+        response_class=JSONResponse,
+    )
+    async def save_to_collection(
+        collection_id: int, media_type: str, item_id: int, request: Request
+    ) -> JSONResponse:
+        if media_type not in {"movie", "tv"} or item_id <= 0:
+            return JSONResponse({"error": "Unknown title"}, status_code=404)
+        preferences: Preferences = request.app.state.preferences.get()
+        try:
+            added = await request.app.state.collections.add_item(
+                collection_id,
+                cast(MediaType, media_type),
+                item_id,
+                region=preferences.region if preferences.configured else "",
+            )
+        except LookupError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=404)
+        except TMDBError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"saved": True, "added": added})
+
+    @router.delete(
+        "/api/collections/{collection_id}/items/{media_type}/{item_id}",
+        response_class=JSONResponse,
+    )
+    async def remove_from_collection(
+        collection_id: int, media_type: str, item_id: int, request: Request
+    ) -> JSONResponse:
+        if media_type not in {"movie", "tv"}:
+            return JSONResponse({"error": "Unknown title"}, status_code=404)
+        removed = request.app.state.collections.remove_item(
+            collection_id, cast(MediaType, media_type), item_id
+        )
+        return JSONResponse({"saved": False, "removed": removed})
 
     @router.get("/api/items/providers", response_class=JSONResponse)
     async def item_providers(request: Request) -> JSONResponse:
@@ -711,6 +969,36 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     return router
 
 
+def _collection_payload(collection: Collection) -> dict[str, object]:
+    return {
+        "id": collection.id,
+        "name": collection.name,
+        "description": collection.description,
+        "icon": collection.icon,
+        "default_sort": collection.default_sort,
+        "item_count": collection.item_count,
+        "url": f"/collections/{collection.key}",
+    }
+
+
+async def _collection_attributes(request: Request, *, required: bool) -> dict[str, str]:
+    """Read the editable collection fields from a JSON body; ``name`` is needed to create."""
+
+    payload = await request.json()
+    if not isinstance(payload, dict):
+        raise ValueError("Expected a JSON object")
+    attributes: dict[str, str] = {}
+    for key in ("name", "description", "icon", "default_sort"):
+        if key in payload:
+            value = payload[key]
+            if not isinstance(value, str):
+                raise ValueError(f"{key} must be text")
+            attributes[key] = value
+    if required and "name" not in attributes:
+        raise ValueError("Give the collection a name")
+    return attributes
+
+
 def _card_state_keys(page: CatalogPage) -> list[str]:
     keys: list[str] = []
     for item in page.items:
@@ -866,13 +1154,12 @@ def _pick_category(categories: tuple[BrowseCategory, ...], slug: str) -> BrowseC
 
 
 def _local_source(library: Any, query: BrowseQuery, category: BrowseCategory) -> LocalSource:
-    """Load the first ``limit`` library titles in the order of the streaming category."""
+    """Load the first ``limit`` titles of the chosen libraries in the order the catalog asks."""
 
-    local_query = replace(query, page=1)
-    local_category = _SEARCH_CATEGORY if query.search else category
-
-    async def load(limit: int) -> CatalogPage:
-        return await library.browse(local_query, category=local_category, page_size=limit)
+    async def load(value: BrowseQuery, limit: int) -> CatalogPage:
+        # The catalog strips the library selection from its query; restore it here.
+        local_query = replace(value, page=1, library_ids=query.library_ids)
+        return await library.browse(local_query, category=category, page_size=limit)
 
     return load
 
@@ -943,6 +1230,7 @@ def _parse_browse_query(
     request: Request,
     all_provider_ids: tuple[int, ...],
     all_library_ids: tuple[int, ...],
+    collection: str,
 ) -> BrowseQuery:
     params = request.query_params
     media_value = params.get("media", "all")
@@ -959,10 +1247,11 @@ def _parse_browse_query(
         year_from, year_to = year_to, year_from
     minimum_rating = _optional_float(params.get("rating_min"), 0, 10)
     page = _optional_int(params.get("page"), 1, 500) or 1
-    default_category = "latest" if provider_ids else "recent"
+    sort_value = params.get("sort")
+    order = params.get("order")
     return BrowseQuery(
         media_type=media_type,
-        category=(params.get("category") or default_category)[:50],
+        category=collection[:50],
         search=(params.get("q") or "").strip()[:100],
         provider_ids=provider_ids,
         year_from=year_from,
@@ -971,6 +1260,8 @@ def _parse_browse_query(
         include_unrated=params.get("unrated") == "1",
         page=page,
         library_ids=library_ids,
+        sort=cast(SortKey, sort_value) if sort_value in SORT_KEYS else None,
+        descending={"asc": False, "desc": True}.get(order or ""),
     )
 
 
@@ -990,12 +1281,16 @@ def _browse_url(
     all_provider_ids: tuple[int, ...],
     all_library_ids: tuple[int, ...],
 ) -> str:
-    params: dict[str, str | int | float] = {
-        "media": query.media_type,
-        "category": query.category,
-    }
+    """Link to a collection (or search results) with the query's sources, filters, and sort.
+
+    The home collection lives at ``/``; defaults are left out to keep links short.
+    """
+
+    params: dict[str, str | int | float] = {}
     if query.search:
         params["q"] = query.search
+    if query.media_type != "all":
+        params["media"] = query.media_type
     if query.provider_ids != all_provider_ids:
         params["providers"] = ",".join(str(value) for value in query.provider_ids) or _NO_SELECTION
     if query.library_ids != all_library_ids:
@@ -1008,9 +1303,17 @@ def _browse_url(
         params["rating_min"] = query.minimum_rating
     if query.include_unrated:
         params["unrated"] = 1
+    if query.sort is not None and not query.search:
+        params["sort"] = query.sort
+    if query.descending is not None and not query.search:
+        params["order"] = "desc" if query.descending else "asc"
     if query.page > 1:
         params["page"] = query.page
-    return f"/?{urlencode(params)}"
+    if query.search or query.category == HOME_COLLECTION:
+        path = "/"
+    else:
+        path = f"/collections/{query.category}"
+    return f"{path}?{urlencode(params)}" if params else path
 
 
 def _optional_int(value: str | None, minimum: int, maximum: int) -> int | None:
