@@ -357,12 +357,20 @@ def test_services_are_added_and_render_catalog(tmp_path: Path) -> None:
     assert "A New Film" in home.text
     assert "A New Series" in home.text
     assert "Netflix" in home.text
-    assert 'data-collection="popular" aria-current="page"' in home.text
+    assert 'class="collection-tab collection-current" href="/" aria-current="page"' in home.text
+    assert 'data-collection="popular"' not in home.text, "the open collection leads the bar"
+    assert '<h1 id="collection-heading">' in home.text
+    assert "<span>Popular</span></h1>" in home.text
     assert 'id="browse-sidebar"' in home.text
     assert 'data-sidebar="open"' in home.text
     assert "data-sidebar-toggle" in home.text
-    assert "Filters &amp; display" not in home.text, "sections carry their own labels"
-    assert '<h3 id="sources-heading">Sources</h3>' in home.text
+    assert 'id="sources-heading">' in home.text
+    assert 'aria-label="Remove Netflix"' in home.text
+    assert 'action="/settings/services/8/remove"' in home.text
+    assert '<input type="hidden" name="next" value="/">' in home.text
+    assert 'href="/settings?add=streaming&amp;next=/"' in home.text
+    assert 'class="services-link"' not in home.text, "services moved into the sidebar"
+    assert 'data-rail-section="sidebar-sources"' in home.text
     assert "controls-drawer" not in home.text
     assert "<h1>Latest</h1>" not in home.text
     assert 'class="active-services"' not in home.text
@@ -448,8 +456,9 @@ def test_sidebar_state_is_saved_without_touching_other_display_options(tmp_path:
     assert display.card_size == "compact"
     assert display.show_year is True
     assert 'data-sidebar="closed"' in home.text
-    assert 'aria-label="Filters and display options" inert' in home.text
-    assert 'aria-expanded="false" aria-label="Show filters and display options"' in home.text
+    assert 'aria-labelledby="collection-heading" inert' in home.text
+    assert '<nav class="sidebar-rail" aria-label="Sidebar" >' in home.text, "the rail is usable"
+    assert 'aria-expanded="false" aria-label="Show the sidebar"' in home.text
     assert invalid.status_code == 422
 
 
@@ -526,8 +535,16 @@ def test_sidebar_filters_show_presets_and_removable_chips(tmp_path: Path) -> Non
     assert 'aria-current="true">2010s</a>' in home.text
     assert 'name="rating_min" value="7" checked' in home.text
     assert "Clear all" in home.text
+    assert '<div class="filter-rule" data-filter-rule="year" >' in home.text
+    assert '<button type="button" data-add-filter="year" hidden>' in home.text
+    assert 'href="/?year_from=2010&amp;year_to=2019" aria-label="Remove the rating filter"' in (
+        home.text
+    )
+    assert home.text.count('<span class="rail-dot"') == 1, "only the filter section changed"
     assert 'class="active-filters"' not in plain.text
-    assert 'name="rating_min" value="" checked' in plain.text
+    assert '<div class="filter-rule" data-filter-rule="rating" hidden>' in plain.text
+    assert 'aria-label="Add a filter" title="Add a filter" >' in plain.text
+    assert 'class="rail-dot"' not in plain.text
 
 
 def test_people_endpoint_returns_enrichment(tmp_path: Path) -> None:
@@ -678,9 +695,9 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert '<option value="added"' not in mixed.text, "streaming has no date added"
     assert 'name="providers" value="8" checked' in mixed.text
     assert 'name="libraries" value="1" checked' in mixed.text
-    assert 'href="/?libraries=none">Only' in mixed.text, "Only link for a service"
-    assert 'href="/?providers=none">Only' in mixed.text, "Only link for a folder"
-    assert "Local · Movies" in mixed.text
+    assert 'title="Local · Movies">Local</span>' in mixed.text
+    assert 'action="/settings/libraries/1/remove"' in mixed.text
+    assert "mini-logo-library" in mixed.text, "the collapsed rail shows the folder too"
     local_query, local_category, local_page_size = local_calls[0]
     assert local_category is not None and local_category.slug == "popular"
     assert (local_query.page, local_page_size) == (1, 20)
@@ -700,7 +717,8 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert "A New Film" in streaming_only.text
     assert "Dark" not in streaming_only.text
     assert '<span class="filter-count">1</span>' in streaming_only.text
-    assert 'class="section-action" href="/">Select all' in streaming_only.text
+    assert 'class="section-action" href="/">Use all' in streaming_only.text
+    assert streaming_only.text.count('<span class="rail-dot"') == 1, "sources are narrowed"
 
     assert status.json()["libraries"][0]["text"].startswith("2 movies")
     assert folders.json()["entries"] == [{"name": "Movies", "path": "/media/Movies"}]
@@ -762,7 +780,7 @@ def test_library_holds_several_folders_of_both_media_types(tmp_path: Path) -> No
     assert extra.status_code == 303
     assert removed.status_code == 303
     assert library.scan_requests == [1, 1, 1]
-    assert "Local · TV Shows" in home.text
+    assert 'title="Local · TV Shows"' in home.text
 
 
 def test_library_can_be_renamed(tmp_path: Path) -> None:
@@ -810,7 +828,7 @@ def test_library_only_setup_skips_streaming_onboarding(tmp_path: Path) -> None:
     assert '<option value="added"' in home.text, "local-only views sort by date added"
     assert catalog.browse_queries == []
     assert "Your services" in services.text
-    assert "mini-logo-library" in services.text
+    assert "mini-logo-library" in home.text
 
 
 def test_streaming_outage_falls_back_to_library(tmp_path: Path) -> None:
@@ -846,8 +864,9 @@ def test_user_collections_list_saved_titles_on_the_users_services(tmp_path: Path
 
     assert empty.status_code == 200
     assert "Nothing in Watchlist yet" in empty.text
-    assert 'data-collection="1" aria-current="page"' in empty.text
-    assert 'data-collection="popular" aria-current' not in empty.text
+    assert 'href="/collections/1" aria-current="page"' in empty.text
+    assert 'data-collection="1"' not in empty.text
+    assert 'data-collection="popular"' in empty.text
     assert "Titles to watch next." in empty.text
     assert '<option value="added" selected>' in empty.text
     assert saved_movie.json() == {"saved": True, "added": True}
@@ -901,7 +920,7 @@ def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
         added = client.get("/?sort=added")
 
     assert 'data-collection="1"' in home.text and 'data-collection="2"' in home.text
-    assert home.text.index('data-collection="1"') < home.text.index('data-collection="popular"')
+    assert home.text.index('data-collection="1"') < home.text.index('data-collection="latest"')
     assert 'class="collection-divider"' in home.text
     assert 'href="/collections/latest"' in home.text
     assert "The most popular" not in home.text, "fake categories carry no description"
@@ -923,7 +942,9 @@ def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
     rated_query = catalog.browse_queries[2]
     assert (rated_query.sort, rated_query.descending) == ("rating", False)
     assert 'href="/collections/latest?sort=rating&amp;order=asc&amp;page=2"' not in rated.text
-    assert '<option value="asc" selected>' in rated.text
+    assert 'name="order" value="asc" data-default="desc"' in rated.text
+    assert 'href="/collections/latest?sort=rating" aria-label="Rating, ascending' in rated.text
+    assert 'href="/collections/latest" aria-label="Back to this collection’s order"' in rated.text
     assert 'href="/collections/drama"' in rated.text, "other collections reset the sort"
     assert catalog.browse_queries[3].sort is None, "streaming has no date added"
     assert '<option value="added"' not in added.text
@@ -980,10 +1001,47 @@ def test_site_title_is_renamed_and_kept_by_display_changes(tmp_path: Path) -> No
         blank = client.post("/api/preferences/site-title", json={"title": "  "})
         wrong = client.post("/api/preferences/site-title", json={"name": "x"})
 
-    assert '<span class="brand-name">MyTaste</span>' in default.text
+    assert '<span class="brand-name" data-site-title>MyTaste</span>' in default.text
     assert renamed.json() == {"site_title": "Sarah's Taste"}
-    assert '<span class="brand-name">Sarah&#39;s Taste</span>' in home.text
+    assert '<span class="brand-name" data-site-title>Sarah&#39;s Taste</span>' in home.text
+    assert 'value="Sarah&#39;s Taste" maxlength="40"' in home.text
     assert "<title>Popular · Sarah&#39;s Taste</title>" in home.text
     assert 'data-show-year="false"' in home.text
     assert blank.status_code == 422
     assert wrong.status_code == 422
+
+
+def test_sidebar_source_changes_return_to_the_page(tmp_path: Path) -> None:
+    library = FakeLibrary()
+    library.add("Shows", [("/media/Shows", "tv")])
+    with make_client(tmp_path, library) as client:
+        add_page = client.get("/settings?add=streaming&next=/collections/latest%3Fsort%3Dtitle")
+        added = client.post(
+            "/settings/services",
+            data={"region": "DE", "provider_ids": "8", "next": "/collections/latest?sort=title"},
+            follow_redirects=False,
+        )
+        rejected = client.post(
+            "/settings/services",
+            data={"region": "DE", "next": "/collections/2"},
+        )
+        removed = client.post(
+            "/settings/services/8/remove", data={"next": "/?media=tv"}, follow_redirects=False
+        )
+        offsite = client.post(
+            "/settings/libraries/1/remove",
+            data={"next": "//evil.example/"},
+            follow_redirects=False,
+        )
+
+    assert 'data-open-step="streaming"' in add_page.text
+    assert '<input type="hidden" name="next" value="/collections/latest?sort=title">' in (
+        add_page.text
+    )
+    assert 'href="/collections/latest?sort=title">Done</a>' in add_page.text
+    assert added.headers["location"] == "/collections/latest?sort=title"
+    assert rejected.status_code == 422
+    assert '<input type="hidden" name="next" value="/collections/2">' in rejected.text
+    assert removed.headers["location"] == "/?media=tv"
+    assert offsite.headers["location"] == "/settings", "only paths on this site are followed"
+    assert library.items == []

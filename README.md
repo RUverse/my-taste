@@ -16,8 +16,9 @@ matching releases in a clean poster grid.
 - Animated movie and show details with YouTube trailers, descriptions, and cast
 - A Watch button that opens the title on each of your services that carries it, and an episode
   grid for series with one row per season, marking the episodes you have in a local library
-- Collapsible filters and display sidebar: sources with one-click “Only”, release-year presets,
-  rating steps, and removable active-filter chips; filters apply instantly and stay in the URL
+- A sidebar for the open collection: its sources (add or remove services and folders right
+  there), sort, release-year and rating filters, and card appearance; changes apply instantly and
+  stay in the URL. Collapsed, it becomes a rail of icons that marks changed sections with a dot
 - Storage libraries: connect local folders (USB drive, NAS share, the same folders Plex uses),
   scan and match them on TMDB, and see them mixed into every category with your streaming picks
 - A built-in player for local movies and episodes: direct play, or streamed with ffmpeg when the
@@ -26,7 +27,7 @@ matching releases in a clean poster grid.
   `/watch/tv/1399/1/3` that always open that exact episode
 - Persisted display controls for card metadata, sizing, trailer autoplay, and the sidebar state,
   including optional icons of the subscribed services that carry each title
-- Single-profile preferences persisted in SQLite
+- Single-profile preferences persisted in SQLite, including the site's name (click it to rename)
 - Responsive, server-rendered interface that follows the OS light or dark theme
 - Native Python and Docker deployment
 
@@ -92,15 +93,19 @@ Everything you browse is a collection, shown as a tab above the grid:
   only shows titles you can watch on your services or from your folders, and says how many of its
   titles that leaves (for example “12 of 23 titles are on your services”).
 
-The sidebar's sort, sources, and filters apply on top of whichever collection is open. Moving to
+Collections that do not fit in the bar above the grid are listed under **Show all**. The
+sidebar's sources, sort, and filters apply on top of whichever collection is open. Moving to
 another collection keeps the sources and filters and returns to that collection's own sort.
 Collections live at `/collections/<name>` (or `/collections/<number>` for your own), and the
 older `/?category=…` links redirect there.
 
 ## Storage libraries
 
-The Services page lists what you have enabled: streaming subscriptions and local libraries side
-by side. Choose **Add**, pick **Local library**, browse to a folder, and say whether it holds
+The sidebar's **Sources** section lists what you have enabled: streaming subscriptions and local
+libraries. Its **+** adds a streaming service or a local folder, and **−** removes one. The
+Services page (**Sources and region** in the menu under the site's name) also lets you change
+the region, add folders to a library, rename it, and rescan it. To add a library, choose **Add**,
+pick **Local library**, browse to a folder, and say whether it holds
 movies or TV shows. A library can span several folders, for example a `Movies` and a `TV Shows`
 folder on the same drive: use **Add another folder** in the dialog, or the **+** button on an
 existing library card; the pencil button next to it renames the library. MyTaste scans every
@@ -110,9 +115,9 @@ and folders may not be nested inside each other.
 
 Local titles are not a separate catalog. Every category mixes them with your streaming titles in
 one order, so a local movie appears exactly where it ranks by release date or popularity, and a
-title you own that is also streaming is shown once with a folder badge. Use the **Sources** filter
-to narrow the view to particular services or folders; with only folders selected, the **Date
-added** sort becomes available.
+title you own that is also streaming is shown once with a folder badge. Click a source in the
+sidebar to leave it out of the current view; with only folders included, the **Date added** sort
+becomes available.
 
 The scanner understands common layouts: loose files named `Title.2019.1080p.mkv`, one folder per
 movie such as `Title (2019)/`, director folders like `Nolan/2010 - Inception/`, and shows laid out
