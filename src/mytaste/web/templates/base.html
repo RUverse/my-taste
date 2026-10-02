@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="dark light">
     <meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
-    <title>{% block title %}MyTaste{% endblock %}</title>
+    <title>{% block title %}{{ display.site_title }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}">
     <script src="{{ request.url_for('static', path='app.js') }}" defer></script>
   </head>
@@ -24,15 +24,14 @@
   >
     <header class="site-header">
       <div class="header-primary">
-        <a class="brand" href="/" aria-label="MyTaste home">
-          <span class="brand-mark" aria-hidden="true">M</span>
-          <span class="brand-name">MyTaste</span>
+        <a class="brand" href="/" aria-label="{{ display.site_title }} home">
+          <span class="brand-mark" aria-hidden="true">{{ display.site_title[0] }}</span>
+          <span class="brand-name">{{ display.site_title }}</span>
         </a>
 
         <div class="primary-controls">
           <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="/" role="search">
             <input type="hidden" name="media" value="{{ header_media }}">
-            <input type="hidden" name="category" value="latest">
             <button class="icon-button search-toggle" type="button" aria-label="Open search" aria-expanded="{{ 'true' if search_query else 'false' }}">
               <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
             </button>
@@ -46,9 +45,9 @@
                 <a href="{{ item.url }}" {% if item.active %}aria-current="page"{% endif %}>{{ item.label }}</a>
               {% endfor %}
             {% else %}
-              <a href="/?media=all" aria-current="page">All</a>
+              <a href="/" aria-current="page">All</a>
               <a href="/?media=movie">Movies</a>
-              <a href="/?media=tv">TV Shows</a>
+              <a href="/?media=tv">Series</a>
             {% endif %}
           </nav>
 

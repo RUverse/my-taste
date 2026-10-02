@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from mytaste.catalog.models import (
@@ -12,6 +12,7 @@ from mytaste.catalog.models import (
     BrowseQuery,
     CatalogPage,
     MediaType,
+    SortKey,
 )
 from mytaste.library.models import (
     Library,
@@ -372,11 +373,18 @@ class LibraryRepository:
             ).fetchall()
         return tuple(_file_from_row(row) for row in rows)
 
-    def matched_keys(self) -> frozenset[tuple[str, int]]:
+    def matched_keys(self, library_ids: Sequence[int] | None = None) -> frozenset[tuple[str, int]]:
+        """Return the TMDB titles on disk, optionally only those in some libraries."""
+
+        sql = "SELECT media_type, tmdb_id FROM library_items WHERE tmdb_id IS NOT NULL"
+        params: tuple[int, ...] = ()
+        if library_ids is not None:
+            if not library_ids:
+                return frozenset()
+            sql += f" AND library_id IN ({','.join('?' for _ in library_ids)})"
+            params = tuple(library_ids)
         with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT media_type, tmdb_id FROM library_items WHERE tmdb_id IS NOT NULL"
-            ).fetchall()
+            rows = connection.execute(sql, params).fetchall()
         return frozenset((str(row[0]), int(row[1])) for row in rows)
 
     def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
@@ -396,20 +404,6 @@ class LibraryRepository:
                 (tmdb_id,),
             ).fetchall()
         return frozenset((int(row[0]), int(row[1])) for row in rows)
-
-    def genre_ids(self, media_type: MediaType) -> dict[int, int]:
-        """Return genre ids present for a media type with the number of matching items."""
-
-        counts: dict[int, int] = {}
-        with self._connect() as connection:
-            rows = connection.execute(
-                "SELECT genre_ids FROM library_items WHERE media_type = ?", (media_type,)
-            ).fetchall()
-        for row in rows:
-            for token in str(row[0]).split(","):
-                if token:
-                    counts[int(token)] = counts.get(int(token), 0) + 1
-        return counts
 
     def browse(
         self,
@@ -443,13 +437,25 @@ class LibraryRepository:
             else:
                 clauses.append("i.rating >= ?")
             params.append(query.minimum_rating)
+        if category.released_within_days is not None:
+            since = date.today() - timedelta(days=category.released_within_days)
+            clauses.append("i.release_date >= ?")
+            params.append(since.isoformat())
         genre_clause = _genre_clause(category, query.media_type)
         if genre_clause is not None:
             clauses.append(genre_clause[0])
             params.extend(genre_clause[1])
+        if category.limit:
+            # The collection is its most popular titles; the chosen sort reorders just those.
+            inner = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            clauses.append(
+                f"i.id IN (SELECT i.id FROM library_items i {inner} "
+                f"ORDER BY {_order_clause('popularity', True)} LIMIT ?)"
+            )
+            params.extend((*params, category.limit))
 
         where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        order = _ORDERINGS.get(category.slug, _ORDERINGS["popular"])
+        order = _order_clause(*query.sort_for(category.sort))
         page = max(query.page, 1)
         with self._connect() as connection:
             total = int(
@@ -551,19 +557,25 @@ _FILE_SELECT = """
     FROM library_files f JOIN library_items i ON i.id = f.item_id
 """
 
-_ORDERINGS = {
-    "recent": "i.added_at DESC, i.title COLLATE NOCASE",
-    "latest": "CASE WHEN i.release_date = '' THEN 1 ELSE 0 END, i.release_date DESC, "
-    "i.popularity DESC",
-    "popular": "i.popularity DESC, i.rating DESC, i.title COLLATE NOCASE",
-    "alphabetical": "i.title COLLATE NOCASE, i.year",
+# Each ordering matches ``catalog_sort_key`` so local titles merge into streaming results;
+# undated and unrated titles go last in both directions.
+_ORDERINGS: dict[SortKey, str] = {
+    "popularity": "i.popularity {d}, i.rating {d}, i.title COLLATE NOCASE",
+    "release": "i.release_date = '', i.release_date {d}, i.popularity {d}",
+    "rating": "i.rating = 0, i.rating {d}, i.popularity {d}",
+    "title": "i.title COLLATE NOCASE {d}, i.release_date {d}",
+    "added": "i.added_at {d}, i.title COLLATE NOCASE",
 }
+
+
+def _order_clause(sort: SortKey, descending: bool) -> str:
+    return _ORDERINGS[sort].format(d="DESC" if descending else "ASC")
 
 
 def _genre_clause(
     category: BrowseCategory, media_type: BrowseMediaType
 ) -> tuple[str, list[object]] | None:
-    if category.slug in _ORDERINGS:
+    if not category.has_genre:
         return None
     options: list[str] = []
     params: list[object] = []

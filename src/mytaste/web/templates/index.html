@@ -1,5 +1,6 @@
 {% extends "base.html" %}
-{% block title %}{{ heading }} · MyTaste{% endblock %}
+{% from "_icons.html" import collection_icon %}
+{% block title %}{{ heading }} · {{ display.site_title }}{% endblock %}
 {% block layout %}
   {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
   {% set check_icon %}<svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg>{% endset %}
@@ -9,10 +10,34 @@
         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
       </button>
       <div class="sidebar-body">
-        <form class="sidebar-form" method="get" action="/" data-filter-form>
-          <input type="hidden" name="media" value="{{ query.media_type }}">
-          <input type="hidden" name="category" value="{{ query.category }}">
+        <form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
+          <input type="hidden" name="media" value="{{ query.media_type }}" data-default="all">
           {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
+
+          {% if not query.search %}
+            <section class="sidebar-section" aria-labelledby="sort-heading">
+              <div class="sidebar-section-head">
+                <h3 id="sort-heading">Sort</h3>
+              </div>
+              <div class="sort-row">
+                <label class="select-field">
+                  <span class="sr-only">Sort by</span>
+                  <select name="sort" data-default="{{ default_sort }}" data-sort-field>
+                    {% for option in sort_options %}
+                      <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label class="select-field">
+                  <span class="sr-only">Direction</span>
+                  <select name="order" data-default="{{ 'desc' if sort_natural_descending else 'asc' }}" data-sort-order>
+                    <option value="desc" {% if sort_descending %}selected{% endif %}>Descending</option>
+                    <option value="asc" {% if not sort_descending %}selected{% endif %}>Ascending</option>
+                  </select>
+                </label>
+              </div>
+            </section>
+          {% endif %}
 
           {% if source_options %}
             <section class="sidebar-section" aria-labelledby="sources-heading">
@@ -136,9 +161,10 @@
           <svg class="sidebar-icon-expand" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15M13.5 10l2 2-2 2"></path></svg>
           {% if active_filter_count %}<span class="filter-count">{{ active_filter_count }}</span>{% endif %}
         </button>
-        <nav class="category-tabs" aria-label="Browse category">
-          {% for item in category_links %}
-            <a href="{{ item.url }}" {% if item.active %}aria-current="page"{% endif %}>{{ item.label }}</a>
+        <nav class="category-tabs" aria-label="Collections">
+          {% for item in collection_links %}
+            {% if item.kind == 'smart' and loop.previtem and loop.previtem.kind == 'manual' %}<span class="collection-divider" aria-hidden="true"></span>{% endif %}
+            <a href="{{ item.url }}" data-collection="{{ item.key }}" {% if item.active %}aria-current="page"{% endif %}>{{ collection_icon(item.icon) }}{{ item.label }}</a>
           {% endfor %}
         </nav>
       </div>
@@ -156,6 +182,14 @@
             <a class="filter-chip-clear" href="{{ clear_filters_url }}">Clear all</a>
           </div>
         {% endif %}
+    {% if (description or collection_availability) and not query.search %}
+      <div class="collection-intro">
+        {% if description %}<p>{{ description }}</p>{% endif %}
+        {% if collection_availability and collection_availability[0] < collection_availability[1] %}
+          <p class="collection-availability">{{ collection_availability[0] }} of {{ collection_availability[1] }} titles are on your services</p>
+        {% endif %}
+      </div>
+    {% endif %}
     {% if error %}
       <div class="alert" role="alert"><strong>Catalog unavailable.</strong> {{ error }} Refresh the page to try again.</div>
     {% endif %}
@@ -256,7 +290,13 @@
       </section>
     {% elif not error %}
       <div class="empty-state">
-        {% if library_scanning and not streaming_selected %}
+        {% if collection and collection_availability and not collection_availability[1] %}
+          <h2>Nothing in {{ collection.name }} yet</h2>
+          <p>Titles you save to this collection appear here.</p>
+        {% elif collection and collection_availability and not collection_availability[0] %}
+          <h2>None of these titles are on your services</h2>
+          <p>{{ collection.name }} has {{ collection_availability[1] }} saved {{ 'title' if collection_availability[1] == 1 else 'titles' }}, but your services and folders carry none of them.</p>
+        {% elif library_scanning and not streaming_selected %}
           <h2>Your library is being scanned</h2>
           <p>Titles appear here as soon as the first scan finishes. Refresh in a moment.</p>
           <a class="button button-secondary" href="/settings">View scan progress</a>

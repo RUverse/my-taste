@@ -104,10 +104,8 @@ def test_scan_matches_groups_and_browses(tmp_path: Path) -> None:
 
         categories = await service.categories("all")
         assert [category.slug for category in categories] == [
-            "recent",
-            "latest",
             "popular",
-            "alphabetical",
+            "latest",
             "comedy",
             "drama",
         ]

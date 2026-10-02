@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 _REGION_PATTERN = re.compile(r"^[A-Z]{2}$")
+DEFAULT_SITE_TITLE = "MyTaste"
+_MAX_SITE_TITLE_LENGTH = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +31,7 @@ class DisplayPreferences:
     card_size: str = "comfortable"
     autoplay_trailer: bool = True
     sidebar_open: bool = True
+    site_title: str = DEFAULT_SITE_TITLE
 
 
 class PreferenceRepository:
@@ -58,7 +61,8 @@ class PreferenceRepository:
                         CHECK (card_size IN ('compact', 'comfortable')),
                     autoplay_trailer INTEGER NOT NULL DEFAULT 1,
                     sidebar_open INTEGER NOT NULL DEFAULT 1,
-                    show_providers INTEGER NOT NULL DEFAULT 0
+                    show_providers INTEGER NOT NULL DEFAULT 0,
+                    site_title TEXT NOT NULL DEFAULT 'MyTaste'
                 );
                 """
             )
@@ -84,6 +88,13 @@ class PreferenceRepository:
                     """
                     ALTER TABLE display_preferences
                     ADD COLUMN sidebar_open INTEGER NOT NULL DEFAULT 1
+                    """
+                )
+            if "site_title" not in display_columns:
+                connection.execute(
+                    """
+                    ALTER TABLE display_preferences
+                    ADD COLUMN site_title TEXT NOT NULL DEFAULT 'MyTaste'
                     """
                 )
 
@@ -129,7 +140,7 @@ class PreferenceRepository:
                 """
                 SELECT show_year, show_rating, show_media_type, show_genres,
                        show_people, card_size, autoplay_trailer, sidebar_open,
-                       show_providers
+                       show_providers, site_title
                 FROM display_preferences WHERE id = 1
                 """
             ).fetchone()
@@ -145,19 +156,26 @@ class PreferenceRepository:
             autoplay_trailer=bool(row[6]),
             sidebar_open=bool(row[7]),
             show_providers=bool(row[8]),
+            site_title=str(row[9]) or DEFAULT_SITE_TITLE,
         )
 
     def save_display(self, preferences: DisplayPreferences) -> DisplayPreferences:
         if preferences.card_size not in {"compact", "comfortable"}:
             raise ValueError("Card size must be compact or comfortable")
+        site_title = " ".join(preferences.site_title.split())
+        if not site_title:
+            raise ValueError("Give the site a name")
+        if len(site_title) > _MAX_SITE_TITLE_LENGTH:
+            raise ValueError(f"Keep the name under {_MAX_SITE_TITLE_LENGTH} characters")
+        preferences = replace(preferences, site_title=site_title)
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO display_preferences (
                     id, show_year, show_rating, show_media_type,
                     show_genres, show_people, card_size, autoplay_trailer, sidebar_open,
-                    show_providers
-                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    show_providers, site_title
+                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                     show_year = excluded.show_year,
                     show_rating = excluded.show_rating,
@@ -167,7 +185,8 @@ class PreferenceRepository:
                     card_size = excluded.card_size,
                     autoplay_trailer = excluded.autoplay_trailer,
                     sidebar_open = excluded.sidebar_open,
-                    show_providers = excluded.show_providers
+                    show_providers = excluded.show_providers,
+                    site_title = excluded.site_title
                 """,
                 (
                     preferences.show_year,
@@ -179,6 +198,7 @@ class PreferenceRepository:
                     preferences.autoplay_trailer,
                     preferences.sidebar_open,
                     preferences.show_providers,
+                    preferences.site_title,
                 ),
             )
         return preferences

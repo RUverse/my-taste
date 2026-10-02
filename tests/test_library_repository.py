@@ -136,7 +136,8 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
     assert items[0].episode_count == 3
     assert items[0].summary == "2 seasons · 3 episodes"
     assert repository.matched_keys() == {("movie", 496243), ("tv", 70523)}
-    assert repository.genre_ids("movie") == {35: 1, 53: 1, 18: 1}
+    assert repository.matched_keys([shows.id]) == {("tv", 70523)}
+    assert repository.matched_keys([]) == frozenset()
     assert repository.episode_keys(70523) == {(1, 1), (1, 2), (3, 1)}
     assert repository.episode_keys(496243) == frozenset()
 
@@ -185,13 +186,48 @@ def test_replace_items_and_browse(tmp_path: Path) -> None:
     assert [item.title for item in scoped.items] == ["Dark"]
 
     paged = repository.browse(
-        BrowseQuery(category="alphabetical", page=2),
-        BrowseCategory("alphabetical", "A–Z"),
+        BrowseQuery(sort="title", page=2),
+        BrowseCategory("popular", "Popular"),
         page_size=2,
     )
     assert paged.page == 2
     assert paged.total_pages == 2
     assert [item.title for item in paged.items] == ["Parasite"]
+
+    def titles(query: BrowseQuery, category: BrowseCategory) -> list[str]:
+        return [item.title for item in repository.browse(query, category).items]
+
+    everything = BrowseCategory("popular", "Popular")
+    assert titles(BrowseQuery(sort="title", descending=True), everything) == [
+        "Parasite",
+        "Dark",
+        "Dane Anjir Maabed",
+    ]
+    assert titles(BrowseQuery(sort="release"), everything) == [
+        "Parasite",
+        "Dark",
+        "Dane Anjir Maabed",
+    ], "undated titles go last"
+    assert titles(BrowseQuery(sort="release", descending=False), everything) == [
+        "Dark",
+        "Parasite",
+        "Dane Anjir Maabed",
+    ], "undated titles go last in both directions"
+    assert titles(BrowseQuery(sort="rating", descending=False), everything) == [
+        "Dark",
+        "Parasite",
+        "Dane Anjir Maabed",
+    ], "unrated titles go last"
+    assert titles(BrowseQuery(), BrowseCategory("latest", "Latest", sort="release")) == [
+        "Parasite",
+        "Dark",
+        "Dane Anjir Maabed",
+    ], "a collection's default sort applies without one in the query"
+    top_one = BrowseCategory("popular", "Popular", limit=2)
+    assert titles(BrowseQuery(sort="title"), top_one) == ["Dark", "Parasite"]
+    assert repository.browse(BrowseQuery(), top_one).total_results == 2
+    recent = BrowseCategory("latest", "Latest", sort="release", released_within_days=365)
+    assert titles(BrowseQuery(), recent) == []
 
     repository.replace_items(movies.id, [])
     assert repository.get_library(movies.id).item_count == 0  # type: ignore[union-attr]

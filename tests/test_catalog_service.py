@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import replace
+from datetime import date, timedelta
 
 from mytaste.catalog.models import (
+    BrowseCategory,
     BrowseQuery,
     CatalogItem,
     CatalogPage,
@@ -117,14 +119,25 @@ def test_categories_follow_media_specific_navigation() -> None:
     tv_categories = asyncio.run(service.categories("tv"))
 
     assert [item.label for item in movie_categories] == [
+        "Popular",
         "Latest",
-        "Most Popular",
-        "Action",
         "Comedy",
         "Drama",
+        "Action",
         "Horror",
     ]
-    assert [item.label for item in tv_categories][-1] == "Mystery"
+    assert [item.label for item in tv_categories] == [
+        "Popular",
+        "Latest",
+        "Comedy",
+        "Drama",
+        "Action",
+        "Mystery",
+    ]
+    action = next(item for item in tv_categories if item.slug == "action")
+    assert (action.movie_genre_id, action.tv_genre_id) == (None, 10759)
+    assert movie_categories[0].limit == 200
+    assert movie_categories[1].sort == "release"
 
 
 def test_all_media_browse_merges_results_and_adds_genre_names() -> None:
@@ -248,7 +261,7 @@ class PagedTMDBClient(FakeTMDBClient):
 
 
 def _local_source(items: list[CatalogItem], calls: list[int]):
-    async def load(limit: int) -> CatalogPage:
+    async def load(_query: BrowseQuery, limit: int) -> CatalogPage:
         calls.append(limit)
         return CatalogPage(items=tuple(items[:limit]), total_results=len(items))
 
@@ -370,3 +383,105 @@ def test_search_mixes_local_matches_by_popularity() -> None:
 
     assert [item.title for item in page.items] == ["Dark", "movie title"]
     assert page.items[1].in_library and page.items[1].library_summary == "2 files"
+
+
+class RecordingTMDBClient(PagedTMDBClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.discover_kwargs: list[dict[str, object]] = []
+
+    async def discover(self, media_type: str, *args, page: int = 1, **kwargs) -> CatalogPage:
+        self.discover_kwargs.append({"media_type": media_type, **kwargs})
+        return await super().discover(media_type, *args, page=page, **kwargs)
+
+
+def test_sorts_and_collection_rules_reach_tmdb() -> None:
+    client = RecordingTMDBClient()
+    service = CatalogService(client)
+    base = BrowseQuery(media_type="all", provider_ids=(8,))
+
+    asyncio.run(service.browse("DE", replace(base, category="latest")))
+    asyncio.run(service.browse("DE", replace(base, category="comedy", sort="rating")))
+    asyncio.run(
+        service.browse("DE", replace(base, category="drama", sort="title", descending=True))
+    )
+
+    latest = [
+        call for call in client.discover_kwargs if call["sort_by"].startswith(("primary", "first"))
+    ]
+    assert {call["sort_by"] for call in latest} == {
+        "primary_release_date.desc",
+        "first_air_date.desc",
+    }
+    assert all(call["released_after"] == date.today() - timedelta(days=365) for call in latest)
+    rated = [call for call in client.discover_kwargs if call["sort_by"] == "vote_average.desc"]
+    assert {call["genre_id"] for call in rated} == {35}
+    assert all(call["minimum_votes"] == 200 for call in rated)
+    titled = {call["sort_by"] for call in client.discover_kwargs if call["genre_id"] == 18}
+    assert titled == {"title.desc", "name.desc"}
+
+
+def test_ascending_merge_puts_oldest_first_and_undated_last() -> None:
+    service = CatalogService(PagedTMDBClient())
+    local_items = [
+        CatalogItem(0, "movie", "Unknown", "", "", 0, in_library=True),
+        CatalogItem(7001, "movie", "Old classic", "1958-05-01", "", 8, in_library=True),
+    ]
+    query = BrowseQuery(
+        media_type="movie", category="drama", provider_ids=(8,), sort="release", descending=False
+    )
+    seen: list[tuple[str | None, bool | None]] = []
+
+    async def local(value: BrowseQuery, limit: int) -> CatalogPage:
+        seen.append((value.sort, value.descending))
+        dated = sorted(
+            (item for item in local_items if item.release_date), key=lambda i: i.release_date
+        )
+        undated = [item for item in local_items if not item.release_date]
+        return CatalogPage(items=tuple([*dated, *undated][:limit]), total_results=2)
+
+    class AscendingClient(PagedTMDBClient):
+        async def discover(self, media_type: str, *args, page: int = 1, **kwargs) -> CatalogPage:
+            result = await super().discover(media_type, *args, page=4 - page, **kwargs)
+            return replace(result, items=tuple(reversed(result.items)), page=page)
+
+    service = CatalogService(AscendingClient())
+    first = asyncio.run(service.browse("DE", query, local=local))
+    last = asyncio.run(service.browse("DE", replace(query, page=4), local=local))
+
+    assert first.items[0].title == "Old classic"
+    assert [item.release_date for item in first.items[1:]] == sorted(
+        item.release_date for item in first.items[1:]
+    )
+    assert last.items[-1].title == "Unknown"
+    assert seen[0] == ("release", False)
+
+
+def test_popular_is_its_most_popular_titles_in_any_sort() -> None:
+    service = CatalogService(PagedTMDBClient())
+    top = BrowseCategory("popular", "Popular", limit=30)
+
+    async def categories(_media_type: str) -> tuple[BrowseCategory, ...]:
+        return (top,)
+
+    service.categories = categories  # type: ignore[method-assign]
+    query = BrowseQuery(media_type="all", category="popular", provider_ids=(8,))
+
+    by_popularity = asyncio.run(service.browse("DE", query))
+    by_release = asyncio.run(service.browse("DE", replace(query, sort="release")))
+    second = asyncio.run(service.browse("DE", replace(query, sort="release", page=2)))
+    beyond = asyncio.run(service.browse("DE", replace(query, page=9)))
+
+    assert (by_popularity.total_pages, by_popularity.total_results) == (2, 30)
+    assert by_release.total_results == 30
+    reordered = [*by_release.items, *second.items]
+    assert {item.id for item in reordered} == {
+        item.id
+        for item in [
+            *by_popularity.items,
+            *asyncio.run(service.browse("DE", replace(query, page=2))).items,
+        ][:30]
+    }
+    dates = [item.release_date for item in reordered]
+    assert dates == sorted(dates, reverse=True)
+    assert beyond.page == 2

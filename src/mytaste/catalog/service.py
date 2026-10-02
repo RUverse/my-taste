@@ -6,7 +6,8 @@ import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import ClassVar, Generic, TypeVar
+from datetime import date, timedelta
+from typing import Any, ClassVar, Generic, TypeVar
 
 from mytaste.catalog.models import (
     BrowseCategory,
@@ -21,25 +22,25 @@ from mytaste.catalog.models import (
     Provider,
     Region,
     Season,
+    SortKey,
     WatchLink,
     WatchOption,
+    catalog_sort_key,
+    natural_descending,
 )
 from mytaste.catalog.tmdb import TMDBClient
+from mytaste.collections.models import smart_categories
 
 T = TypeVar("T")
 
-LocalSource = Callable[[int], Awaitable[CatalogPage]]
-"""Load the first ``limit`` local titles in category order, with the local total."""
+LocalSource = Callable[[BrowseQuery, int], Awaitable[CatalogPage]]
+"""Load the first ``limit`` local titles in the query's sort order, with the local total."""
 
 _PAGE_SIZE = 20
 _MAX_MERGED_PAGES = 100
 _MAX_STREAM_PAGES = 150
-
-_GENRE_NAVIGATION: dict[BrowseMediaType, tuple[str, ...]] = {
-    "all": ("Drama", "Comedy", "Documentary", "Animation"),
-    "movie": ("Action", "Comedy", "Drama", "Horror"),
-    "tv": ("Action & Adventure", "Comedy", "Drama", "Mystery"),
-}
+# Sorting by score alone surfaces obscure titles with a handful of perfect votes.
+_RATING_SORT_MIN_VOTES = 200
 
 
 @dataclass(slots=True)
@@ -104,6 +105,8 @@ class CatalogService:
         return genres
 
     async def categories(self, media_type: BrowseMediaType) -> tuple[BrowseCategory, ...]:
+        """Return the predefined collections, with genre names bound to TMDB ids."""
+
         movie_genres: tuple[Genre, ...] = ()
         tv_genres: tuple[Genre, ...] = ()
         if media_type == "all":
@@ -115,32 +118,7 @@ class CatalogService:
             movie_genres = await self.genres("movie")
         else:
             tv_genres = await self.genres("tv")
-
-        movie_by_name = {genre.name.casefold(): genre.id for genre in movie_genres}
-        tv_by_name = {genre.name.casefold(): genre.id for genre in tv_genres}
-        categories = [
-            BrowseCategory("latest", "Latest"),
-            BrowseCategory("popular", "Most Popular"),
-        ]
-        for name in _GENRE_NAVIGATION[media_type]:
-            key = name.casefold()
-            movie_id = movie_by_name.get(key)
-            tv_id = tv_by_name.get(key)
-            if media_type == "all" and (movie_id is None or tv_id is None):
-                continue
-            if media_type == "movie" and movie_id is None:
-                continue
-            if media_type == "tv" and tv_id is None:
-                continue
-            categories.append(
-                BrowseCategory(
-                    slug=_slugify(name),
-                    label=name,
-                    movie_genre_id=movie_id,
-                    tv_genre_id=tv_id,
-                )
-            )
-        return tuple(categories)
+        return smart_categories(media_type, movie_genres, tv_genres)
 
     async def browse(
         self,
@@ -183,43 +161,89 @@ class CatalogService:
         category: BrowseCategory,
         local: LocalSource | None,
     ) -> CatalogPage:
-        streams: list[_Stream | _LocalStream] = []
-        for media_type in _media_types(query.media_type):
-            if category.slug == "latest":
-                sort_by = (
-                    "primary_release_date.desc" if media_type == "movie" else "first_air_date.desc"
+        sort, descending = query.sort_for(category.sort)
+        if sort == "added":
+            # Only library titles have an added date; streaming keeps the collection's order.
+            sort, descending = category.sort, natural_descending(category.sort)
+        released_after = (
+            date.today() - timedelta(days=category.released_within_days)
+            if category.released_within_days is not None
+            else None
+        )
+
+        def streams_for(value: BrowseQuery) -> list[_Stream | _LocalStream]:
+            streams: list[_Stream | _LocalStream] = []
+            for media_type in _media_types(value.media_type):
+                genre_id = category.genre_id_for(media_type)
+                if category.has_genre and genre_id is None:
+                    continue
+                streams.append(
+                    _Stream(
+                        self._discover_loader(region, media_type, value, genre_id, released_after)
+                    )
                 )
-            else:
-                sort_by = "popularity.desc"
-            genre_id = category.genre_id_for(media_type)
-            if category.slug not in {"latest", "popular"} and genre_id is None:
-                continue
-            streams.append(
-                _Stream(self._discover_loader(region, media_type, query, sort_by, genre_id))
+            if local is not None:
+                streams.append(_LocalStream(local, value))
+            return streams
+
+        if category.limit and (sort, descending) != ("popularity", True):
+            # The collection is its most popular titles; other sorts reorder just those.
+            ranked = replace(query, sort="popularity", descending=True)
+            streams = streams_for(ranked)
+            if not streams:
+                return CatalogPage(items=(), page=query.page)
+            top = await _merge_prefix(
+                streams, catalog_sort_key("popularity", True), True, category.limit
             )
-        if local is not None:
-            streams.append(_LocalStream(local))
+            items = sorted(top, key=catalog_sort_key(sort, descending), reverse=descending)
+            total_pages = max(math.ceil(len(items) / _PAGE_SIZE), 1)
+            page = min(max(query.page, 1), total_pages)
+            return CatalogPage(
+                items=tuple(items[(page - 1) * _PAGE_SIZE : page * _PAGE_SIZE]),
+                page=page,
+                total_pages=total_pages,
+                total_results=len(items),
+            )
+
+        value = replace(query, sort=sort, descending=descending)
+        streams = streams_for(value)
         if not streams:
             return CatalogPage(items=(), page=query.page)
         if len(streams) == 1 and isinstance(streams[0], _Stream):
-            return await streams[0].load(query.page)
-        key = _latest_key if category.slug == "latest" else _popular_key
-        return await _merge_streams(streams, key, query.page)
+            if not category.limit:
+                return await streams[0].load(query.page)
+            last_page = math.ceil(category.limit / _PAGE_SIZE)
+            number = min(query.page, last_page)
+            result = await streams[0].load(number)
+            return replace(
+                result,
+                items=result.items[: category.limit - (number - 1) * _PAGE_SIZE],
+                total_pages=min(result.total_pages, last_page),
+                total_results=min(result.total_results, category.limit),
+            )
+        return await _merge_streams(
+            streams, catalog_sort_key(sort, descending), descending, query.page, category.limit
+        )
 
     def _discover_loader(
         self,
         region: str,
         media_type: MediaType,
         query: BrowseQuery,
-        sort_by: str,
         genre_id: int | None,
+        released_after: date | None,
     ) -> Callable[[int], Awaitable[CatalogPage]]:
+        sort, descending = query.sort_for("popularity")
+        sort_by = _tmdb_sort(media_type, sort, descending)
+        minimum_votes = _RATING_SORT_MIN_VOTES if sort == "rating" else None
+
         async def load(page: int) -> CatalogPage:
             cache_key = (
                 region,
                 media_type,
                 sort_by,
                 genre_id,
+                released_after,
                 query.provider_ids,
                 query.year_from,
                 query.year_to,
@@ -241,6 +265,8 @@ class CatalogService:
                 year_to=query.year_to,
                 minimum_rating=query.minimum_rating,
                 include_unrated=query.include_unrated,
+                released_after=released_after,
+                minimum_votes=minimum_votes,
                 page=page,
             )
             self._stream_pages[cache_key] = _CacheEntry(result, now + self.catalog_ttl)
@@ -291,9 +317,13 @@ class CatalogService:
         # TMDB search pages are ordered by relevance rather than by a shared sort key, so
         # local matches are paged alongside each search page and ranked by popularity.
         offset = (query.page - 1) * _PAGE_SIZE
-        local_page = await local(offset + _PAGE_SIZE)
+        local_page = await local(
+            replace(query, sort="popularity", descending=True), offset + _PAGE_SIZE
+        )
         local_items = local_page.items[offset : offset + _PAGE_SIZE]
-        merged = _deduplicate(sorted((*items, *local_items), key=_popular_key, reverse=True))
+        merged = _deduplicate(
+            sorted((*items, *local_items), key=catalog_sort_key("popularity", True), reverse=True)
+        )
         return CatalogPage(
             items=tuple(merged),
             page=query.page,
@@ -463,12 +493,13 @@ def _media_types(media_type: BrowseMediaType) -> tuple[MediaType, ...]:
     return ("movie", "tv") if media_type == "all" else (media_type,)
 
 
-def _latest_key(item: CatalogItem) -> tuple[str, float]:
-    return (item.release_date, item.popularity)
-
-
-def _popular_key(item: CatalogItem) -> tuple[float, float]:
-    return (item.popularity, item.rating)
+def _tmdb_sort(media_type: MediaType, sort: SortKey, descending: bool) -> str:
+    fields: dict[SortKey, str] = {
+        "release": "primary_release_date" if media_type == "movie" else "first_air_date",
+        "rating": "vote_average",
+        "title": "title" if media_type == "movie" else "name",
+    }
+    return f"{fields.get(sort, 'popularity')}.{'desc' if descending else 'asc'}"
 
 
 def _identity(item: CatalogItem) -> tuple[str, int] | None:
@@ -517,6 +548,7 @@ class _LocalStream:
     """Local library titles in category order, loaded with a single bounded query."""
 
     source: LocalSource
+    query: BrowseQuery
     items: list[CatalogItem] = field(default_factory=list)
     requested: int = 0
     total_results: int = 0
@@ -535,21 +567,20 @@ class _LocalStream:
     async def fill(self, count: int) -> None:
         if len(self.items) >= count or self.exhausted:
             return
-        result = await self.source(count)
+        result = await self.source(self.query, count)
         self.items = list(result.items)
         self.requested = count
         self.total_results = result.total_results
 
 
-async def _merge_streams(
+async def _merge_prefix(
     streams: Sequence[_Stream | _LocalStream],
-    key: Callable[[CatalogItem], tuple[object, ...]],
-    page: int,
-) -> CatalogPage:
-    """Return one page of the de-duplicated k-way merge of sorted streams."""
+    key: Callable[[CatalogItem], tuple[Any, ...]],
+    descending: bool,
+    wanted: int,
+) -> list[CatalogItem]:
+    """Return the first ``wanted`` titles of the de-duplicated k-way merge of sorted streams."""
 
-    page = min(max(page, 1), _MAX_MERGED_PAGES)
-    wanted = page * _PAGE_SIZE
     await asyncio.gather(*(stream.fill(wanted) for stream in streams))
     local_items = {
         identity: item
@@ -561,18 +592,21 @@ async def _merge_streams(
     positions = [0] * len(streams)
     merged: list[CatalogItem] = []
     seen: set[tuple[str, int]] = set()
+    # Ties go to the earlier stream in both directions.
+    direction = -1 if descending else 1
+    pick = max if descending else min
     while len(merged) < wanted:
         for index, stream in enumerate(streams):
             if positions[index] >= len(stream.items) and not stream.exhausted:
                 await stream.fill(len(stream.items) + wanted - len(merged))
         heads = [
-            (key(stream.items[positions[index]]), -index)
+            (key(stream.items[positions[index]]), direction * index)
             for index, stream in enumerate(streams)
             if positions[index] < len(stream.items)
         ]
         if not heads:
             break
-        index = -max(heads)[1]
+        index = direction * pick(heads)[1]
         item = streams[index].items[positions[index]]
         positions[index] += 1
         identity = _identity(item)
@@ -584,11 +618,32 @@ async def _merge_streams(
             if twin is not None and not item.in_library:
                 item = replace(item, in_library=True, library_summary=twin.library_summary)
         merged.append(item)
+    return merged
 
+
+async def _merge_streams(
+    streams: Sequence[_Stream | _LocalStream],
+    key: Callable[[CatalogItem], tuple[Any, ...]],
+    descending: bool,
+    page: int,
+    limit: int | None = None,
+) -> CatalogPage:
+    """Return one page of the de-duplicated k-way merge of sorted streams.
+
+    ``limit`` caps the merged sequence; without it the merge stops after 100 pages.
+    """
+
+    cap = limit or _MAX_MERGED_PAGES * _PAGE_SIZE
+    max_pages = math.ceil(cap / _PAGE_SIZE)
+    page = min(max(page, 1), max_pages)
+    wanted = min(page * _PAGE_SIZE, cap)
+    merged = await _merge_prefix(streams, key, descending, wanted)
     total_results = sum(
         min(stream.total_results, (stream.total_pages or 1) * _PAGE_SIZE) for stream in streams
     )
-    total_pages = min(max(math.ceil(total_results / _PAGE_SIZE), 1), _MAX_MERGED_PAGES)
+    if limit is not None:
+        total_results = min(total_results, limit)
+    total_pages = min(max(math.ceil(total_results / _PAGE_SIZE), 1), max_pages)
     if len(merged) < wanted and all(stream.exhausted for stream in streams):
         total_pages = max(math.ceil(len(merged) / _PAGE_SIZE), 1)
     return CatalogPage(
@@ -625,20 +680,13 @@ def _merge_pages(
     latest: bool,
 ) -> CatalogPage:
     items = [item for page in pages for item in page.items]
-    if latest:
-        items.sort(key=lambda item: (item.release_date, item.popularity), reverse=True)
-    else:
-        items.sort(key=lambda item: (item.popularity, item.rating), reverse=True)
+    items.sort(key=catalog_sort_key("release" if latest else "popularity", True), reverse=True)
     return CatalogPage(
         items=tuple(items[:20]),
         page=query.page,
         total_pages=max((page.total_pages for page in pages), default=1),
         total_results=sum(page.total_results for page in pages),
     )
-
-
-def _slugify(value: str) -> str:
-    return "-".join(value.casefold().replace("&", "and").split())
 
 
 _TITLE_NOISE = re.compile(r"[^0-9a-z]+")

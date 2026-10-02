@@ -43,8 +43,8 @@ class FakeCatalog:
 
     async def categories(self, media_type: str) -> tuple[BrowseCategory, ...]:
         return (
-            BrowseCategory("latest", "Latest"),
-            BrowseCategory("popular", "Most Popular"),
+            BrowseCategory("popular", "Popular", limit=200, icon="flame"),
+            BrowseCategory("latest", "Latest", sort="release", released_within_days=365),
             BrowseCategory("drama", "Drama", 18, 18),
         )
 
@@ -56,7 +56,7 @@ class FakeCatalog:
         self.browse_queries.append(query)
         if self.fail_browse:
             raise TMDBError("TMDB is down")
-        local_items = (await local(20)).items if local is not None else ()
+        local_items = (await local(query, 20)).items if local is not None else ()
         return CatalogPage(
             items=(
                 CatalogItem(
@@ -252,7 +252,11 @@ class FakeLibrary:
             entries=(FolderEntry("Movies", "/media/Movies"),),
         )
 
-    def matched_keys(self) -> frozenset[tuple[str, int]]:
+    def matched_keys(
+        self, library_ids: tuple[int, ...] | None = None
+    ) -> frozenset[tuple[str, int]]:
+        if library_ids is not None and not library_ids:
+            return frozenset()
         return frozenset({("movie", 12)})
 
     def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
@@ -260,8 +264,8 @@ class FakeLibrary:
 
     async def categories(self, media_type: str) -> tuple[BrowseCategory, ...]:
         return (
-            BrowseCategory("recent", "Recently Added"),
-            BrowseCategory("alphabetical", "A–Z"),
+            BrowseCategory("popular", "Popular", limit=200, icon="flame"),
+            BrowseCategory("latest", "Latest", sort="release", released_within_days=365),
         )
 
     async def browse(
@@ -353,7 +357,7 @@ def test_services_are_added_and_render_catalog(tmp_path: Path) -> None:
     assert "A New Film" in home.text
     assert "A New Series" in home.text
     assert "Netflix" in home.text
-    assert "Most Popular" in home.text
+    assert 'data-collection="popular" aria-current="page"' in home.text
     assert 'id="browse-sidebar"' in home.text
     assert 'data-sidebar="open"' in home.text
     assert "data-sidebar-toggle" in home.text
@@ -518,7 +522,7 @@ def test_sidebar_filters_show_presets_and_removable_chips(tmp_path: Path) -> Non
     assert "2010–2019" in home.text
     assert "Rated 7+" in home.text
     assert '<span class="filter-count">2</span>' in home.text
-    assert 'href="/?media=all&amp;category=latest&amp;rating_min=7.0"' in home.text
+    assert 'href="/?rating_min=7.0"' in home.text
     assert 'aria-current="true">2010s</a>' in home.text
     assert 'name="rating_min" value="7" checked' in home.text
     assert "Clear all" in home.text
@@ -671,31 +675,32 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert mixed.text.count("is-in-library") == 3
     assert 'data-providers-key="movie:12" title="In your local library"' in mixed.text
     assert mixed.text.count('<span class="source-local">') == 3
-    assert "Recently Added" not in mixed.text
+    assert '<option value="added"' not in mixed.text, "streaming has no date added"
     assert 'name="providers" value="8" checked' in mixed.text
     assert 'name="libraries" value="1" checked' in mixed.text
-    assert 'category=latest&amp;libraries=none">Only' in mixed.text, "Only link for a service"
-    assert 'category=latest&amp;providers=none">Only' in mixed.text, "Only link for a folder"
+    assert 'href="/?libraries=none">Only' in mixed.text, "Only link for a service"
+    assert 'href="/?providers=none">Only' in mixed.text, "Only link for a folder"
     assert "Local · Movies" in mixed.text
     local_query, local_category, local_page_size = local_calls[0]
-    assert local_category is not None and local_category.slug == "latest"
+    assert local_category is not None and local_category.slug == "popular"
     assert (local_query.page, local_page_size) == (1, 20)
+    assert local_query.library_ids == (1,), "the library selection reaches local browsing"
 
     assert "Dark" in library_only.text
     assert "A New Film" not in library_only.text
-    assert "Recently Added" in library_only.text
-    assert "providers=none" in library_only.text, "tabs keep the source selection"
+    assert '<option value="added"' in library_only.text
+    assert 'href="/collections/latest?providers=none"' in library_only.text, (
+        "tabs keep the source selection"
+    )
     assert 'name="providers" value="8" >' in library_only.text
     assert library.browse_calls[-1][1] is not None
-    assert library.browse_calls[-1][1].slug == "recent"
+    assert library.browse_calls[-1][1].slug == "popular"
     assert len(catalog.browse_queries) == 2
 
     assert "A New Film" in streaming_only.text
     assert "Dark" not in streaming_only.text
     assert '<span class="filter-count">1</span>' in streaming_only.text
-    assert 'class="section-action" href="/?media=all&amp;category=latest">Select all' in (
-        streaming_only.text
-    )
+    assert 'class="section-action" href="/">Select all' in streaming_only.text
 
     assert status.json()["libraries"][0]["text"].startswith("2 movies")
     assert folders.json()["entries"] == [{"name": "Movies", "path": "/media/Movies"}]
@@ -802,7 +807,7 @@ def test_library_only_setup_skips_streaming_onboarding(tmp_path: Path) -> None:
     assert home.status_code == 200
     assert home.url.path == "/"
     assert "Dark" in home.text
-    assert "Recently Added" in home.text
+    assert '<option value="added"' in home.text, "local-only views sort by date added"
     assert catalog.browse_queries == []
     assert "Your services" in services.text
     assert "mini-logo-library" in services.text
@@ -822,3 +827,163 @@ def test_streaming_outage_falls_back_to_library(tmp_path: Path) -> None:
     assert "Streaming results are unavailable right now" in home.text
     assert "Dark" in home.text
     assert "Catalog unavailable." in streaming_only.text
+
+
+def test_user_collections_list_saved_titles_on_the_users_services(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        empty = client.get("/collections/1")
+        saved_movie = client.put("/api/collections/1/items/movie/12")
+        saved_again = client.put("/api/collections/1/items/movie/12")
+        client.put("/api/collections/1/items/tv/13")
+        unknown_collection = client.put("/api/collections/99/items/movie/12")
+        bad_title = client.put("/api/collections/1/items/person/12")
+        listed = client.get("/collections/1")
+        movies = client.get("/collections/1?media=movie&sort=title")
+        memberships = client.get("/api/items/movie/12/collections")
+        removed = client.delete("/api/collections/1/items/movie/12")
+        after = client.get("/collections/1")
+
+    assert empty.status_code == 200
+    assert "Nothing in Watchlist yet" in empty.text
+    assert 'data-collection="1" aria-current="page"' in empty.text
+    assert 'data-collection="popular" aria-current' not in empty.text
+    assert "Titles to watch next." in empty.text
+    assert '<option value="added" selected>' in empty.text
+    assert saved_movie.json() == {"saved": True, "added": True}
+    assert saved_again.json() == {"saved": True, "added": False}
+    assert unknown_collection.status_code == 404
+    assert bad_title.status_code == 404
+    assert "A New Film" in listed.text
+    assert "1 of 2 titles are on your services" in listed.text, "the series is not on Netflix"
+    assert 'data-detail-url="/api/items/movie/12/details"' in listed.text
+    assert 'action="/collections/1"' in listed.text
+    assert 'href="/collections/1?sort=title"' in movies.text, "media links keep the sort"
+    assert memberships.json()["collections"][:2] == [
+        {
+            "id": 1,
+            "name": "Watchlist",
+            "description": "Titles to watch next.",
+            "icon": "bookmark",
+            "default_sort": "added",
+            "item_count": 2,
+            "url": "/collections/1",
+            "saved": True,
+        },
+        {
+            "id": 2,
+            "name": "My favourites",
+            "description": "Titles you love.",
+            "icon": "heart",
+            "default_sort": "added",
+            "item_count": 0,
+            "url": "/collections/2",
+            "saved": False,
+        },
+    ]
+    assert removed.json() == {"saved": False, "removed": True}
+    assert "None of these titles are on your services" in after.text
+
+
+def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
+    catalog = FakeCatalog()
+    with make_client(tmp_path, catalog=catalog) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        home = client.get("/")
+        legacy = client.get("/?category=latest&rating_min=7", follow_redirects=False)
+        legacy_recent = client.get("/?media=movie&category=recent", follow_redirects=False)
+        legacy_home = client.get("/?category=popular", follow_redirects=False)
+        movie_only = client.get("/collections/thriller?media=tv", follow_redirects=False)
+        missing = client.get("/collections/999?year_from=2020", follow_redirects=False)
+        unknown = client.get("/collections/nope", follow_redirects=False)
+        latest = client.get("/collections/latest?sort=release&order=desc")
+        rated = client.get("/collections/latest?sort=rating&order=asc")
+        added = client.get("/?sort=added")
+
+    assert 'data-collection="1"' in home.text and 'data-collection="2"' in home.text
+    assert home.text.index('data-collection="1"') < home.text.index('data-collection="popular"')
+    assert 'class="collection-divider"' in home.text
+    assert 'href="/collections/latest"' in home.text
+    assert "The most popular" not in home.text, "fake categories carry no description"
+    assert 'name="sort" data-default="popularity"' in home.text
+    assert legacy.headers["location"] == "/collections/latest?rating_min=7"
+    assert legacy_recent.headers["location"] == "/?media=movie&sort=added"
+    assert legacy_home.headers["location"] == "/"
+    assert movie_only.headers["location"] == "/?media=tv"
+    assert missing.headers["location"] == "/?year_from=2020"
+    assert unknown.headers["location"] == "/"
+    latest_query = catalog.browse_queries[1]
+    assert (latest_query.category, latest_query.sort, latest_query.descending) == (
+        "latest",
+        None,
+        None,
+    ), "the default sort is not repeated"
+    assert '<option value="release" selected>' in latest.text
+    assert 'href="/collections/latest?media=movie"' in latest.text
+    rated_query = catalog.browse_queries[2]
+    assert (rated_query.sort, rated_query.descending) == ("rating", False)
+    assert 'href="/collections/latest?sort=rating&amp;order=asc&amp;page=2"' not in rated.text
+    assert '<option value="asc" selected>' in rated.text
+    assert 'href="/collections/drama"' in rated.text, "other collections reset the sort"
+    assert catalog.browse_queries[3].sort is None, "streaming has no date added"
+    assert '<option value="added"' not in added.text
+
+
+def test_collections_are_created_edited_and_deleted(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        created = client.post(
+            "/api/collections", json={"name": " Weekend ", "icon": "clock", "description": "Fun"}
+        )
+        nameless = client.post("/api/collections", json={"icon": "clock"})
+        bad_icon = client.post("/api/collections", json={"name": "Odd", "icon": "unicorn"})
+        not_text = client.post("/api/collections", json={"name": 4})
+        collection_id = created.json()["collection"]["id"]
+        renamed = client.patch(f"/api/collections/{collection_id}", json={"name": "Weekends"})
+        resorted = client.patch(f"/api/collections/{collection_id}", json={"default_sort": "x"})
+        missing = client.patch("/api/collections/999", json={"name": "Missing"})
+        deleted = client.delete(f"/api/collections/{collection_id}")
+        deleted_again = client.delete(f"/api/collections/{collection_id}")
+        listed = client.get("/api/collections")
+
+    assert created.status_code == 201
+    assert created.json()["collection"] == {
+        "id": 3,
+        "name": "Weekend",
+        "description": "Fun",
+        "icon": "clock",
+        "default_sort": "added",
+        "item_count": 0,
+        "url": "/collections/3",
+    }
+    assert nameless.status_code == 422
+    assert bad_icon.status_code == 422
+    assert not_text.status_code == 422
+    assert renamed.json()["collection"]["name"] == "Weekends"
+    assert renamed.json()["collection"]["icon"] == "clock", "unchanged fields are kept"
+    assert resorted.status_code == 422
+    assert missing.status_code == 404
+    assert deleted.json() == {"status": "deleted"}
+    assert deleted_again.status_code == 404
+    assert [item["name"] for item in listed.json()["collections"]] == [
+        "Watchlist",
+        "My favourites",
+    ]
+
+
+def test_site_title_is_renamed_and_kept_by_display_changes(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        default = client.get("/")
+        renamed = client.post("/api/preferences/site-title", json={"title": " Sarah's  Taste "})
+        client.post("/api/preferences/display", json={"show_year": False})
+        home = client.get("/")
+        blank = client.post("/api/preferences/site-title", json={"title": "  "})
+        wrong = client.post("/api/preferences/site-title", json={"name": "x"})
+
+    assert '<span class="brand-name">MyTaste</span>' in default.text
+    assert renamed.json() == {"site_title": "Sarah's Taste"}
+    assert '<span class="brand-name">Sarah&#39;s Taste</span>' in home.text
+    assert "<title>Popular · Sarah&#39;s Taste</title>" in home.text
+    assert 'data-show-year="false"' in home.text
+    assert blank.status_code == 422
+    assert wrong.status_code == 422

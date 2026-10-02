@@ -7,8 +7,11 @@ matching releases in a clean poster grid.
 ## Features
 
 - Region-aware subscription choices such as Netflix, Prime Video, and Apple TV+
-- Unified All, Movies, and TV Shows browsing
-- Latest, Most Popular, and common genre categories
+- Unified All, Movies, and Series browsing
+- Collections: predefined views such as Popular, Latest, and genres, plus your own lists, starting
+  with an empty Watchlist and My favourites
+- Sort any collection by popularity, release date, rating, or title (and date added for your own
+  lists and local folders)
 - Title search restricted to the configured streaming subscriptions and local folders
 - Animated movie and show details with YouTube trailers, descriptions, and cast
 - A Watch button that opens the title on each of your services that carries it, and an episode
@@ -75,6 +78,25 @@ network.
 | `MYTASTE_MAX_TRANSCODES` | `1` | Conversions that may run at once; `0` turns conversion off |
 | `MYTASTE_HWACCEL` | `auto` | Hardware video decoding for conversions: `auto`, `drm`, or `none` |
 
+## Collections
+
+Everything you browse is a collection, shown as a tab above the grid:
+
+- **Predefined collections** are filters over every title on your services and in your folders,
+  and cannot be edited. **Popular** (the home page) holds the 200 most popular titles right now;
+  **Latest** holds titles released in the past year; genre collections such as **Comedy** or
+  **Thriller** hold that genre. TMDB has no Thriller, Romance, or Horror genre for series, so
+  those tabs only appear for movies.
+- **Your collections** are lists you fill yourself. MyTaste starts you with an empty
+  **Watchlist** and **My favourites**; you can rename, re-icon, describe, or delete them. A list
+  only shows titles you can watch on your services or from your folders, and says how many of its
+  titles that leaves (for example “12 of 23 titles are on your services”).
+
+The sidebar's sort, sources, and filters apply on top of whichever collection is open. Moving to
+another collection keeps the sources and filters and returns to that collection's own sort.
+Collections live at `/collections/<name>` (or `/collections/<number>` for your own), and the
+older `/?category=…` links redirect there.
+
 ## Storage libraries
 
 The Services page lists what you have enabled: streaming subscriptions and local libraries side
@@ -89,8 +111,8 @@ and folders may not be nested inside each other.
 Local titles are not a separate catalog. Every category mixes them with your streaming titles in
 one order, so a local movie appears exactly where it ranks by release date or popularity, and a
 title you own that is also streaming is shown once with a folder badge. Use the **Sources** filter
-to narrow the view to particular services or folders; with only folders selected, **Recently
-Added** and **A–Z** tabs become available.
+to narrow the view to particular services or folders; with only folders selected, the **Date
+added** sort becomes available.
 
 The scanner understands common layouts: loose files named `Title.2019.1080p.mkv`, one folder per
 movie such as `Title (2019)/`, director folders like `Nolan/2010 - Inception/`, and shows laid out
