@@ -1093,3 +1093,37 @@ def test_titles_are_grouped_into_rows(tmp_path: Path) -> None:
     assert 'class="group-rows"' not in unknown.text
     assert 'aria-controls="group-popover"' in unknown.text
     assert 'href="/?group=genre">By genre</a>' in unknown.text
+
+
+class PagedCatalog(FakeCatalog):
+    async def browse(
+        self, region: str, query: BrowseQuery, *, local: LocalSource | None = None
+    ) -> CatalogPage:
+        page = await super().browse(region, query, local=local)
+        return replace(page, page=query.page, total_pages=3)
+
+
+def test_infinite_scroll_fetches_batches_of_cards(tmp_path: Path) -> None:
+    with make_client(tmp_path, catalog=PagedCatalog()) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        first = client.get("/collections/latest?sort=title")
+        second = client.get(
+            "/collections/latest?sort=title&page=2", headers={"X-MyTaste-Fragment": "results"}
+        )
+        last = client.get(
+            "/collections/latest?sort=title&page=3", headers={"X-MyTaste-Fragment": "results"}
+        )
+        grouped = client.get("/?group=decade")
+
+    assert "data-results" in first.text
+    assert "data-load-more" in first.text
+    assert 'href="/collections/latest?sort=title&amp;page=2" data-next-page>Next</a>' in first.text
+    assert second.status_code == 200
+    assert "<html" not in second.text and "browse-sidebar" not in second.text
+    assert second.text.count("<article\n") + second.text.count("<article ") == 2
+    assert 'data-detail-url="/api/items/movie/12/details"' in second.text
+    assert 'loading="lazy"' in second.text
+    assert second.headers["X-Next-Page"] == "/collections/latest?sort=title&page=3"
+    assert last.headers["X-Next-Page"] == ""
+    assert '<div class="group-rows" data-results>' in grouped.text
+    assert 'aria-labelledby="group-row-1"' in grouped.text

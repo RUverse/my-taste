@@ -406,115 +406,117 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         rating_active = query.minimum_rating is not None or query.include_unrated
         sort_changed = query.sort is not None or query.descending is not None
         current_link = next((link for link in collection_links if link["active"]), None)
-        return render(
-            request,
-            "index.html",
-            {
-                "preferences": preferences,
-                "header_providers": configured_providers,
-                "configured_providers": configured_providers,
-                "header_media": query.media_type,
-                "search_query": query.search,
-                "query": query,
-                "page_path": page_path,
-                "media_links": media_links,
-                "collection_links": collection_links,
-                "current_link": current_link,
-                "return_to": url(replace(query, page=row_page) if group else query),
-                "collection": manual,
-                "collection_payload": _collection_payload(manual) if manual else None,
-                "collection_icons": ICONS,
-                "collection_sort_options": tuple(
-                    (value, _SORT_LABELS[value])
-                    for value in ("added", "popularity", "release", "rating", "title")
-                ),
-                "collection_availability": availability,
-                "page": page,
-                "heading": heading,
-                "description": description,
-                "icon": icon,
-                "sort_options": tuple(
-                    {"value": value, "label": _SORT_LABELS[value], "selected": value == sort}
-                    for value in sort_choices
-                ),
-                "default_sort": default_sort,
-                "sort_descending": descending,
-                "sort_natural_descending": natural_descending(sort),
-                "sort_label": _SORT_LABELS[sort],
-                "sort_changed": sort_changed,
-                "sort_reset_url": url(replace(query, sort=None, descending=None, page=1)),
-                "sort_flip_url": url(
-                    replace(
-                        query,
-                        descending=None if flipped == natural_descending(sort) else flipped,
-                        page=1,
-                    )
-                ),
-                "year_active": year_active,
-                "rating_active": rating_active,
-                "rating_clear_url": url(
-                    replace(query, minimum_rating=None, include_unrated=False, page=1)
-                ),
-                "active_filter_count": active_filter_count,
-                "clear_filters_url": url(
-                    BrowseQuery(
-                        media_type=query.media_type,
-                        category=query.category,
-                        search=query.search,
-                        provider_ids=all_provider_ids,
-                        library_ids=all_library_ids,
-                        sort=query.sort,
-                        descending=query.descending,
-                    )
-                ),
-                "previous_url": (url(replace(query, page=row_page - 1)) if row_page > 1 else None)
-                if group
-                else url(replace(query, page=query.page - 1))
-                if query.page > 1
-                else None,
-                "next_url": (
-                    url(replace(query, page=row_page + 1)) if row_page < row_pages else None
+        context: dict[str, object] = {
+            "preferences": preferences,
+            "header_providers": configured_providers,
+            "configured_providers": configured_providers,
+            "header_media": query.media_type,
+            "search_query": query.search,
+            "query": query,
+            "page_path": page_path,
+            "media_links": media_links,
+            "collection_links": collection_links,
+            "current_link": current_link,
+            "return_to": url(replace(query, page=row_page) if group else query),
+            "collection": manual,
+            "collection_payload": _collection_payload(manual) if manual else None,
+            "collection_icons": ICONS,
+            "collection_sort_options": tuple(
+                (value, _SORT_LABELS[value])
+                for value in ("added", "popularity", "release", "rating", "title")
+            ),
+            "collection_availability": availability,
+            "page": page,
+            "heading": heading,
+            "description": description,
+            "icon": icon,
+            "sort_options": tuple(
+                {"value": value, "label": _SORT_LABELS[value], "selected": value == sort}
+                for value in sort_choices
+            ),
+            "default_sort": default_sort,
+            "sort_descending": descending,
+            "sort_natural_descending": natural_descending(sort),
+            "sort_label": _SORT_LABELS[sort],
+            "sort_changed": sort_changed,
+            "sort_reset_url": url(replace(query, sort=None, descending=None, page=1)),
+            "sort_flip_url": url(
+                replace(
+                    query,
+                    descending=None if flipped == natural_descending(sort) else flipped,
+                    page=1,
                 )
-                if group
-                else url(replace(query, page=query.page + 1))
-                if query.page < page.total_pages
-                else None,
-                "pagination_label": f"Rows page {row_page} of {row_pages}"
-                if group
-                else f"Page {page.page} of {page.total_pages}",
-                "groups": groups,
-                "grouping": group,
-                "grouping_label": GROUPINGS.get(group, ""),
-                "grouping_options": tuple(
-                    {
-                        "value": value,
-                        "label": label,
-                        "selected": value == group,
-                        "url": url(replace(query, page=1), grouping=value),
-                    }
-                    for value, label in GROUPINGS.items()
-                ),
-                "group_clear_url": url(replace(query, page=1), grouping=""),
-                "grouped_count": len(page.items) if group else 0,
-                "grouped_more": group and page.total_results > len(page.items),
-                "error": error,
-                "notice": notice,
-                "libraries": libraries,
-                "library_keys": library.matched_keys() if libraries else frozenset(),
-                "library_scanning": library_scanning,
-                "streaming_selected": bool(query.provider_ids),
-                "source_options": source_options,
-                "sources_changed": sources_changed,
-                "all_sources_url": all_sources_url,
-                "year_presets": year_presets,
-                "year_clear_url": url(replace(query, year_from=None, year_to=None, page=1)),
-                "rating_options": (None, 5, 6, 7, 8),
-                "active_filters": active_filters,
-                "current_year": this_year,
-                "play_states": play_states,
-                "continue_items": continue_items,
-            },
-        )
+            ),
+            "year_active": year_active,
+            "rating_active": rating_active,
+            "rating_clear_url": url(
+                replace(query, minimum_rating=None, include_unrated=False, page=1)
+            ),
+            "active_filter_count": active_filter_count,
+            "clear_filters_url": url(
+                BrowseQuery(
+                    media_type=query.media_type,
+                    category=query.category,
+                    search=query.search,
+                    provider_ids=all_provider_ids,
+                    library_ids=all_library_ids,
+                    sort=query.sort,
+                    descending=query.descending,
+                )
+            ),
+            "previous_url": (url(replace(query, page=row_page - 1)) if row_page > 1 else None)
+            if group
+            else url(replace(query, page=query.page - 1))
+            if query.page > 1
+            else None,
+            "next_url": (url(replace(query, page=row_page + 1)) if row_page < row_pages else None)
+            if group
+            else url(replace(query, page=query.page + 1))
+            if query.page < page.total_pages
+            else None,
+            "pagination_label": f"Rows page {row_page} of {row_pages}"
+            if group
+            else f"Page {page.page} of {page.total_pages}",
+            "groups": groups,
+            "row_offset": (row_page - 1) * _GROUP_ROWS_PER_PAGE if group else 0,
+            "grouping": group,
+            "grouping_label": GROUPINGS.get(group, ""),
+            "grouping_options": tuple(
+                {
+                    "value": value,
+                    "label": label,
+                    "selected": value == group,
+                    "url": url(replace(query, page=1), grouping=value),
+                }
+                for value, label in GROUPINGS.items()
+            ),
+            "group_clear_url": url(replace(query, page=1), grouping=""),
+            "grouped_count": len(page.items) if group else 0,
+            "grouped_more": group and page.total_results > len(page.items),
+            "error": error,
+            "notice": notice,
+            "libraries": libraries,
+            "library_keys": library.matched_keys() if libraries else frozenset(),
+            "library_scanning": library_scanning,
+            "streaming_selected": bool(query.provider_ids),
+            "source_options": source_options,
+            "sources_changed": sources_changed,
+            "all_sources_url": all_sources_url,
+            "year_presets": year_presets,
+            "year_clear_url": url(replace(query, year_from=None, year_to=None, page=1)),
+            "rating_options": (None, 5, 6, 7, 8),
+            "active_filters": active_filters,
+            "current_year": this_year,
+            "play_states": play_states,
+            "continue_items": continue_items,
+        }
+        if request.headers.get("x-mytaste-fragment") == "results":
+            # Infinite scroll asks for just the next batch and where the one after it is.
+            response = render(request, "_results_more.html", context)
+            response.headers["X-Next-Page"] = str(context["next_url"] or "")
+            response.headers["Cache-Control"] = "no-store"
+            return response
+        return render(request, "index.html", context)
 
     async def settings_context(
         request: Request,

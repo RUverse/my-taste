@@ -2215,6 +2215,21 @@ body[data-sidebar="closed"] .sidebar-rail {
 .collection-more-button[aria-expanded="true"] svg { transform: rotate(90deg); }
 .collection-more .popover { top: calc(100% - 4px); right: auto; left: -10px; }
 
+.pagination[hidden],
+.load-more[hidden] { display: none; }
+
+.load-more {
+  display: grid;
+  min-height: 64px;
+  margin-top: 28px;
+  place-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.load-more-status:empty { display: none; }
+
 /* Grouped titles: one scrollable row per director, genre, decade, or type. */
 .group-rows { display: grid; gap: 34px; }
 .group-note { margin: 0; color: var(--muted); font-size: 0.82rem; }

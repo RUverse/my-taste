@@ -28,6 +28,8 @@ matching releases in a clean poster grid.
   `/watch/tv/1399/1/3` that always open that exact episode
 - Persisted display controls for card metadata, sizing, trailer autoplay, and the sidebar state,
   including optional icons of the subscribed services that carry each title
+- Infinite scroll: more titles (or rows, when grouped) load as you near the bottom; without
+  JavaScript the page links still work
 - Single-profile preferences persisted in SQLite, including the site's name (click it to rename)
 - Responsive, server-rendered interface that follows the OS light or dark theme
 - Native Python and Docker deployment
