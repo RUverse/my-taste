@@ -93,6 +93,12 @@ Everything you browse is a collection, shown as a tab above the grid:
   only shows titles you can watch on your services or from your folders, and says how many of its
   titles that leaves (for example “12 of 23 titles are on your services”).
 
+To add a title to your collections, open it and choose **Save**; the menu lists your collections
+with checkmarks, and **New collection…** makes one and saves the title into it. The **+** at the
+end of the collection bar (or **New collection…** under **Show all**) creates an empty one, and the
+pencil beside a collection's name in the sidebar edits its name, icon, description, and default
+order, or deletes it. Deleting a collection never touches your services or files.
+
 Collections that do not fit in the bar above the grid are listed under **Show all**. The
 sidebar's sources, sort, and filters apply on top of whichever collection is open. Moving to
 another collection keeps the sources and filters and returns to that collection's own sort.

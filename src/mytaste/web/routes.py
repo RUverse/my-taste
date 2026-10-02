@@ -25,7 +25,7 @@ from mytaste.catalog.models import (
 )
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
-from mytaste.collections.models import HOME_COLLECTION, Collection, smart_collection
+from mytaste.collections.models import HOME_COLLECTION, ICONS, Collection, smart_collection
 from mytaste.library.models import Library, LibraryStatus
 from mytaste.storage.preferences import DisplayPreferences, Preferences
 
@@ -393,6 +393,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "current_link": current_link,
                 "return_to": url(query),
                 "collection": manual,
+                "collection_payload": _collection_payload(manual) if manual else None,
+                "collection_icons": ICONS,
+                "collection_sort_options": tuple(
+                    (value, _SORT_LABELS[value])
+                    for value in ("added", "popularity", "release", "rating", "title")
+                ),
                 "collection_availability": availability,
                 "page": page,
                 "heading": heading,
