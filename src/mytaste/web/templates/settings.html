@@ -66,7 +66,7 @@
           </span>
           <noscript><button class="button button-secondary" type="submit">Save</button></noscript>
         </form>
-        {% if has_sources %}<a class="button button-primary" href="/">Done</a>{% endif %}
+        {% if has_sources %}<a class="button button-primary" href="{{ return_to or '/' }}">Done</a>{% endif %}
       </div>
     </header>
 
@@ -187,6 +187,7 @@
         <section class="add-panel" data-add-panel="streaming" data-title="Add streaming services" hidden>
           <form class="add-form" method="post" action="/settings/services" data-provider-form>
             <input type="hidden" name="region" value="{{ region }}">
+            {% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
             <div class="add-panel-intro">
               <p class="add-lede">Subscriptions available in {{ region_name }}. Rentals and stores aren’t included.</p>
               {% if streaming_error %}<div class="alert" role="alert">{{ streaming_error }}</div>{% endif %}
@@ -231,6 +232,7 @@
         {% set target_id = library_form.library_id %}
         <section class="add-panel" data-add-panel="local" data-title="{% if target_id %}Add folders to {{ library_form.name }}{% else %}Add a local library{% endif %}" hidden>
           <form class="add-form" method="post" action="{% if target_id %}/settings/libraries/{{ target_id }}/folders{% else %}/settings/libraries{% endif %}" data-library-form>
+            {% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}
             <div class="add-panel-body">
               <p class="add-lede">Add one or more folders. MyTaste scans them, matches each title on TMDB, and mixes it into your catalog. Your files are never changed.</p>
               {% if library_error %}<div class="alert" role="alert">{{ library_error }}</div>{% endif %}

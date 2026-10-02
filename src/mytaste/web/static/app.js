@@ -26,11 +26,106 @@
     });
   }
 
-  const sidebar = document.querySelector("#browse-sidebar");
-  const sidebarToggle = document.querySelector("[data-sidebar-toggle]");
+  // Popovers: a button with data-popover-button shows the element named by aria-controls.
+  const popoverButtons = Array.from(document.querySelectorAll("[data-popover-button]"));
+  const popoverOf = (button) => document.getElementById(button.getAttribute("aria-controls"));
 
-  if (sidebar && sidebarToggle) {
+  const closePopover = (button, { restoreFocus = false } = {}) => {
+    const popover = popoverOf(button);
+    if (!popover || popover.hidden) return;
+    popover.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    popover.dispatchEvent(new Event("popoverclose"));
+    if (restoreFocus) button.focus();
+  };
+
+  const openPopover = (button) => {
+    popoverButtons.forEach((other) => other !== button && closePopover(other));
+    const popover = popoverOf(button);
+    if (!popover) return;
+    popover.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    popover.querySelector("a:not([hidden]), button:not([hidden]), input")?.focus();
+  };
+
+  popoverButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (popoverOf(button)?.hidden) openPopover(button);
+      else closePopover(button);
+    });
+  });
+  document.addEventListener("click", (event) => {
+    popoverButtons.forEach((button) => {
+      const anchor = button.closest(".popover-anchor");
+      if (anchor && !anchor.contains(event.target)) closePopover(button);
+    });
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const open = popoverButtons.find((button) => !popoverOf(button)?.hidden);
+    if (open) {
+      event.stopPropagation();
+      closePopover(open, { restoreFocus: true });
+    }
+  });
+
+  const brandForm = document.querySelector("[data-site-title-form]");
+  const brandActions = document.querySelector("[data-brand-actions]");
+  const brandPopover = brandForm?.closest(".popover");
+  if (brandForm && brandActions && brandPopover) {
+    const input = brandForm.querySelector("input");
+    const error = brandForm.querySelector("[data-site-title-error]");
+    const showActions = () => {
+      brandForm.hidden = true;
+      brandActions.hidden = false;
+      error.hidden = true;
+    };
+    document.querySelector("[data-rename-site]")?.addEventListener("click", () => {
+      brandActions.hidden = true;
+      brandForm.hidden = false;
+      input.focus();
+      input.select();
+    });
+    brandForm.querySelector("[data-rename-cancel]")?.addEventListener("click", () => {
+      input.value = document.querySelector("[data-site-title]").textContent;
+      showActions();
+      brandActions.querySelector("[data-rename-site]")?.focus();
+    });
+    brandPopover.addEventListener("popoverclose", showActions);
+    brandForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      try {
+        const response = await fetch("/api/preferences/site-title", {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify({ title: input.value }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Could not rename the site");
+        const previous = document.querySelector("[data-site-title]").textContent;
+        document.querySelectorAll("[data-site-title]").forEach((node) => {
+          node.textContent = payload.site_title;
+        });
+        if (document.title.endsWith(previous)) {
+          document.title = `${document.title.slice(0, -previous.length)}${payload.site_title}`;
+        }
+        input.value = payload.site_title;
+        const button = document.querySelector('[aria-controls="brand-popover"]');
+        if (button) closePopover(button, { restoreFocus: true });
+      } catch (failure) {
+        error.textContent = failure.message;
+        error.hidden = false;
+      }
+    });
+  }
+
+  const sidebar = document.querySelector("#browse-sidebar");
+  const sidebarToggles = Array.from(document.querySelectorAll("[data-sidebar-toggle]"));
+  const rail = document.querySelector(".sidebar-rail");
+
+  if (sidebar && sidebarToggles.length) {
     const overlayQuery = window.matchMedia("(max-width: 900px)");
+    const mobileToggle = document.querySelector(".browse-toolbar [data-sidebar-toggle]");
 
     const sidebarIsOpen = () =>
       overlayQuery.matches
@@ -40,11 +135,11 @@
     const syncSidebar = () => {
       const open = sidebarIsOpen();
       sidebar.inert = !open;
-      sidebarToggle.setAttribute("aria-expanded", String(open));
-      sidebarToggle.setAttribute("aria-label", `${open ? "Hide" : "Show"} filters and display options`);
+      if (rail) rail.inert = open || overlayQuery.matches;
+      sidebarToggles.forEach((toggle) => toggle.setAttribute("aria-expanded", String(open)));
     };
 
-    const setSidebarOpen = (open) => {
+    const setSidebarOpen = (open, { focus = true } = {}) => {
       const hadFocus = sidebar.contains(document.activeElement);
       if (overlayQuery.matches) {
         document.body.classList.toggle("sidebar-overlay-open", open);
@@ -55,16 +150,33 @@
           headers: { Accept: "application/json", "Content-Type": "application/json" },
           body: JSON.stringify({ sidebar_open: open }),
         }).catch(() => {});
+        window.dispatchEvent(new Event("sidebarchange"));
       }
       syncSidebar();
-      if (open && overlayQuery.matches) {
-        sidebar.querySelector("[data-sidebar-close]")?.focus();
-      } else if (!open && hadFocus) {
-        sidebarToggle.focus();
+      if (!focus) return;
+      if (open) {
+        sidebar.querySelector(overlayQuery.matches ? "[data-sidebar-close]" : ".sidebar-collapse")?.focus();
+      } else if (hadFocus) {
+        (overlayQuery.matches ? mobileToggle : rail?.querySelector("[data-sidebar-toggle]"))?.focus();
       }
     };
 
-    sidebarToggle.addEventListener("click", () => setSidebarOpen(!sidebarIsOpen()));
+    sidebarToggles.forEach((toggle) => {
+      toggle.addEventListener("click", () => setSidebarOpen(!sidebarIsOpen()));
+    });
+    rail?.querySelectorAll("[data-rail-section]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const section = document.getElementById(button.dataset.railSection);
+        setSidebarOpen(true, { focus: false });
+        if (section instanceof HTMLDetailsElement) section.open = true;
+        if (!section) return;
+        section.scrollIntoView({ block: "nearest" });
+        const controls = section.querySelectorAll("summary, select, input:not([type='hidden']), button, a");
+        Array.from(controls)
+          .find((control) => control.getClientRects().length > 0)
+          ?.focus({ preventScroll: true });
+      });
+    });
     document.querySelectorAll("[data-sidebar-close]").forEach((button) => {
       button.addEventListener("click", () => setSidebarOpen(false));
     });
@@ -80,9 +192,81 @@
     syncSidebar();
   }
 
+  // Filter rules: "+" reveals a rule's controls; it only applies once a value is chosen.
+  const filterButton = document.querySelector('[aria-controls="filter-popover"]');
+  document.querySelectorAll("[data-add-filter]").forEach((choice) => {
+    choice.addEventListener("click", () => {
+      const rule = document.querySelector(`[data-filter-rule="${choice.dataset.addFilter}"]`);
+      if (!rule) return;
+      rule.hidden = false;
+      choice.hidden = true;
+      if (filterButton) {
+        closePopover(filterButton);
+        filterButton.hidden = !document.querySelector("[data-add-filter]:not([hidden])");
+      }
+      rule.querySelector("input")?.focus();
+    });
+  });
+  document.querySelectorAll("[data-remove-filter]").forEach((remove) => {
+    remove.addEventListener("click", () => {
+      const name = remove.dataset.removeFilter;
+      document.querySelector(`[data-filter-rule="${name}"]`).hidden = true;
+      document.querySelector(`[data-add-filter="${name}"]`).hidden = false;
+      if (filterButton) {
+        filterButton.hidden = false;
+        filterButton.focus();
+      }
+    });
+  });
+
+  // Collection bar: tabs that do not fit move into the "Show all" popover.
+  const collectionBar = document.querySelector("[data-collection-bar]");
+  if (collectionBar) {
+    const tabs = Array.from(collectionBar.querySelectorAll("[data-collection-tabs] [data-collection]"));
+    const dividers = Array.from(collectionBar.querySelectorAll("[data-collection-divider]"));
+    const more = document.querySelector("[data-collection-more]");
+    const overflowLinks = new Map(
+      Array.from(document.querySelectorAll("[data-collection-overflow]")).map((link) => [
+        link.dataset.collectionOverflow,
+        link,
+      ]),
+    );
+    const fits = () => collectionBar.scrollWidth <= collectionBar.clientWidth + 1;
+
+    const layoutTabs = () => {
+      collectionBar.classList.add("is-measured");
+      tabs.forEach((tab) => {
+        tab.hidden = false;
+      });
+      dividers.forEach((divider) => {
+        divider.hidden = false;
+      });
+      more.hidden = true;
+      if (!fits()) {
+        more.hidden = false;
+        for (let index = tabs.length - 1; index >= 0 && !fits(); index -= 1) {
+          tabs[index].hidden = true;
+        }
+      }
+      dividers.forEach((divider) => {
+        const before = divider.previousElementSibling;
+        const after = divider.nextElementSibling;
+        divider.hidden = !before || before.hidden || !after || after.hidden;
+      });
+      tabs.forEach((tab) => {
+        const link = overflowLinks.get(tab.dataset.collection);
+        if (link) link.hidden = !tab.hidden;
+      });
+    };
+
+    layoutTabs();
+    new ResizeObserver(layoutTabs).observe(collectionBar);
+    document.fonts?.ready.then(layoutTabs);
+  }
+
   const markNavigating = () => document.body.classList.add("is-navigating");
   window.addEventListener("pageshow", () => document.body.classList.remove("is-navigating"));
-  document.querySelectorAll(".browse-sidebar a, .active-filters a, .category-tabs a").forEach((link) => {
+  document.querySelectorAll(".browse-sidebar a, .active-filters a, .collection-bar a").forEach((link) => {
     link.addEventListener("click", (event) => {
       if (!event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0) {
         markNavigating();

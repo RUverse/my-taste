@@ -4,168 +4,253 @@
 {% block layout %}
   {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
   {% set check_icon %}<svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg>{% endset %}
+  {% set plus_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"></path></svg>{% endset %}
+  {% set minus_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 12h12"></path></svg>{% endset %}
+  {% set sources_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11.5" rx="2"></rect><path d="m9 3.5 3 3 3-3M8.5 21h7"></path></svg>{% endset %}
+  {% set sort_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9M4 12h6M4 17h3M17 5v14M14 16l3 3 3-3"></path></svg>{% endset %}
+  {% set filter_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2L4 5.5Z"></path></svg>{% endset %}
+  {% set appearance_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"></rect><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"></rect><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"></rect></svg>{% endset %}
+  {% set collapse_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15"></path></svg>{% endset %}
+  {% set sources_dot = sources_changed %}
+  {% set filter_dot = year_active or rating_active %}
+  {% set active_filter_rules = (1 if year_active else 0) + (1 if rating_active else 0) %}
   <div class="browse-layout">
-    <aside class="browse-sidebar" id="browse-sidebar" aria-label="Filters and display options" {% if not display.sidebar_open %}inert{% endif %}>
-      <button class="icon-button sidebar-dismiss" type="button" data-sidebar-close aria-label="Close filters and display options">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
-      </button>
-      <div class="sidebar-body">
-        <form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
-          <input type="hidden" name="media" value="{{ query.media_type }}" data-default="all">
-          {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
+    <div class="browse-side">
+      <aside class="browse-sidebar" id="browse-sidebar" aria-labelledby="collection-heading" {% if not display.sidebar_open %}inert{% endif %}>
+        <div class="sidebar-body">
+          <header class="sidebar-collection">
+            <div class="sidebar-collection-head">
+              <h1 id="collection-heading">{{ collection_icon(icon) }}<span>{{ heading }}</span></h1>
+              <button class="icon-button sidebar-collapse" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Hide the sidebar" title="Hide the sidebar">{{ collapse_icon }}</button>
+              <button class="icon-button sidebar-dismiss" type="button" data-sidebar-close aria-label="Close the sidebar">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+              </button>
+            </div>
+            {% if description %}<p class="sidebar-collection-description">{{ description }}</p>{% endif %}
+          </header>
 
-          {% if not query.search %}
-            <section class="sidebar-section" aria-labelledby="sort-heading">
-              <div class="sidebar-section-head">
-                <h3 id="sort-heading">Sort</h3>
-              </div>
-              <div class="sort-row">
-                <label class="select-field">
-                  <span class="sr-only">Sort by</span>
-                  <select name="sort" data-default="{{ default_sort }}" data-sort-field>
-                    {% for option in sort_options %}
-                      <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
-                    {% endfor %}
-                  </select>
-                </label>
-                <label class="select-field">
-                  <span class="sr-only">Direction</span>
-                  <select name="order" data-default="{{ 'desc' if sort_natural_descending else 'asc' }}" data-sort-order>
-                    <option value="desc" {% if sort_descending %}selected{% endif %}>Descending</option>
-                    <option value="asc" {% if not sort_descending %}selected{% endif %}>Ascending</option>
-                  </select>
-                </label>
-              </div>
-            </section>
-          {% endif %}
+          <form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
+            <input type="hidden" name="media" value="{{ query.media_type }}" data-default="all">
+            {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
 
-          {% if source_options %}
-            <section class="sidebar-section" aria-labelledby="sources-heading">
+            <section class="sidebar-section" id="sidebar-sources" aria-labelledby="sources-heading">
               <div class="sidebar-section-head">
-                <h3 id="sources-heading">Sources</h3>
-                {% if sources_changed %}<a class="section-action" href="{{ all_sources_url }}">Select all</a>{% endif %}
+                <h2 id="sources-heading">{{ sources_icon }}Sources</h2>
+                {% if sources_changed %}<a class="section-action" href="{{ all_sources_url }}">Use all</a>{% endif %}
+                <div class="popover-anchor">
+                  <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="sources-popover" aria-label="Add a source" title="Add a source">{{ plus_icon }}</button>
+                  <div class="popover" id="sources-popover" hidden>
+                    <a href="/settings?add=streaming&amp;next={{ return_to|urlencode }}">Streaming service</a>
+                    <a href="/settings?add=local&amp;next={{ return_to|urlencode }}">Local folder</a>
+                    <a href="/settings?next={{ return_to|urlencode }}">Manage sources and region</a>
+                  </div>
+                </div>
               </div>
               {% if configured_providers %}<input type="hidden" name="providers" value="none">{% endif %}
               {% if libraries %}<input type="hidden" name="libraries" value="none">{% endif %}
               <ul class="source-list" role="list">
                 {% for option in source_options %}
                   <li class="source-row">
-                    <label class="source-toggle">
+                    <label class="source-toggle" title="{{ 'Leave out of this view' if option.checked else 'Include in this view' }}">
                       <input type="checkbox" name="{{ 'providers' if option.kind == 'provider' else 'libraries' }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
                       <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}" aria-hidden="true">
                         {% if option.logo_url %}
-                          <img src="{{ option.logo_url }}" alt="" width="30" height="30">
+                          <img src="{{ option.logo_url }}" alt="" width="26" height="26">
                         {% elif option.kind == 'library' %}
                           <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
                         {% else %}
                           {{ option.name[0] }}
                         {% endif %}
                       </span>
-                      <span class="source-row-copy">
-                        <span class="source-row-name">{{ option.name }}</span>
-                        {% if option.kind == 'library' %}<span class="source-row-detail">{{ option.detail }}</span>{% endif %}
-                      </span>
-                      <span class="checkbox" aria-hidden="true">{{ check_icon }}</span>
+                      <span class="source-row-name">{{ option.name }}</span>
+                      {% if option.kind == 'library' %}<span class="source-row-detail" title="{{ option.detail }}">Local</span>{% endif %}
                     </label>
-                    <a class="source-only" href="{{ option.only_url }}">Only<span class="sr-only"> {{ option.name }}</span></a>
+                    <button class="row-button" type="submit" form="remove-{{ option.kind }}-{{ option.id }}" aria-label="Remove {{ option.name }}" title="Remove {{ option.name }}">{{ minus_icon }}</button>
                   </li>
                 {% endfor %}
               </ul>
             </section>
-          {% endif %}
 
-          <section class="sidebar-section" aria-labelledby="year-heading">
-            <div class="sidebar-section-head">
-              <h3 id="year-heading">Release year</h3>
-              {% if query.year_from is not none or query.year_to is not none %}<a class="section-action" href="{{ year_clear_url }}">Clear</a>{% endif %}
-            </div>
-            <div class="year-range">
-              <label><span class="sr-only">From year</span><input type="number" name="year_from" min="1900" max="{{ current_year }}" value="{{ query.year_from or '' }}" placeholder="From" inputmode="numeric"></label>
-              <span class="year-range-dash" aria-hidden="true">–</span>
-              <label><span class="sr-only">To year</span><input type="number" name="year_to" min="1900" max="{{ current_year }}" value="{{ query.year_to or '' }}" placeholder="To" inputmode="numeric"></label>
-            </div>
-            <div class="chip-row">
-              {% for preset in year_presets %}
-                <a class="chip" href="{{ preset.url }}" {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
-              {% endfor %}
-            </div>
-          </section>
+            {% if not query.search %}
+              <section class="sidebar-section" id="sidebar-sort" aria-labelledby="sort-heading">
+                <div class="sidebar-section-head">
+                  <h2 id="sort-heading">{{ sort_icon }}Sort</h2>
+                </div>
+                <div class="sort-row">
+                  <label class="select-field">
+                    <span class="sr-only">Sort by</span>
+                    <select name="sort" data-default="{{ default_sort }}" data-sort-field>
+                      {% for option in sort_options %}
+                        <option value="{{ option.value }}" {% if option.selected %}selected{% endif %}>{{ option.label }}</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                  <input type="hidden" name="order" value="{{ 'desc' if sort_descending else 'asc' }}" data-default="{{ 'desc' if sort_natural_descending else 'asc' }}" data-sort-order>
+                  <a class="square-button" href="{{ sort_flip_url }}" aria-label="{{ sort_label }}, {{ 'descending' if sort_descending else 'ascending' }}. Reverse the order" title="Reverse the order">
+                    <svg aria-hidden="true" viewBox="0 0 24 24">{% if sort_descending %}<path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"></path>{% else %}<path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"></path>{% endif %}</svg>
+                  </a>
+                  {% if sort_changed %}
+                    <a class="row-button" href="{{ sort_reset_url }}" aria-label="Back to this collection’s order" title="Back to this collection’s order">{{ minus_icon }}</a>
+                  {% endif %}
+                </div>
+              </section>
+            {% endif %}
 
-          <section class="sidebar-section" aria-labelledby="rating-heading">
-            <div class="sidebar-section-head">
-              <h3 id="rating-heading">Minimum rating</h3>
-            </div>
-            <div class="segmented segmented-rating" role="radiogroup" aria-labelledby="rating-heading">
-              {% for value in rating_options %}
-                <label>
-                  <input type="radio" name="rating_min" value="{{ value if value is not none else '' }}" {% if query.minimum_rating == value %}checked{% endif %}>
-                  <span>{% if value is none %}Any{% else %}{{ value }}+{% endif %}</span>
+            <section class="sidebar-section" id="sidebar-filter" aria-labelledby="filter-heading">
+              <div class="sidebar-section-head">
+                <h2 id="filter-heading">{{ filter_icon }}Filter</h2>
+                <div class="popover-anchor">
+                  <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="filter-popover" aria-label="Add a filter" title="Add a filter" {% if active_filter_rules == 2 %}hidden{% endif %}>{{ plus_icon }}</button>
+                  <div class="popover" id="filter-popover" hidden>
+                    <button type="button" data-add-filter="year" {% if year_active %}hidden{% endif %}>Release year</button>
+                    <button type="button" data-add-filter="rating" {% if rating_active %}hidden{% endif %}>Rating</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="filter-rule" data-filter-rule="year" {% if not year_active %}hidden{% endif %}>
+                <div class="filter-rule-head">
+                  <p id="year-heading">Release year</p>
+                  {% if year_active %}
+                    <a class="row-button" href="{{ year_clear_url }}" aria-label="Remove the release year filter" title="Remove">{{ minus_icon }}</a>
+                  {% else %}
+                    <button class="row-button" type="button" data-remove-filter="year" aria-label="Remove the release year filter" title="Remove">{{ minus_icon }}</button>
+                  {% endif %}
+                </div>
+                <div class="year-range" role="group" aria-labelledby="year-heading">
+                  <label><span class="sr-only">From year</span><input type="number" name="year_from" min="1900" max="{{ current_year }}" value="{{ query.year_from or '' }}" placeholder="From" inputmode="numeric"></label>
+                  <span class="year-range-dash" aria-hidden="true">–</span>
+                  <label><span class="sr-only">To year</span><input type="number" name="year_to" min="1900" max="{{ current_year }}" value="{{ query.year_to or '' }}" placeholder="To" inputmode="numeric"></label>
+                </div>
+                <div class="chip-row">
+                  {% for preset in year_presets %}
+                    <a class="chip" href="{{ preset.url }}" {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
+                  {% endfor %}
+                </div>
+              </div>
+
+              <div class="filter-rule" data-filter-rule="rating" {% if not rating_active %}hidden{% endif %}>
+                <div class="filter-rule-head">
+                  <p id="rating-heading">Minimum rating</p>
+                  {% if rating_active %}
+                    <a class="row-button" href="{{ rating_clear_url }}" aria-label="Remove the rating filter" title="Remove">{{ minus_icon }}</a>
+                  {% else %}
+                    <button class="row-button" type="button" data-remove-filter="rating" aria-label="Remove the rating filter" title="Remove">{{ minus_icon }}</button>
+                  {% endif %}
+                </div>
+                <div class="segmented segmented-rating" role="radiogroup" aria-labelledby="rating-heading">
+                  {% for value in rating_options if value is not none %}
+                    <label>
+                      <input type="radio" name="rating_min" value="{{ value }}" {% if query.minimum_rating == value %}checked{% endif %}>
+                      <span>{{ value }}+</span>
+                    </label>
+                  {% endfor %}
+                </div>
+                <label class="switch-row">
+                  <span>Include unrated titles<small>Keep titles without a score</small></span>
+                  <input class="switch" type="checkbox" name="unrated" value="1" {% if query.include_unrated %}checked{% endif %}>
                 </label>
-              {% endfor %}
-            </div>
-            <label class="switch-row">
-              <span>Include unrated titles<small>Keep titles without a score</small></span>
-              <input class="switch" type="checkbox" name="unrated" value="1" {% if query.include_unrated %}checked{% endif %}>
-            </label>
-          </section>
+              </div>
+            </section>
 
-          <noscript><button class="button button-primary sidebar-apply" type="submit">Apply filters</button></noscript>
-        </form>
+            <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
+          </form>
 
-        <form class="sidebar-form" id="display-form">
-          <section class="sidebar-section" aria-labelledby="display-heading">
-            <div class="sidebar-section-head">
-              <h3 id="display-heading">Display</h3>
+          {% for option in source_options %}
+            <form id="remove-{{ option.kind }}-{{ option.id }}" method="post" action="{{ '/settings/services/' if option.kind == 'provider' else '/settings/libraries/' }}{{ option.id }}/remove" data-confirm="{% if option.kind == 'provider' %}Remove {{ option.name }} from your services?{% else %}Remove the local library “{{ option.name }}”? Your files are not touched.{% endif %}" hidden>
+              <input type="hidden" name="next" value="{{ return_to }}">
+            </form>
+          {% endfor %}
+
+          <details class="sidebar-section sidebar-appearance" id="sidebar-appearance">
+            <summary class="sidebar-section-head">
+              <h2 id="display-heading">{{ appearance_icon }}Appearance</h2>
+              <svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+            </summary>
+            <form class="sidebar-form" id="display-form" aria-labelledby="display-heading">
               <p class="save-status" id="display-save-status" role="status" aria-live="polite"></p>
-            </div>
-            <div class="segmented" role="radiogroup" aria-label="Card size">
-              <label>
-                <input type="radio" name="card_size" value="comfortable" {% if display.card_size == 'comfortable' %}checked{% endif %}>
-                <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>Comfortable</span>
-              </label>
-              <label>
-                <input type="radio" name="card_size" value="compact" {% if display.card_size == 'compact' %}checked{% endif %}>
-                <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4" rx="1"></rect><rect x="10" y="4" width="4" height="4" rx="1"></rect><rect x="16" y="4" width="4" height="4" rx="1"></rect><rect x="4" y="10" width="4" height="4" rx="1"></rect><rect x="10" y="10" width="4" height="4" rx="1"></rect><rect x="16" y="10" width="4" height="4" rx="1"></rect><rect x="4" y="16" width="4" height="4" rx="1"></rect><rect x="10" y="16" width="4" height="4" rx="1"></rect><rect x="16" y="16" width="4" height="4" rx="1"></rect></svg>Compact</span>
-              </label>
-            </div>
-            <p class="sidebar-label" id="card-details-label">Show on cards</p>
-            <div class="chip-row" role="group" aria-labelledby="card-details-label">
-              {% for key, label, hint, checked in [
-                ('show_year', 'Year', 'Release or first-air year', display.show_year),
-                ('show_rating', 'Rating', 'TMDB community score', display.show_rating),
-                ('show_media_type', 'Type', 'Movie or series badge', display.show_media_type),
-                ('show_genres', 'Genres', 'Up to two genres', display.show_genres),
-                ('show_people', 'Director', 'Director or creator, loaded for visible cards', display.show_people),
-                ('show_providers', 'Sources', 'Your streaming services and local folders that have the title', display.show_providers)
-              ] %}
-                <label class="chip chip-choice" title="{{ hint }}">
-                  <input type="checkbox" name="{{ key }}" {% if checked %}checked{% endif %}>
-                  <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ label }}</span>
+              <div class="segmented" role="radiogroup" aria-label="Card size">
+                <label>
+                  <input type="radio" name="card_size" value="comfortable" {% if display.card_size == 'comfortable' %}checked{% endif %}>
+                  <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect></svg>Comfortable</span>
                 </label>
-              {% endfor %}
-            </div>
-            <label class="switch-row">
-              <span>Autoplay trailers<small>Play when title details open</small></span>
-              <input class="switch" type="checkbox" name="autoplay_trailer" {% if display.autoplay_trailer %}checked{% endif %}>
-            </label>
-          </section>
-        </form>
-      </div>
-    </aside>
+                <label>
+                  <input type="radio" name="card_size" value="compact" {% if display.card_size == 'compact' %}checked{% endif %}>
+                  <span><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4" width="4" height="4" rx="1"></rect><rect x="10" y="4" width="4" height="4" rx="1"></rect><rect x="16" y="4" width="4" height="4" rx="1"></rect><rect x="4" y="10" width="4" height="4" rx="1"></rect><rect x="10" y="10" width="4" height="4" rx="1"></rect><rect x="16" y="10" width="4" height="4" rx="1"></rect><rect x="4" y="16" width="4" height="4" rx="1"></rect><rect x="10" y="16" width="4" height="4" rx="1"></rect><rect x="16" y="16" width="4" height="4" rx="1"></rect></svg>Compact</span>
+                </label>
+              </div>
+              <p class="sidebar-label" id="card-details-label">Show on cards</p>
+              <div class="chip-row" role="group" aria-labelledby="card-details-label">
+                {% for key, label, hint, checked in [
+                  ('show_year', 'Year', 'Release or first-air year', display.show_year),
+                  ('show_rating', 'Rating', 'TMDB community score', display.show_rating),
+                  ('show_media_type', 'Type', 'Movie or series badge', display.show_media_type),
+                  ('show_genres', 'Genres', 'Up to two genres', display.show_genres),
+                  ('show_people', 'Director', 'Director or creator, loaded for visible cards', display.show_people),
+                  ('show_providers', 'Sources', 'Your streaming services and local folders that have the title', display.show_providers)
+                ] %}
+                  <label class="chip chip-choice" title="{{ hint }}">
+                    <input type="checkbox" name="{{ key }}" {% if checked %}checked{% endif %}>
+                    <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ label }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <label class="switch-row">
+                <span>Autoplay trailers<small>Play when title details open</small></span>
+                <input class="switch" type="checkbox" name="autoplay_trailer" {% if display.autoplay_trailer %}checked{% endif %}>
+              </label>
+            </form>
+          </details>
+        </div>
+      </aside>
+
+      <nav class="sidebar-rail" aria-label="Sidebar" {% if display.sidebar_open %}inert{% endif %}>
+        <button class="icon-button rail-button" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Show the sidebar" title="Show the sidebar">{{ collapse_icon }}</button>
+        <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Sources{% if sources_dot %} (narrowed){% endif %}" title="Sources">
+          {% set rail_logos = configured_providers[:3 if libraries else 4] %}
+          <span class="rail-logo-stack" aria-hidden="true">
+            {% for provider in rail_logos %}
+              {% if provider.logo_url %}<img src="{{ provider.logo_url }}" alt="" width="17" height="17">{% else %}<span class="mini-logo">{{ provider.name[0] }}</span>{% endif %}
+            {% endfor %}
+            {% if libraries %}<span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
+          </span>
+          {% if sources_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}
+        </button>
+        {% if not query.search %}
+          <button class="icon-button rail-button" type="button" data-rail-section="sidebar-sort" aria-label="Sort: {{ sort_label }}{% if sort_changed %} (changed){% endif %}" title="Sort: {{ sort_label }}">{{ sort_icon }}{% if sort_changed %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
+        {% endif %}
+        <button class="icon-button rail-button" type="button" data-rail-section="sidebar-filter" aria-label="Filter{% if filter_dot %} ({{ active_filter_rules }} active){% endif %}" title="Filter">{{ filter_icon }}{% if filter_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
+        <button class="icon-button rail-button" type="button" data-rail-section="sidebar-appearance" aria-label="Appearance" title="Appearance">{{ appearance_icon }}</button>
+      </nav>
+    </div>
     <div class="sidebar-backdrop" data-sidebar-close aria-hidden="true"></div>
 
     <div class="browse-main">
       <div class="browse-toolbar">
-        <button class="icon-button sidebar-toggle" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="{{ 'Hide' if display.sidebar_open else 'Show' }} filters and display options" title="Filters and display">
-          <svg class="sidebar-icon-collapse" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15M15.5 10l-2 2 2 2"></path></svg>
-          <svg class="sidebar-icon-expand" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15M13.5 10l2 2-2 2"></path></svg>
+        <button class="icon-button sidebar-toggle" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="false" aria-label="Show sources, sort, and filters" title="Sources, sort, and filters">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
           {% if active_filter_count %}<span class="filter-count">{{ active_filter_count }}</span>{% endif %}
         </button>
-        <nav class="category-tabs" aria-label="Collections">
-          {% for item in collection_links %}
-            {% if item.kind == 'smart' and loop.previtem and loop.previtem.kind == 'manual' %}<span class="collection-divider" aria-hidden="true"></span>{% endif %}
-            <a href="{{ item.url }}" data-collection="{{ item.key }}" {% if item.active %}aria-current="page"{% endif %}>{{ collection_icon(item.icon) }}{{ item.label }}</a>
-          {% endfor %}
+        <nav class="collection-nav" aria-label="Collections">
+          <div class="collection-bar" data-collection-bar>
+            {% if current_link %}
+              <a class="collection-tab collection-current" href="{{ current_link.url }}" aria-current="page">{{ collection_icon(current_link.icon) }}{{ current_link.label }}</a>
+            {% endif %}
+            <div class="collection-tabs" data-collection-tabs>
+              {% for item in collection_links if not item.active %}
+                {% if item.kind == 'smart' and loop.previtem and loop.previtem.kind == 'manual' %}<span class="collection-divider" aria-hidden="true" data-collection-divider></span>{% endif %}
+                <a class="collection-tab" href="{{ item.url }}" data-collection="{{ item.key }}" data-kind="{{ item.kind }}">{{ collection_icon(item.icon) }}{{ item.label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="popover-anchor collection-more" data-collection-more hidden>
+            <button class="collection-more-button" type="button" data-popover-button aria-expanded="false" aria-controls="collections-popover">Show all<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg></button>
+            <div class="popover" id="collections-popover" hidden>
+              {% for item in collection_links if not item.active %}
+                <a href="{{ item.url }}" data-collection-overflow="{{ item.key }}">{{ collection_icon(item.icon) }}{{ item.label }}</a>
+              {% endfor %}
+            </div>
+          </div>
         </nav>
       </div>
 
@@ -182,13 +267,11 @@
             <a class="filter-chip-clear" href="{{ clear_filters_url }}">Clear all</a>
           </div>
         {% endif %}
-    {% if (description or collection_availability) and not query.search %}
-      <div class="collection-intro">
-        {% if description %}<p>{{ description }}</p>{% endif %}
-        {% if collection_availability and collection_availability[0] < collection_availability[1] %}
-          <p class="collection-availability">{{ collection_availability[0] }} of {{ collection_availability[1] }} titles are on your services</p>
-        {% endif %}
-      </div>
+    {% if collection_availability and 0 < collection_availability[0] < collection_availability[1] %}
+      <p class="collection-availability">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 11v5.5M12 7.5h.01"></path></svg>
+        {{ collection_availability[0] }} of {{ collection_availability[1] }} titles are on your services
+      </p>
     {% endif %}
     {% if error %}
       <div class="alert" role="alert"><strong>Catalog unavailable.</strong> {{ error }} Refresh the page to try again.</div>

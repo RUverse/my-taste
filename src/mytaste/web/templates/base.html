@@ -24,10 +24,28 @@
   >
     <header class="site-header">
       <div class="header-primary">
-        <a class="brand" href="/" aria-label="{{ display.site_title }} home">
-          <span class="brand-mark" aria-hidden="true">{{ display.site_title[0] }}</span>
-          <span class="brand-name">{{ display.site_title }}</span>
-        </a>
+        <div class="popover-anchor brand-menu">
+          <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
+            <span class="brand-name" data-site-title>{{ display.site_title }}</span>
+            <svg class="brand-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+          </button>
+          <div class="popover brand-popover" id="brand-popover" hidden>
+            <div data-brand-actions>
+              <a href="/">Home</a>
+              <button type="button" data-rename-site>Rename…</button>
+              <a href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %}>Sources and region</a>
+            </div>
+            <form class="rename-form" data-site-title-form hidden>
+              <label for="site-title-input">Name this site</label>
+              <input id="site-title-input" name="title" type="text" value="{{ display.site_title }}" maxlength="40" autocomplete="off" required>
+              <p class="form-error" data-site-title-error role="alert" hidden></p>
+              <div class="rename-actions">
+                <button class="button button-secondary" type="button" data-rename-cancel>Cancel</button>
+                <button class="button button-primary" type="submit">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
 
         <div class="primary-controls">
           <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="/" role="search">
@@ -53,26 +71,6 @@
 
         </div>
 
-        {% set logo_limit = 2 if header_has_library else 3 %}
-        <a class="services-link" href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %} aria-label="Manage services">
-          <span class="service-logo-stack" aria-hidden="true">
-            {% for provider in header_providers[:logo_limit] %}
-              {% if provider.logo_url %}
-                <img src="{{ provider.logo_url }}" alt="" width="30" height="30">
-              {% else %}
-                <span class="mini-logo">{{ provider.name[0] }}</span>
-              {% endif %}
-            {% endfor %}
-            {% if header_has_library %}
-              <span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"></path></svg></span>
-            {% endif %}
-            {% if not header_providers and not header_has_library %}
-              <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="6" rx="2"></rect><rect x="4" y="13" width="16" height="6" rx="2"></rect></svg>
-            {% endif %}
-          </span>
-          {% if header_providers|length > logo_limit %}<span class="service-count">+{{ header_providers|length - logo_limit }}</span>{% endif %}
-          <span class="services-label">Services</span>
-        </a>
       </div>
     </header>
 

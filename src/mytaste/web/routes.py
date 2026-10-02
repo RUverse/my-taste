@@ -372,6 +372,11 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         statuses: tuple[LibraryStatus, ...] = library.statuses() if libraries else ()
         library_scanning = any(status.state == "scanning" for status in statuses)
         page_path = url(replace(query, page=1)).partition("?")[0]
+        flipped = not descending
+        year_active = query.year_from is not None or query.year_to is not None
+        rating_active = query.minimum_rating is not None or query.include_unrated
+        sort_changed = query.sort is not None or query.descending is not None
+        current_link = next((link for link in collection_links if link["active"]), None)
         return render(
             request,
             "index.html",
@@ -385,6 +390,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "page_path": page_path,
                 "media_links": media_links,
                 "collection_links": collection_links,
+                "current_link": current_link,
+                "return_to": url(query),
                 "collection": manual,
                 "collection_availability": availability,
                 "page": page,
@@ -398,6 +405,21 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "default_sort": default_sort,
                 "sort_descending": descending,
                 "sort_natural_descending": natural_descending(sort),
+                "sort_label": _SORT_LABELS[sort],
+                "sort_changed": sort_changed,
+                "sort_reset_url": url(replace(query, sort=None, descending=None, page=1)),
+                "sort_flip_url": url(
+                    replace(
+                        query,
+                        descending=None if flipped == natural_descending(sort) else flipped,
+                        page=1,
+                    )
+                ),
+                "year_active": year_active,
+                "rating_active": rating_active,
+                "rating_clear_url": url(
+                    replace(query, minimum_rating=None, include_unrated=False, page=1)
+                ),
                 "active_filter_count": active_filter_count,
                 "clear_filters_url": url(
                     BrowseQuery(
@@ -444,6 +466,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         streaming_error: str | None = None,
         library_error: str | None = None,
         library_form: dict[str, object] | None = None,
+        return_to: str | None = None,
     ) -> dict[str, object]:
         preferences: Preferences = request.app.state.preferences.get()
         catalog = request.app.state.catalog
@@ -486,16 +509,22 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "page_error": page_error,
             "streaming_error": streaming_error,
             "library_error": library_error,
+            "return_to": return_to,
         }
 
     @router.get("/settings", response_class=HTMLResponse)
     async def settings_page(request: Request) -> HTMLResponse:
-        context = await settings_context(request, add_step=request.query_params.get("add", ""))
+        context = await settings_context(
+            request,
+            add_step=request.query_params.get("add", ""),
+            return_to=_return_path(request.query_params.get("next")),
+        )
         return render(request, "settings.html", context)
 
     @router.post("/settings/services", response_class=HTMLResponse)
     async def add_services(request: Request) -> Response:
         form = await request.form()
+        return_to = _return_path(form.get("next"))
         region = str(form.get("region") or "").strip().upper()
         selected_ids: set[int] = set()
         form_error: str | None = None
@@ -521,7 +550,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                         if preferences.region == region or provider_id in valid_ids
                     }
                     request.app.state.preferences.save(region, tuple(kept | selected_ids))
-                    return RedirectResponse("/settings", status_code=303)
+                    return RedirectResponse(return_to or "/settings", status_code=303)
             except (TMDBError, ValueError) as exc:
                 form_error = str(exc)
 
@@ -530,18 +559,20 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             add_step="streaming",
             selected_ids=selected_ids,
             streaming_error=form_error,
+            return_to=return_to,
         )
         return render(request, "settings.html", context, status_code=422)
 
     @router.post("/settings/services/{provider_id}/remove")
     async def remove_service(provider_id: int, request: Request) -> Response:
+        form = await request.form()
         preferences: Preferences = request.app.state.preferences.get()
         if provider_id in preferences.provider_ids:
             request.app.state.preferences.save(
                 preferences.region,
                 tuple(value for value in preferences.provider_ids if value != provider_id),
             )
-        return RedirectResponse("/settings", status_code=303)
+        return RedirectResponse(_return_path(form.get("next")) or "/settings", status_code=303)
 
     @router.post("/settings/region", response_class=HTMLResponse)
     async def change_region(request: Request) -> Response:
@@ -565,6 +596,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     @router.post("/settings/libraries", response_class=HTMLResponse)
     async def add_library(request: Request) -> Response:
         form = await request.form()
+        return_to = _return_path(form.get("next"))
         name = str(form.get("name") or "").strip()
         rows = _folder_rows(form)
         try:
@@ -575,13 +607,15 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 add_step="local",
                 library_error=str(exc),
                 library_form={"name": name, "folders": rows, "library_id": None},
+                return_to=return_to,
             )
             return render(request, "settings.html", context, status_code=422)
-        return RedirectResponse("/settings", status_code=303)
+        return RedirectResponse(return_to or "/settings", status_code=303)
 
     @router.post("/settings/libraries/{library_id}/folders", response_class=HTMLResponse)
     async def add_library_folders(library_id: int, request: Request) -> Response:
         form = await request.form()
+        return_to = _return_path(form.get("next"))
         rows = _folder_rows(form)
         try:
             request.app.state.library.add_folders(library_id, _folder_pairs(rows))
@@ -596,9 +630,10 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     "folders": rows,
                     "library_id": library_id if target else None,
                 },
+                return_to=return_to,
             )
             return render(request, "settings.html", context, status_code=422)
-        return RedirectResponse("/settings", status_code=303)
+        return RedirectResponse(return_to or "/settings", status_code=303)
 
     @router.post("/settings/libraries/{library_id}/folders/{folder_id}/remove")
     async def remove_library_folder(library_id: int, folder_id: int, request: Request) -> Response:
@@ -626,8 +661,9 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.post("/settings/libraries/{library_id}/remove")
     async def remove_library(library_id: int, request: Request) -> Response:
+        form = await request.form()
         request.app.state.library.remove(library_id)
-        return RedirectResponse("/settings", status_code=303)
+        return RedirectResponse(_return_path(form.get("next")) or "/settings", status_code=303)
 
     @router.get("/api/libraries/status", response_class=JSONResponse)
     async def library_status(request: Request) -> JSONResponse:
@@ -967,6 +1003,16 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         )
 
     return router
+
+
+def _return_path(value: object) -> str | None:
+    """Accept a path on this site to return to after a settings change, nothing else."""
+
+    if not isinstance(value, str) or len(value) > 2000:
+        return None
+    if not value.startswith("/") or value.startswith(("//", "/\\")):
+        return None
+    return value
 
 
 def _collection_payload(collection: Collection) -> dict[str, object]:
