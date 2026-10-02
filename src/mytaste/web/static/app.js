@@ -28,6 +28,9 @@
 
   // Popovers: a button with data-popover-button shows the element named by aria-controls.
   const popoverButtons = Array.from(document.querySelectorAll("[data-popover-button]"));
+  // Escape closes an open popover; a dialog around it ignores that same key press.
+  let popoverEscapedAt = -Infinity;
+  const escapeClosedPopover = (event) => event.timeStamp - popoverEscapedAt < 200;
   const popoverOf = (button) => document.getElementById(button.getAttribute("aria-controls"));
 
   const closePopover = (button, { restoreFocus = false } = {}) => {
@@ -55,15 +58,18 @@
     });
   });
   document.addEventListener("click", (event) => {
+    // The path is fixed when the click starts, so it still counts a menu item that re-rendered.
+    const path = event.composedPath();
     popoverButtons.forEach((button) => {
       const anchor = button.closest(".popover-anchor");
-      if (anchor && !anchor.contains(event.target)) closePopover(button);
+      if (anchor && !path.includes(anchor)) closePopover(button);
     });
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
     const open = popoverButtons.find((button) => !popoverOf(button)?.hidden);
     if (open) {
+      popoverEscapedAt = event.timeStamp;
       event.stopPropagation();
       closePopover(open, { restoreFocus: true });
     }
@@ -261,6 +267,7 @@
     const tabs = Array.from(collectionBar.querySelectorAll("[data-collection-tabs] [data-collection]"));
     const dividers = Array.from(collectionBar.querySelectorAll("[data-collection-divider]"));
     const more = document.querySelector("[data-collection-more]");
+    const addCollection = document.querySelector("[data-collection-add]");
     const overflowLinks = new Map(
       Array.from(document.querySelectorAll("[data-collection-overflow]")).map((link) => [
         link.dataset.collectionOverflow,
@@ -278,8 +285,10 @@
         divider.hidden = false;
       });
       more.hidden = true;
+      if (addCollection) addCollection.hidden = false;
       if (!fits()) {
         more.hidden = false;
+        if (addCollection) addCollection.hidden = true;
         for (let index = tabs.length - 1; index >= 0 && !fits(); index -= 1) {
           tabs[index].hidden = true;
         }
@@ -299,6 +308,89 @@
     new ResizeObserver(layoutTabs).observe(collectionBar);
     document.fonts?.ready.then(layoutTabs);
   }
+
+  // Collection editor: creates a collection, or edits or deletes the one being viewed.
+  const editor = document.querySelector("#collection-editor");
+  const editorForm = editor?.querySelector("[data-collection-form]");
+  let editorState = null;
+
+  const openCollectionEditor = ({ collection = null, onSaved }) => {
+    if (!editor || !editorForm) return;
+    editorState = { collection, onSaved };
+    editorForm.reset();
+    editorForm.elements.name.value = collection?.name ?? "";
+    editorForm.elements.description.value = collection?.description ?? "";
+    editorForm.elements.default_sort.value = collection?.default_sort ?? "added";
+    const icon = editorForm.querySelector(`input[name="icon"][value="${collection?.icon ?? ""}"]`);
+    if (icon) icon.checked = true;
+    editor.querySelector("[data-editor-title]").textContent = collection ? "Edit collection" : "New collection";
+    editor.querySelector("[data-editor-submit]").textContent = collection ? "Save" : "Create";
+    editor.querySelector("[data-editor-delete]").hidden = !collection;
+    editor.querySelector("[data-editor-error]").hidden = true;
+    editor.showModal();
+    editorForm.elements.name.focus();
+  };
+
+  if (editor && editorForm) {
+    const error = editor.querySelector("[data-editor-error]");
+    const showError = (message) => {
+      error.textContent = message;
+      error.hidden = false;
+    };
+    editor.querySelectorAll("[data-editor-close]").forEach((button) => {
+      button.addEventListener("click", () => editor.close());
+    });
+    editor.addEventListener("click", (event) => {
+      if (event.target === editor) editor.close();
+    });
+    editorForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(editorForm));
+      if (!values.name.trim()) {
+        showError("Give the collection a name.");
+        editorForm.elements.name.focus();
+        return;
+      }
+      const existing = editorState?.collection;
+      try {
+        const response = await fetch(existing ? `/api/collections/${existing.id}` : "/api/collections", {
+          method: existing ? "PATCH" : "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "The collection could not be saved.");
+        editor.close();
+        await editorState?.onSaved?.(payload.collection);
+      } catch (failure) {
+        showError(failure.message);
+      }
+    });
+    editor.querySelector("[data-editor-delete]").addEventListener("click", async () => {
+      const existing = editorState?.collection;
+      if (!existing || !window.confirm(`Delete “${existing.name}”? The titles in it are not affected.`)) {
+        return;
+      }
+      const response = await fetch(`/api/collections/${existing.id}`, { method: "DELETE" });
+      if (response.ok) {
+        window.location.assign("/");
+      } else {
+        showError("The collection could not be deleted.");
+      }
+    });
+  }
+
+  document.querySelectorAll("[data-new-collection]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const popoverButton = document.querySelector('[aria-controls="collections-popover"]');
+      if (popoverButton) closePopover(popoverButton);
+      openCollectionEditor({ onSaved: (collection) => window.location.assign(collection.url) });
+    });
+  });
+  document.querySelector("[data-edit-collection]")?.addEventListener("click", (event) => {
+    const collection = JSON.parse(event.currentTarget.dataset.editCollection);
+    openCollectionEditor({ collection, onSaved: () => window.location.reload() });
+  });
 
   const markNavigating = () => document.body.classList.add("is-navigating");
   window.addEventListener("pageshow", () => document.body.classList.remove("is-navigating"));
@@ -976,6 +1068,98 @@
     });
   };
 
+  // Save: add the open title to collections, or take it out of them.
+  const saveButton = detailDialog?.querySelector("[data-detail-save]");
+  const saveList = detailDialog?.querySelector("[data-save-list]");
+  const saveError = detailDialog?.querySelector("[data-save-error]");
+  const viewedCollectionId = Number(document.querySelector("[data-collection-id]")?.dataset.collectionId) || null;
+  let saveTitle = null;
+  let saveCollections = [];
+  let viewedCollectionChanged = false;
+
+  const renderSave = () => {
+    if (!saveButton || !saveList) return;
+    const saved = saveCollections.filter((collection) => collection.saved);
+    saveButton.classList.toggle("is-saved", saved.length > 0);
+    saveButton.querySelector("[data-detail-save-label]").textContent = saved.length ? "Saved" : "Save";
+    saveButton.setAttribute(
+      "aria-label",
+      saved.length ? `Saved in ${saved.map((collection) => collection.name).join(", ")}` : "Save to a collection",
+    );
+    saveList.replaceChildren(
+      ...saveCollections.map((collection) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "save-choice";
+        button.setAttribute("aria-pressed", String(collection.saved));
+        button.innerHTML = '<span class="save-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg></span>';
+        const name = document.createElement("span");
+        name.textContent = collection.name;
+        button.append(name);
+        button.addEventListener("click", () => toggleSaved(collection));
+        return button;
+      }),
+    );
+  };
+
+  const toggleSaved = async (collection) => {
+    const title = saveTitle;
+    const saved = !collection.saved;
+    collection.saved = saved;
+    saveError.hidden = true;
+    renderSave();
+    try {
+      const response = await fetch(`/api/collections/${collection.id}/items/${title}`, {
+        method: saved ? "PUT" : "DELETE",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error();
+      if (collection.id === viewedCollectionId) viewedCollectionChanged = true;
+    } catch {
+      collection.saved = !saved;
+      if (title === saveTitle) {
+        saveError.textContent = `Could not update “${collection.name}”. Try again.`;
+        saveError.hidden = false;
+        renderSave();
+      }
+    }
+  };
+
+  const loadSave = async (card) => {
+    if (!saveButton) return;
+    closePopover(saveButton);
+    saveError.hidden = true;
+    saveTitle = card.dataset.detailUrl.replace(/^\/api\/items\//, "").replace(/\/details$/, "");
+    saveCollections = [];
+    renderSave();
+    const title = saveTitle;
+    try {
+      const response = await fetch(`/api/items/${title}/collections`, { headers: { Accept: "application/json" } });
+      const payload = await response.json();
+      if (title === saveTitle) {
+        saveCollections = payload.collections;
+        renderSave();
+      }
+    } catch {
+      // The menu stays empty; saving can be retried after reopening the title.
+    }
+  };
+
+  detailDialog?.querySelector("[data-save-new]")?.addEventListener("click", () => {
+    closePopover(saveButton);
+    const title = saveTitle;
+    openCollectionEditor({
+      onSaved: async (collection) => {
+        const entry = { ...collection, saved: false };
+        saveCollections.push(entry);
+        if (title === saveTitle) await toggleSaved(entry);
+      },
+    });
+  });
+  detailDialog?.addEventListener("close", () => {
+    if (viewedCollectionChanged) window.location.reload();
+  });
+
   const openMediaDetails = (card) => {
     if (!detailDialog || detailDialog.open) {
       return;
@@ -996,6 +1180,7 @@
     detailDialog.classList.add("is-visible");
     settleFlight(flight, motionRevision);
     loadDetails(card);
+    loadSave(card);
   };
 
   // Stepping to a neighbor flies its peeking cover into place, while the cover being left slides
@@ -1048,6 +1233,7 @@
         });
     }
     loadDetails(card);
+    loadSave(card);
   };
 
   const closeMediaDetails = async () => {
@@ -1101,7 +1287,7 @@
     });
     detailDialog.addEventListener("cancel", (event) => {
       event.preventDefault();
-      closeMediaDetails();
+      if (!escapeClosedPopover(event)) closeMediaDetails();
     });
     detailDialog.addEventListener("click", (event) => {
       if (event.target === detailDialog) {
@@ -1114,7 +1300,7 @@
       if (!step || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
         return;
       }
-      if (event.target.closest?.(".episode-strip, .media-detail-cast-list, input, textarea, select")) {
+      if (event.target.closest?.(".episode-strip, .media-detail-cast-list, .popover, input, textarea, select")) {
         return;
       }
       event.preventDefault();

@@ -22,6 +22,11 @@
           <header class="sidebar-collection">
             <div class="sidebar-collection-head">
               <h1 id="collection-heading">{{ collection_icon(icon) }}<span>{{ heading }}</span></h1>
+              {% if collection_payload %}
+                <button class="icon-button sidebar-edit" type="button" data-edit-collection="{{ collection_payload|tojson|forceescape }}" aria-haspopup="dialog" aria-label="Edit {{ collection.name }}" title="Edit collection">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10a2.83 2.83 0 0 0-4-4l-10 10v4Z"></path><path d="m13 7 4 4"></path></svg>
+                </button>
+              {% endif %}
               <button class="icon-button sidebar-collapse" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Hide the sidebar" title="Hide the sidebar">{{ collapse_icon }}</button>
               <button class="icon-button sidebar-dismiss" type="button" data-sidebar-close aria-label="Close the sidebar">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
@@ -265,12 +270,14 @@
               {% for item in collection_links if not item.active %}
                 <a href="{{ item.url }}" data-collection-overflow="{{ item.key }}">{{ collection_icon(item.icon) }}{{ item.label }}</a>
               {% endfor %}
+              <button class="popover-separated" type="button" data-new-collection aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
             </div>
           </div>
+          <button class="collection-add" type="button" data-new-collection data-collection-add aria-haspopup="dialog" aria-label="New collection" title="New collection">{{ plus_icon }}</button>
         </nav>
       </div>
 
-      <main class="browse-content">
+      <main class="browse-content" {% if collection %}data-collection-id="{{ collection.id }}"{% endif %}>
         {% if active_filters %}
           <div class="active-filters" role="group" aria-label="Active filters">
             {% for chip in active_filters %}
@@ -391,7 +398,7 @@
       <div class="empty-state">
         {% if collection and collection_availability and not collection_availability[1] %}
           <h2>Nothing in {{ collection.name }} yet</h2>
-          <p>Titles you save to this collection appear here.</p>
+          <p>Open any title and choose <strong>Save</strong> to add it here.</p>
         {% elif collection and collection_availability and not collection_availability[0] %}
           <h2>None of these titles are on your services</h2>
           <p>{{ collection.name }} has {{ collection_availability[1] }} saved {{ 'title' if collection_availability[1] == 1 else 'titles' }}, but your services and folders carry none of them.</p>
@@ -465,10 +472,18 @@
               <div class="media-detail-content" data-detail-content hidden>
                 <div class="media-detail-head">
                   <div class="media-detail-links">
-                    <button class="detail-link" type="button" data-detail-add>
-                      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
-                      Watchlist
-                    </button>
+                    <div class="popover-anchor detail-save">
+                      <button class="detail-link" type="button" data-detail-save data-popover-button aria-expanded="false" aria-controls="save-popover">
+                        <svg class="detail-save-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6.5 4.5h11v15.5l-5.5-4-5.5 4V4.5Z"></path></svg>
+                        <span data-detail-save-label>Save</span>
+                      </button>
+                      <div class="popover popover-start save-popover" id="save-popover" hidden>
+                        <p class="popover-title" id="save-popover-title">Save to</p>
+                        <div class="save-list" role="group" aria-labelledby="save-popover-title" data-save-list></div>
+                        <p class="form-error" data-save-error role="alert" hidden></p>
+                        <button class="popover-separated" type="button" data-save-new aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
+                      </div>
+                    </div>
                     <a class="detail-link" data-detail-trailer target="_blank" rel="noreferrer" hidden>
                       <svg class="detail-link-fill" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
                       Trailer
@@ -513,6 +528,54 @@
         <button class="detail-neighbor detail-neighbor-prev" type="button" data-detail-neighbor="-1" hidden></button>
         <button class="detail-neighbor detail-neighbor-next" type="button" data-detail-neighbor="1" hidden></button>
       </div>
+    </dialog>
+
+    <dialog class="collection-editor" id="collection-editor" aria-labelledby="collection-editor-title">
+      <form class="collection-editor-form" data-collection-form novalidate>
+        <header class="collection-editor-head">
+          <h2 id="collection-editor-title" data-editor-title>New collection</h2>
+          <button class="icon-button" type="button" data-editor-close aria-label="Close">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+          </button>
+        </header>
+        <div class="collection-editor-body">
+          <div class="editor-field">
+            <label for="collection-name">Name</label>
+            <input id="collection-name" name="name" type="text" maxlength="60" autocomplete="off" required>
+          </div>
+          <fieldset class="editor-field icon-picker">
+            <legend>Icon <span class="field-optional">Optional</span></legend>
+            <label title="No icon">
+              <input type="radio" name="icon" value="" checked>
+              <span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 18 12-12"></path></svg><span class="sr-only">No icon</span></span>
+            </label>
+            {% for name in collection_icons %}
+              <label title="{{ name|capitalize }}">
+                <input type="radio" name="icon" value="{{ name }}">
+                <span>{{ collection_icon(name) }}<span class="sr-only">{{ name|capitalize }}</span></span>
+              </label>
+            {% endfor %}
+          </fieldset>
+          <div class="editor-field">
+            <label for="collection-description">Description <span class="field-optional">Optional</span></label>
+            <textarea id="collection-description" name="description" maxlength="200" rows="2"></textarea>
+          </div>
+          <div class="editor-field">
+            <label for="collection-sort">Show titles by</label>
+            <select id="collection-sort" name="default_sort">
+              {% for value, label in collection_sort_options %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <p class="form-error" data-editor-error role="alert" hidden></p>
+        </div>
+        <footer class="collection-editor-foot">
+          <button class="button button-danger" type="button" data-editor-delete hidden>Delete</button>
+          <button class="button button-secondary" type="button" data-editor-close>Cancel</button>
+          <button class="button button-primary" type="submit" data-editor-submit>Create</button>
+        </footer>
+      </form>
     </dialog>
       </main>
     </div>

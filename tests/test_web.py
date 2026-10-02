@@ -378,7 +378,7 @@ def test_services_are_added_and_render_catalog(tmp_path: Path) -> None:
     assert 'id="media-details"' in home.text
     assert 'data-detail-url="/api/items/movie/12/details"' in home.text
     assert "data-detail-sound" in home.text
-    assert "data-detail-add" in home.text
+    assert "data-detail-save" in home.text
     assert "View on TMDB" not in home.text
     assert 'data-autoplay-trailer="true"' in home.text
     assert 'name="autoplay_trailer" checked' in home.text
@@ -692,7 +692,7 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert mixed.text.count("is-in-library") == 3
     assert 'data-providers-key="movie:12" title="In your local library"' in mixed.text
     assert mixed.text.count('<span class="source-local">') == 3
-    assert '<option value="added"' not in mixed.text, "streaming has no date added"
+    assert '<option value="added" ' not in mixed.text, "streaming has no date added"
     assert 'name="providers" value="8" checked' in mixed.text
     assert 'name="libraries" value="1" checked' in mixed.text
     assert 'title="Local · Movies">Local</span>' in mixed.text
@@ -705,7 +705,7 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
 
     assert "Dark" in library_only.text
     assert "A New Film" not in library_only.text
-    assert '<option value="added"' in library_only.text
+    assert '<option value="added" ' in library_only.text
     assert 'href="/collections/latest?providers=none"' in library_only.text, (
         "tabs keep the source selection"
     )
@@ -825,7 +825,7 @@ def test_library_only_setup_skips_streaming_onboarding(tmp_path: Path) -> None:
     assert home.status_code == 200
     assert home.url.path == "/"
     assert "Dark" in home.text
-    assert '<option value="added"' in home.text, "local-only views sort by date added"
+    assert '<option value="added" ' in home.text, "local-only views sort by date added"
     assert catalog.browse_queries == []
     assert "Your services" in services.text
     assert "mini-logo-library" in home.text
@@ -947,7 +947,7 @@ def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
     assert 'href="/collections/latest" aria-label="Back to this collection’s order"' in rated.text
     assert 'href="/collections/drama"' in rated.text, "other collections reset the sort"
     assert catalog.browse_queries[3].sort is None, "streaming has no date added"
-    assert '<option value="added"' not in added.text
+    assert '<option value="added" ' not in added.text
 
 
 def test_collections_are_created_edited_and_deleted(tmp_path: Path) -> None:
@@ -1045,3 +1045,25 @@ def test_sidebar_source_changes_return_to_the_page(tmp_path: Path) -> None:
     assert removed.headers["location"] == "/?media=tv"
     assert offsite.headers["location"] == "/settings", "only paths on this site are followed"
     assert library.items == []
+
+
+def test_titles_can_be_saved_and_collections_edited_from_the_page(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        home = client.get("/")
+        watchlist = client.get("/collections/1")
+
+    assert 'aria-controls="save-popover"' in home.text
+    assert "data-save-new" in home.text
+    assert "data-detail-add" not in home.text
+    assert 'id="collection-editor"' in home.text
+    assert home.text.count('name="icon"') == 17, "no icon plus the sixteen choices"
+    assert '<option value="added">Date added</option>' in home.text
+    assert "data-edit-collection" not in home.text, "predefined collections cannot be edited"
+    assert home.text.count("data-new-collection") == 2, "in Show all and beside the tabs"
+    assert "data-collection-id" not in home.text
+    assert 'data-collection-id="1"' in watchlist.text
+    assert 'aria-label="Edit Watchlist"' in watchlist.text
+    assert 'data-edit-collection="{&#34;default_sort&#34;: &#34;added&#34;' in watchlist.text
+    assert "&#34;name&#34;: &#34;Watchlist&#34;" in watchlist.text
+    assert "choose <strong>Save</strong> to add it here" in watchlist.text
