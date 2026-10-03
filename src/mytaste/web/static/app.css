@@ -1945,6 +1945,81 @@ body[data-sidebar="closed"] .browse-sidebar {
 .filter-rule .year-range,
 .filter-rule .segmented { margin-top: 8px; }
 .filter-rule .chip-row { margin-top: 8px; }
+.filter-rule > .select-field { display: block; margin-top: 8px; }
+.filter-rule > .select-field select { min-height: 38px; font-size: 0.84rem; }
+.filter-hint { margin: 8px 0 0; color: var(--muted); font-size: 0.72rem; line-height: 1.35; }
+.segmented-wrap { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.segmented-wrap span { padding-inline: 4px; text-align: center; }
+
+/* Suggestions for people and keyword filters. */
+.suggest { position: relative; margin-top: 8px; }
+
+.suggest-input {
+  width: 100%;
+  min-height: 38px;
+  padding: 0 11px;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+  background: var(--input-background);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.suggest-input::placeholder { color: var(--placeholder-text); }
+.suggest-input::-webkit-search-cancel-button { filter: var(--search-cancel-filter); }
+
+.suggest-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 264px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+}
+
+.suggest-list li {
+  display: grid;
+  gap: 2px;
+  padding: 7px 9px;
+  font-size: 0.82rem;
+  font-weight: 650;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.suggest-list small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suggest-list li:hover,
+.suggest-list li[aria-selected="true"] { background: var(--surface-raised); }
+.suggest-list li[aria-selected="true"] { outline: 2px solid var(--focus); outline-offset: -2px; }
+.suggest-status:empty { display: none; }
+.suggest-status { margin: 6px 0 0; color: var(--muted); font-size: 0.72rem; }
+
+/* With suggestions showing, their count is for screen readers only. */
+.suggest:has(.suggest-list:not([hidden])) .suggest-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 
 .sidebar-section-head h2:has(.section-disclosure) { flex: 1; }
 
@@ -2039,6 +2114,19 @@ body[data-sidebar="closed"] .browse-sidebar {
 .popover a:focus-visible,
 .popover button:not(.button):focus-visible { background: var(--surface-raised); }
 .popover a[aria-current] { color: var(--accent); }
+.popover-filters { min-width: 210px; }
+.popover-group { display: grid; }
+.popover-group + .popover-group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--faint-border); }
+.popover-group:not(:has(button:not([hidden]))) { display: none; }
+
+.popover-label {
+  margin: 6px 10px 2px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 .popover .collection-icon {
   width: 16px;

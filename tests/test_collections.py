@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from mytaste.catalog.filters import TitleFilters
 from mytaste.catalog.models import BrowseQuery, MediaDetails
 from mytaste.catalog.tmdb import TMDBError
 from mytaste.collections.models import (
@@ -277,6 +278,26 @@ def test_collection_filters_sources_and_sorts_apply_on_top(tmp_path: Path) -> No
     )
     assert [entry.title for entry in library_only.page.items] == ["Series", "On disk"]
     assert (library_only.available, library_only.total) == (2, 6)
+
+    seen: list[str] = []
+
+    async def refine(items):
+        seen.extend(entry.title for entry in items)
+        return frozenset((entry.media_type, entry.id) for entry in items if entry.title != "Zodiac")
+
+    refined = asyncio.run(
+        service.browse(
+            collection,
+            BrowseQuery(provider_ids=(8, 337), filters=TitleFilters(languages=("en",))),
+            region="DE",
+            provider_ids=(8, 337),
+            library_ids=(1, 2),
+            refine=refine,
+        )
+    )
+    assert "Zodiac" in seen
+    assert "Zodiac" not in [entry.title for entry in refined.page.items]
+    assert refined.available == 5, "filters narrow the view, not what is available"
 
 
 def test_saving_a_title_stores_its_details_and_where_it_streams(tmp_path: Path) -> None:

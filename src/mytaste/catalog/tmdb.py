@@ -13,6 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
+from mytaste.catalog.filters import PersonRole, TitleFacts, credit_roles
 from mytaste.catalog.models import (
     CastMember,
     CatalogItem,
@@ -102,6 +103,24 @@ class TMDBClient:
             raise TMDBError("TMDB returned an unexpected response")
         return cast(dict[str, Any], payload)
 
+    async def _get_list(
+        self, path: str, params: Mapping[str, object] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch an endpoint that answers with a JSON list rather than an object."""
+
+        request_params = dict(params or {})
+        if self._api_key is not None:
+            request_params["api_key"] = self._api_key
+        try:
+            response = await self._client.get(path, params=request_params)
+            response.raise_for_status()
+            payload = response.json()
+        except httpx.HTTPError as exc:
+            raise TMDBError("Could not read a list from TMDB") from exc
+        except ValueError as exc:
+            raise TMDBError("TMDB returned an unexpected response") from exc
+        return _object_list(payload)
+
     async def _get_optional(
         self, path: str, params: Mapping[str, object] | None = None
     ) -> dict[str, Any]:
@@ -170,16 +189,19 @@ class TMDBClient:
         provider_ids: Sequence[int],
         *,
         sort_by: str,
-        genre_id: int | None = None,
+        genres: str | int | None = None,
         year_from: int | None = None,
         year_to: int | None = None,
         minimum_rating: float | None = None,
         include_unrated: bool = False,
         released_after: date | None = None,
         minimum_votes: int | None = None,
+        extra: Sequence[tuple[str, str]] = (),
         page: int = 1,
         today: date | None = None,
     ) -> CatalogPage:
+        """Discover titles on the given services; ``extra`` adds filter parameters as is."""
+
         unique_ids = sorted(set(provider_ids))
         if not unique_ids:
             return CatalogPage(items=(), page=page, total_results=0)
@@ -194,12 +216,13 @@ class TMDBClient:
             "sort_by": sort_by,
             "page": page,
         }
-        if genre_id is not None:
-            params["with_genres"] = genre_id
+        if genres is not None:
+            params["with_genres"] = genres
         if minimum_rating is not None and not include_unrated:
             params["vote_average.gte"] = minimum_rating
         if minimum_votes is not None:
             params["vote_count.gte"] = minimum_votes
+        params.update(extra)
 
         date_field = "primary_release_date" if media_type == "movie" else "first_air_date"
         if media_type == "tv":
@@ -351,6 +374,136 @@ class TMDBClient:
         if details is None:
             raise TMDBError("TMDB returned incomplete media details")
         return details
+
+    async def title_facts(self, media_type: MediaType, item_id: int) -> TitleFacts:
+        """Read the facts filters check: ratings, origin, runtime, keywords, and people."""
+
+        if media_type == "movie":
+            appended = "credits,release_dates,keywords"
+        else:
+            # Series credits only cover the latest season; aggregate credits cover them all.
+            appended = "aggregate_credits,content_ratings,keywords"
+        payload = await self._get(
+            f"/{media_type}/{item_id}",
+            {"language": self.language, "append_to_response": appended},
+        )
+        return _facts_from_payload(payload, media_type)
+
+    async def person_credits(
+        self, person_id: int
+    ) -> tuple[tuple[CatalogItem, frozenset[PersonRole]], ...]:
+        """Every title a person is credited on, with what they did on it."""
+
+        payload = await self._get(
+            f"/person/{person_id}/combined_credits", {"language": self.language}
+        )
+        found: dict[tuple[str, int], tuple[CatalogItem, set[PersonRole]]] = {}
+        for key, acting in (("cast", True), ("crew", False)):
+            for raw in _object_list(payload.get(key)):
+                media_type = raw.get("media_type")
+                if media_type not in {"movie", "tv"} or raw.get("adult"):
+                    continue
+                roles = credit_roles(raw, media_type, cast=acting)
+                item = _catalog_item_from_payload(raw, media_type)
+                if not roles or item is None:
+                    continue
+                entry = found.setdefault((media_type, item.id), (item, set()))
+                entry[1].update(roles)
+        return tuple((item, frozenset(roles)) for item, roles in found.values())
+
+    async def search_people(self, query: str) -> tuple[tuple[int, str, str], ...]:
+        """Find people by name: ``(id, name, what they are known for)``."""
+
+        payload = await self._get(
+            "/search/person",
+            {"query": query, "language": self.language, "include_adult": "false"},
+        )
+        people: list[tuple[int, str, str]] = []
+        for raw in _object_list(payload.get("results")):
+            try:
+                person_id = int(raw["id"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            name = str(raw.get("name") or "").strip()
+            known_for = ", ".join(
+                title
+                for item in _object_list(raw.get("known_for"))[:2]
+                if (title := str(item.get("title") or item.get("name") or "").strip())
+            )
+            detail = " · ".join(
+                part for part in (str(raw.get("known_for_department") or ""), known_for) if part
+            )
+            if person_id > 0 and name:
+                people.append((person_id, name, detail))
+        return tuple(people)
+
+    async def search_keywords(self, query: str) -> tuple[tuple[int, str], ...]:
+        payload = await self._get("/search/keyword", {"query": query})
+        return tuple(
+            (int(raw["id"]), name)
+            for raw in _object_list(payload.get("results"))
+            if isinstance(raw.get("id"), int)
+            and raw["id"] > 0
+            and (name := str(raw.get("name") or "").strip())
+        )
+
+    async def person_name(self, person_id: int) -> str:
+        payload = await self._get(f"/person/{person_id}", {"language": self.language})
+        return str(payload.get("name") or "").strip()
+
+    async def keyword_name(self, keyword_id: int) -> str:
+        payload = await self._get(f"/keyword/{keyword_id}")
+        return str(payload.get("name") or "").strip()
+
+    async def certifications(self, media_type: MediaType) -> dict[str, tuple[str, ...]]:
+        """Content ratings per country, mildest first."""
+
+        payload = await self._get(f"/certification/{media_type}/list")
+        raw_countries = payload.get("certifications")
+        result: dict[str, tuple[str, ...]] = {}
+        if not isinstance(raw_countries, dict):
+            return result
+        for country, entries in raw_countries.items():
+            ranked: list[tuple[int, str]] = []
+            for raw in _object_list(entries):
+                rating = str(raw.get("certification") or "").strip()
+                try:
+                    order = int(raw.get("order") or 0)
+                except (TypeError, ValueError):
+                    order = 0
+                if rating:
+                    ranked.append((order, rating))
+            result[str(country)] = tuple(rating for _order, rating in sorted(ranked))
+        return result
+
+    async def countries(self) -> tuple[tuple[str, str], ...]:
+        payload = await self._get_list("/configuration/countries", {"language": self.language})
+        return tuple(
+            sorted(
+                (
+                    (code, name)
+                    for raw in payload
+                    if len(code := str(raw.get("iso_3166_1") or "").upper()) == 2
+                    and (name := str(raw.get("english_name") or "").strip())
+                ),
+                key=lambda pair: pair[1].casefold(),
+            )
+        )
+
+    async def languages(self) -> tuple[tuple[str, str], ...]:
+        payload = await self._get_list("/configuration/languages")
+        return tuple(
+            sorted(
+                (
+                    (code, name)
+                    for raw in payload
+                    if len(code := str(raw.get("iso_639_1") or "").lower()) == 2
+                    and code != "xx"
+                    and (name := str(raw.get("english_name") or "").strip())
+                ),
+                key=lambda pair: pair[1].casefold(),
+            )
+        )
 
     async def watch_links(
         self,
@@ -702,6 +855,86 @@ def _media_details_from_payload(
         last_air_date=str(payload.get("last_air_date") or "").strip() if media_type == "tv" else "",
         genre_ids=tuple(genre_ids),
         popularity=popularity,
+    )
+
+
+def _facts_from_payload(payload: dict[str, Any], media_type: MediaType) -> TitleFacts:
+    countries = [str(value).upper() for value in payload.get("origin_country") or () if value]
+    if not countries:
+        countries = [
+            str(raw.get("iso_3166_1") or "").upper()
+            for raw in _object_list(payload.get("production_countries"))
+        ]
+    certifications: dict[tuple[str, str], None] = {}
+    if media_type == "movie":
+        release_dates = payload.get("release_dates")
+        for raw in _object_list(
+            release_dates.get("results") if isinstance(release_dates, dict) else None
+        ):
+            country = str(raw.get("iso_3166_1") or "").upper()
+            for release in _object_list(raw.get("release_dates")):
+                rating = str(release.get("certification") or "").strip()
+                if country and rating:
+                    certifications[(country, rating)] = None
+        runtime_value: object = payload.get("runtime")
+        credits = payload.get("credits")
+    else:
+        ratings = payload.get("content_ratings")
+        for raw in _object_list(ratings.get("results") if isinstance(ratings, dict) else None):
+            country = str(raw.get("iso_3166_1") or "").upper()
+            rating = str(raw.get("rating") or "").strip()
+            if country and rating:
+                certifications[(country, rating)] = None
+        runtimes = payload.get("episode_run_time")
+        runtime_value = runtimes[0] if isinstance(runtimes, list) and runtimes else None
+        if not runtime_value:
+            last = payload.get("last_episode_to_air")
+            runtime_value = last.get("runtime") if isinstance(last, dict) else None
+        credits = payload.get("aggregate_credits")
+    try:
+        runtime = int(runtime_value or 0) or None  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        runtime = None
+
+    keywords = payload.get("keywords")
+    raw_keywords = (
+        keywords.get("keywords" if media_type == "movie" else "results")
+        if isinstance(keywords, dict)
+        else None
+    )
+    people: dict[PersonRole, dict[int, None]] = {
+        "cast": {},
+        "director": {},
+        "writer": {},
+        "producer": {},
+    }
+    credit_lists = credits if isinstance(credits, dict) else {}
+    for key, acting in (("cast", True), ("crew", False)):
+        for raw in _object_list(credit_lists.get(key)):
+            person_id = raw.get("id")
+            if not isinstance(person_id, int) or person_id <= 0:
+                continue
+            for role in credit_roles(raw, media_type, cast=acting):
+                people[role][person_id] = None
+    for raw in _object_list(payload.get("created_by")):
+        person_id = raw.get("id")
+        if isinstance(person_id, int) and person_id > 0:
+            people["director"][person_id] = None
+            people["writer"][person_id] = None
+    return TitleFacts(
+        original_language=str(payload.get("original_language") or "").lower(),
+        countries=tuple(dict.fromkeys(code for code in countries if len(code) == 2)),
+        runtime=runtime if runtime and runtime > 0 else None,
+        certifications=tuple(certifications),
+        keyword_ids=tuple(
+            raw["id"]
+            for raw in _object_list(raw_keywords)
+            if isinstance(raw.get("id"), int) and raw["id"] > 0
+        ),
+        cast=tuple(people["cast"]),
+        directors=tuple(people["director"]),
+        writers=tuple(people["writer"]),
+        producers=tuple(people["producer"]),
     )
 
 

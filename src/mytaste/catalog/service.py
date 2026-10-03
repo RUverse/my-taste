@@ -7,8 +7,17 @@ import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar, cast
 
+from mytaste.catalog.filters import (
+    PERSON_ROLES,
+    GenreChoice,
+    PersonRole,
+    TitleFacts,
+    discover_params,
+    genre_choices,
+    genre_queries,
+)
 from mytaste.catalog.models import (
     BrowseCategory,
     BrowseMediaType,
@@ -35,6 +44,10 @@ T = TypeVar("T")
 
 LocalSource = Callable[[BrowseQuery, int], Awaitable[CatalogPage]]
 """Load the first ``limit`` local titles in the query's sort order, with the local total."""
+
+TitleKey = tuple[str, int]
+Refine = Callable[[Sequence[CatalogItem]], Awaitable[frozenset[TitleKey]]]
+"""Return the titles, of those given, that pass the filters TMDB could not apply itself."""
 
 _PAGE_SIZE = 20
 _MAX_MERGED_PAGES = 100
@@ -73,6 +86,11 @@ class CatalogService:
         self._watch_links: dict[tuple[str, MediaType, int], _CacheEntry[tuple[WatchLink, ...]]] = {}
         self._seasons: dict[int, _CacheEntry[tuple[Season, ...]]] = {}
         self._matches: dict[tuple[MediaType, str, int | None], _CacheEntry[CatalogItem | None]] = {}
+        self._credits: dict[
+            int, _CacheEntry[tuple[tuple[CatalogItem, frozenset[PersonRole]], ...]]
+        ] = {}
+        self._names: dict[tuple[str, int], _CacheEntry[str]] = {}
+        self._options: dict[str, _CacheEntry[Any]] = {}
         self._availability_limit = asyncio.Semaphore(8)
 
     async def close(self) -> None:
@@ -104,6 +122,70 @@ class CatalogService:
         self._genres[media_type] = _CacheEntry(genres, now + self.provider_ttl)
         return genres
 
+    async def genre_choices(self) -> tuple[GenreChoice, ...]:
+        movie_genres, tv_genres = await asyncio.gather(self.genres("movie"), self.genres("tv"))
+        return genre_choices(movie_genres, tv_genres)
+
+    async def certifications(self, region: str) -> dict[MediaType, tuple[str, ...]]:
+        """The content ratings of ``region`` (or the US when it has none), mildest first."""
+
+        movie, tv = await asyncio.gather(
+            self._option("certifications:movie", lambda: self.client.certifications("movie")),
+            self._option("certifications:tv", lambda: self.client.certifications("tv")),
+        )
+        return {"movie": movie.get(region, ()), "tv": tv.get(region, ())}
+
+    async def countries(self) -> tuple[tuple[str, str], ...]:
+        return await self._option("countries", self.client.countries)
+
+    async def languages(self) -> tuple[tuple[str, str], ...]:
+        return await self._option("languages", self.client.languages)
+
+    async def _option(self, key: str, load: Callable[[], Awaitable[T]]) -> T:
+        now = time.monotonic()
+        cached = self._options.get(key)
+        if cached is not None and cached.expires_at > now:
+            return cast(T, cached.value)
+        value = await load()
+        self._options[key] = _CacheEntry(value, now + self.provider_ttl)
+        return value
+
+    async def title_facts(self, media_type: MediaType, item_id: int) -> TitleFacts:
+        async with self._availability_limit:
+            return await self.client.title_facts(media_type, item_id)
+
+    async def person_credits(
+        self, person_id: int
+    ) -> tuple[tuple[CatalogItem, frozenset[PersonRole]], ...]:
+        now = time.monotonic()
+        cached = self._credits.get(person_id)
+        if cached is not None and cached.expires_at > now:
+            return cached.value
+        credits = await self.client.person_credits(person_id)
+        self._credits[person_id] = _CacheEntry(credits, now + self.enrichment_ttl)
+        return credits
+
+    async def search_people(self, query: str) -> tuple[tuple[int, str, str], ...]:
+        return await self.client.search_people(query)
+
+    async def search_keywords(self, query: str) -> tuple[tuple[int, str], ...]:
+        return await self.client.search_keywords(query)
+
+    async def name_of(self, kind: str, item_id: int) -> str:
+        """The name of a person or keyword chosen in a filter."""
+
+        cache_key = (kind, item_id)
+        now = time.monotonic()
+        cached = self._names.get(cache_key)
+        if cached is not None and cached.expires_at > now:
+            return cached.value
+        if kind == "person":
+            name = await self.client.person_name(item_id)
+        else:
+            name = await self.client.keyword_name(item_id)
+        self._names[cache_key] = _CacheEntry(name, now + self.enrichment_ttl)
+        return name
+
     async def categories(self, media_type: BrowseMediaType) -> tuple[BrowseCategory, ...]:
         """Return the predefined collections, with genre names bound to TMDB ids."""
 
@@ -126,18 +208,25 @@ class CatalogService:
         query: BrowseQuery,
         *,
         local: LocalSource | None = None,
+        refine: Refine | None = None,
+        exclude: frozenset[TitleKey] = frozenset(),
     ) -> CatalogPage:
         """Browse streaming titles, optionally merged with local library titles.
 
         Streaming and local titles form one ordering: page N is the Nth slice of the merged,
         de-duplicated sequence, so a local title appears exactly where it ranks.
+
+        TMDB applies the query's filters to discovered titles. Titles it cannot filter, such as
+        search results and a person's credits, are passed through ``refine``; ``exclude`` drops
+        streaming titles the filters rule out by their local copies, such as watched ones.
         """
 
         query = replace(query, library_ids=())
         cache_key = (region, query)
         now = time.monotonic()
         cached = self._browse_pages.get(cache_key)
-        if local is None and cached is not None and cached.expires_at > now:
+        uncached = local is not None or refine is not None or bool(exclude)
+        if not uncached and cached is not None and cached.expires_at > now:
             return cached.value
 
         categories = await self.categories(query.media_type)
@@ -146,11 +235,11 @@ class CatalogService:
             categories[0],
         )
         if query.search:
-            page = await self._search(region, query, local)
+            page = await self._search(region, query, local, refine, exclude)
         else:
-            page = await self._discover(region, query, category, local)
+            page = await self._discover(region, query, category, local, refine, exclude)
         page = await self._add_genre_names(page)
-        if local is None:
+        if not uncached:
             self._browse_pages[cache_key] = _CacheEntry(page, now + self.catalog_ttl)
         return page
 
@@ -160,6 +249,8 @@ class CatalogService:
         query: BrowseQuery,
         category: BrowseCategory,
         local: LocalSource | None,
+        refine: Refine | None = None,
+        exclude: frozenset[TitleKey] = frozenset(),
     ) -> CatalogPage:
         sort, descending = query.sort_for(category.sort)
         if sort == "added":
@@ -171,17 +262,34 @@ class CatalogService:
             else None
         )
 
-        def streams_for(value: BrowseQuery) -> list[_Stream | _LocalStream]:
-            streams: list[_Stream | _LocalStream] = []
-            for media_type in _media_types(value.media_type):
-                genre_id = category.genre_id_for(media_type)
-                if category.has_genre and genre_id is None:
-                    continue
+        filters = query.filters
+
+        def streams_for(value: BrowseQuery) -> list[_Stream | _LocalStream | _ListStream]:
+            streams: list[_Stream | _LocalStream | _ListStream] = []
+            # Filters on files or watch progress only match local titles.
+            if filters.has_people and not filters.local_only:
+                # TMDB cannot filter series by person, so a person's credits are read instead.
+                order = value.sort_for("popularity")
                 streams.append(
-                    _Stream(
-                        self._discover_loader(region, media_type, value, genre_id, released_after)
+                    _ListStream(
+                        lambda: self._credited(region, value, category, released_after, refine),
+                        catalog_sort_key(*order),
+                        order[1],
                     )
                 )
+            elif not filters.local_only:
+                for media_type in _media_types(value.media_type):
+                    genre_id = category.genre_id_for(media_type)
+                    if category.has_genre and genre_id is None:
+                        continue
+                    for genres in genre_queries(genre_id, filters):
+                        streams.append(
+                            _Stream(
+                                self._discover_loader(
+                                    region, media_type, value, genres, released_after, exclude
+                                )
+                            )
+                        )
             if local is not None:
                 streams.append(_LocalStream(local, value))
             return streams
@@ -230,19 +338,30 @@ class CatalogService:
         region: str,
         media_type: MediaType,
         query: BrowseQuery,
-        genre_id: int | None,
+        genres: str | None,
         released_after: date | None,
+        exclude: frozenset[TitleKey] = frozenset(),
     ) -> Callable[[int], Awaitable[CatalogPage]]:
         sort, descending = query.sort_for("popularity")
         sort_by = _tmdb_sort(media_type, sort, descending)
         minimum_votes = _RATING_SORT_MIN_VOTES if sort == "rating" else None
+        extra = discover_params(query.filters)
 
         async def load(page: int) -> CatalogPage:
+            result = await load_page(page)
+            if not exclude:
+                return result
+            return replace(
+                result, items=tuple(item for item in result.items if _identity(item) not in exclude)
+            )
+
+        async def load_page(page: int) -> CatalogPage:
             cache_key = (
                 region,
                 media_type,
                 sort_by,
-                genre_id,
+                genres,
+                extra,
                 released_after,
                 query.provider_ids,
                 query.year_from,
@@ -260,13 +379,14 @@ class CatalogService:
                 region,
                 query.provider_ids,
                 sort_by=sort_by,
-                genre_id=genre_id,
+                genres=genres,
                 year_from=query.year_from,
                 year_to=query.year_to,
                 minimum_rating=query.minimum_rating,
                 include_unrated=query.include_unrated,
                 released_after=released_after,
                 minimum_votes=minimum_votes,
+                extra=extra,
                 page=page,
             )
             self._stream_pages[cache_key] = _CacheEntry(result, now + self.catalog_ttl)
@@ -279,8 +399,10 @@ class CatalogService:
         region: str,
         query: BrowseQuery,
         local: LocalSource | None,
+        refine: Refine | None = None,
+        exclude: frozenset[TitleKey] = frozenset(),
     ) -> CatalogPage:
-        media_types = _media_types(query.media_type)
+        media_types = () if query.filters.local_only else _media_types(query.media_type)
         pages = await asyncio.gather(
             *(
                 self.client.search(
@@ -304,8 +426,13 @@ class CatalogService:
             )
         )
         items = tuple(
-            item for item, available in zip(candidates.items, checks, strict=True) if available
+            item
+            for item, available in zip(candidates.items, checks, strict=True)
+            if available and _identity(item) not in exclude
         )
+        if refine is not None and query.filters.active:
+            allowed = await refine(items)
+            items = tuple(item for item in items if _identity(item) in allowed)
         streaming = CatalogPage(
             items=items,
             page=candidates.page,
@@ -332,6 +459,56 @@ class CatalogService:
             ),
             total_results=len(items) + local_page.total_results,
         )
+
+    async def _credited(
+        self,
+        region: str,
+        query: BrowseQuery,
+        category: BrowseCategory,
+        released_after: date | None,
+        refine: Refine | None,
+    ) -> list[CatalogItem]:
+        """The titles the chosen people are credited on that match the view and services.
+
+        People in one filter are alternatives; each filter (actor, director, …) must match.
+        """
+
+        filters = query.filters
+        chosen: list[dict[TitleKey, CatalogItem]] = []
+        for role in PERSON_ROLES:
+            people = filters.people(role)
+            if not people:
+                continue
+            credits = await asyncio.gather(*map(self.person_credits, people))
+            chosen.append(
+                {
+                    (item.media_type, item.id): item
+                    for titles in credits
+                    for item, roles in titles
+                    if role in roles
+                }
+            )
+        keys = set.intersection(*(set(titles) for titles in chosen)) if chosen else set()
+        today = date.today().isoformat()
+        candidates = [
+            item
+            for key, item in chosen[0].items()
+            if key in keys
+            and query.media_type in {"all", item.media_type}
+            and _in_view(item, query, category, released_after, today)
+        ]
+        checks = await asyncio.gather(
+            *(
+                self._is_on_selected_service(region, item, query.provider_ids)
+                for item in candidates
+            ),
+            return_exceptions=True,
+        )
+        available = [item for item, found in zip(candidates, checks, strict=True) if found is True]
+        if refine is None:
+            return available
+        allowed = await refine(available)
+        return [item for item in available if _identity(item) in allowed]
 
     async def available_provider_ids(
         self,
@@ -490,6 +667,34 @@ class CatalogService:
         return Catalog(movies=movies, shows=shows)
 
 
+def _in_view(
+    item: CatalogItem,
+    query: BrowseQuery,
+    category: BrowseCategory,
+    released_after: date | None,
+    today: str,
+) -> bool:
+    """Apply what TMDB's discover would to a title found another way: dates, rating, genre."""
+
+    if not item.release_date or item.release_date > today:
+        return False
+    if released_after is not None and item.release_date < released_after.isoformat():
+        return False
+    year = int(item.year) if item.year.isdigit() else None
+    if query.year_from is not None and (year is None or year < query.year_from):
+        return False
+    if query.year_to is not None and (year is None or year > query.year_to):
+        return False
+    if (
+        query.minimum_rating is not None
+        and item.rating < query.minimum_rating
+        and not (query.include_unrated and item.rating == 0)
+    ):
+        return False
+    genre_id = category.genre_id_for(item.media_type)
+    return not category.has_genre or (genre_id is not None and genre_id in item.genre_ids)
+
+
 def _media_types(media_type: BrowseMediaType) -> tuple[MediaType, ...]:
     return ("movie", "tv") if media_type == "all" else (media_type,)
 
@@ -574,8 +779,40 @@ class _LocalStream:
         self.total_results = result.total_results
 
 
+@dataclass(slots=True)
+class _ListStream:
+    """Streaming titles found as a complete list, such as a person's credits, then sorted."""
+
+    load: Callable[[], Awaitable[list[CatalogItem]]]
+    key: Callable[[CatalogItem], tuple[Any, ...]]
+    descending: bool
+    items: list[CatalogItem] = field(default_factory=list)
+    loaded: bool = False
+    local: ClassVar[bool] = False
+
+    @property
+    def total_results(self) -> int:
+        return len(self.items)
+
+    @property
+    def total_pages(self) -> int:
+        return max(math.ceil(len(self.items) / _PAGE_SIZE), 1)
+
+    @property
+    def exhausted(self) -> bool:
+        return self.loaded
+
+    async def fill(self, count: int) -> None:
+        if not self.loaded:
+            self.items = sorted(await self.load(), key=self.key, reverse=self.descending)
+            self.loaded = True
+
+
+_AnyStream = _Stream | _LocalStream | _ListStream
+
+
 async def _merge_prefix(
-    streams: Sequence[_Stream | _LocalStream],
+    streams: Sequence[_AnyStream],
     key: Callable[[CatalogItem], tuple[Any, ...]],
     descending: bool,
     wanted: int,
@@ -623,7 +860,7 @@ async def _merge_prefix(
 
 
 async def _merge_streams(
-    streams: Sequence[_Stream | _LocalStream],
+    streams: Sequence[_AnyStream],
     key: Callable[[CatalogItem], tuple[Any, ...]],
     descending: bool,
     page: int,

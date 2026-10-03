@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from mytaste import __version__
+from mytaste.catalog.facts import FactsService
 from mytaste.catalog.service import CatalogService
 from mytaste.catalog.tmdb import TMDBClient
 from mytaste.collections.service import CollectionService
@@ -17,6 +18,7 @@ from mytaste.config import AppSettings, load_app_settings
 from mytaste.library.service import LibraryService
 from mytaste.playback.service import PlaybackService
 from mytaste.storage.collections import CollectionRepository
+from mytaste.storage.facts import FactsRepository
 from mytaste.storage.library import LibraryRepository
 from mytaste.storage.playback import PlaybackRepository
 from mytaste.storage.preferences import PreferenceRepository
@@ -34,6 +36,7 @@ def create_app(
     library: Any | None = None,
     playback: PlaybackService | None = None,
     collections: CollectionService | None = None,
+    facts: Any | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_app_settings()
     repository = preferences or PreferenceRepository(resolved_settings.database_path)
@@ -81,9 +84,19 @@ def create_app(
         collection_repository.initialize()
         collections = CollectionService(collection_repository, catalog, library)
 
+    owns_facts = facts is None
+    if facts is None:
+        facts_repository = FactsRepository(resolved_settings.database_path)
+        facts_repository.initialize()
+        facts = FactsService(facts_repository, catalog)
+    # Filters check library titles against TMDB facts, so those are fetched ahead of time.
+    warm_facts = owns_facts and owns_library
+
     listeners = getattr(library, "scan_listeners", None)
     if isinstance(listeners, list):
         listeners.append(playback.library_changed)
+        if warm_facts:
+            listeners.append(lambda _library_id: facts.warm(library.matched_keys))
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
@@ -91,9 +104,13 @@ def create_app(
             await library.start()
         if owns_playback:
             await playback.start()
+        if warm_facts:
+            facts.warm(library.matched_keys)
         try:
             yield
         finally:
+            if owns_facts:
+                await facts.stop()
             if owns_collections:
                 await collections.stop()
             if owns_playback:
@@ -115,6 +132,7 @@ def create_app(
     app.state.library = library
     app.state.playback = playback
     app.state.collections = collections
+    app.state.facts = facts
     app.state.settings = resolved_settings
 
     templates = Jinja2Templates(directory=_WEB_ROOT / "templates")

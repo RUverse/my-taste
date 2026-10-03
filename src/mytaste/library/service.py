@@ -5,6 +5,7 @@ import contextlib
 import logging
 import os
 from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -22,7 +23,7 @@ from mytaste.catalog.tmdb import TMDBError
 from mytaste.collections.models import smart_categories
 from mytaste.library.models import Library, LibraryStatus, ScannedFile
 from mytaste.library.scanner import LibraryUnavailableError, scan_directory
-from mytaste.storage.library import ItemDraft, LibraryRepository, utc_now
+from mytaste.storage.library import ItemDraft, LibraryRepository, TitleRef, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -369,6 +370,9 @@ class LibraryService:
             self._matched_keys = self.repository.matched_keys()
         return self._matched_keys
 
+    def title_refs(self, library_ids: Sequence[int]) -> tuple[TitleRef, ...]:
+        return self.repository.title_refs(library_ids)
+
     def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
         return self.repository.episode_keys(tmdb_id)
 
@@ -384,8 +388,12 @@ class LibraryService:
         *,
         category: BrowseCategory | None = None,
         page_size: int = 24,
+        item_ids: AbstractSet[int] | None = None,
     ) -> CatalogPage:
-        """Browse library titles; ``category`` may come from the streaming catalog."""
+        """Browse library titles; ``category`` may come from the streaming catalog.
+
+        ``item_ids`` limits the titles to those that passed the view's filters.
+        """
 
         if category is None:
             categories = await self.categories(query.media_type)
@@ -393,7 +401,7 @@ class LibraryService:
                 (candidate for candidate in categories if candidate.slug == query.category),
                 categories[0],
             )
-        page = self.repository.browse(query, category, page_size=page_size)
+        page = self.repository.browse(query, category, page_size=page_size, item_ids=item_ids)
         return await self._add_genre_names(page)
 
     async def _genres(

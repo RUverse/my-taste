@@ -109,6 +109,10 @@ def language_name(value: str | None) -> str:
     return _LANGUAGES.get(value.strip().casefold(), ("", ""))[1]
 
 
+def channel_label(channels: int) -> str:
+    return _CHANNEL_LABELS.get(channels, f"{channels} ch")
+
+
 def codec_label(codec: str) -> str:
     return _CODEC_LABELS.get(codec, codec.upper())
 
@@ -160,7 +164,7 @@ class AudioStream:
     @property
     def label(self) -> str:
         name = language_name(self.language) or _clean_title(self.title) or "Unknown language"
-        channels = _CHANNEL_LABELS.get(self.channels, f"{self.channels} ch")
+        channels = channel_label(self.channels)
         return f"{name} · {codec_label(self.codec)} {channels}"
 
 

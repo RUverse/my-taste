@@ -116,7 +116,7 @@ def test_discover_applies_genre_year_and_rating_filters() -> None:
                 "DE",
                 (8,),
                 sort_by="popularity.desc",
-                genre_id=18,
+                genres=18,
                 year_from=2020,
                 year_to=2024,
                 minimum_rating=7,

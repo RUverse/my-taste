@@ -415,9 +415,9 @@ def test_sorts_and_collection_rules_reach_tmdb() -> None:
     }
     assert all(call["released_after"] == date.today() - timedelta(days=365) for call in latest)
     rated = [call for call in client.discover_kwargs if call["sort_by"] == "vote_average.desc"]
-    assert {call["genre_id"] for call in rated} == {35}
+    assert {call["genres"] for call in rated} == {"35"}
     assert all(call["minimum_votes"] == 200 for call in rated)
-    titled = {call["sort_by"] for call in client.discover_kwargs if call["genre_id"] == 18}
+    titled = {call["sort_by"] for call in client.discover_kwargs if call["genres"] == "18"}
     assert titled == {"title.desc", "name.desc"}
 
 

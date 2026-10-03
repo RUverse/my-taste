@@ -21,6 +21,11 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/catalog/tmdb.py` — raw asynchronous TMDB requests and response normalization.
 - `src/mytaste/catalog/service.py` — browsing, cross-media merging, availability checks,
   enrichment, and in-memory caching.
+- `src/mytaste/catalog/filters.py` — browse filters (`TitleFilters`), TMDB discover parameters,
+  and `title_matches`, the one rule every non-TMDB source is checked with; `filtering.py` applies
+  it to library titles, collections, credits, and search results; `facts.py` reads per-title
+  facts (ratings, origin, runtime, keywords, people) once and keeps them in SQLite
+  (`storage/facts.py`).
 - `src/mytaste/collections/models.py` — the predefined smart collections (genre/release-window
   filters with a default sort), user collection models, and the collection icon set.
 - `src/mytaste/collections/service.py` — user collections: saving titles with a TMDB snapshot,
@@ -41,6 +46,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/storage/playback.py` — SQLite persistence for probe results and watch progress.
 - `src/mytaste/web/app.py` — FastAPI factory, dependency wiring, templates, and static assets.
 - `src/mytaste/web/routes.py` — page/API routes, query parsing, and template context construction.
+- `src/mytaste/web/filter_options.py` — filter URL parameters and the sidebar's filter controls.
 - `src/mytaste/web/playback.py` — `/watch/...` player pages and the streaming, subtitle, and
   progress APIs.
 - `src/mytaste/web/templates/` — server-rendered Jinja pages; `_icons.html` draws collection icons.
@@ -58,7 +64,9 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - Browsing is by collection (`/collections/<key>`, home at `/`); keep the remaining browse state
   (media type, sources, filters, sort) in URL query parameters. Every sort must order local titles
   exactly like TMDB (`catalog_sort_key` and the library `_ORDERINGS`) so merged pages stay in one
-  global order. Display-only preferences are persisted in SQLite via
+  global order. A filter must give the same answer for a title from any source: add it to
+  `TitleFilters`, `discover_params` (when TMDB can apply it), and `title_matches` together.
+  Display-only preferences are persisted in SQLite via
   `/api/preferences/display` and should update immediately in the UI.
 - Preserve dependency injection in `create_app()` so tests can supply fake catalog, preference,
   and library implementations. Update the fakes when a service interface changes.

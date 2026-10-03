@@ -40,6 +40,18 @@ class PlayState:
 
 
 @dataclass(frozen=True, slots=True)
+class FileRow:
+    item_id: int
+    media_type: str
+    tmdb_id: int | None
+    file_id: int
+    season: int | None
+    episode: int | None
+    probed_at: str
+    data: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class ProbeRecord:
     file_id: int
     size: int
@@ -154,6 +166,43 @@ class PlaybackRepository:
                 """
             ).fetchone()
         return {"files": int(files), "probed": int(probed)}
+
+    def library_files(self) -> tuple[FileRow, ...]:
+        """Every indexed file with its title and probed information, for filtering.
+
+        ``data`` is the stored probe JSON, ``None`` until the file is probed.
+        """
+
+        with self._connect() as connection:
+            if not _has_table(connection, "library_files"):
+                return ()
+            rows = connection.execute(
+                """
+                SELECT i.id, i.media_type, i.tmdb_id, f.id, f.season, f.episode, m.probed_at,
+                       m.data
+                FROM library_items i
+                JOIN library_files f ON f.item_id = i.id
+                LEFT JOIN media_info m ON m.file_id = f.id
+                """
+            ).fetchall()
+        return tuple(
+            FileRow(
+                item_id=int(row[0]),
+                media_type=str(row[1]),
+                tmdb_id=int(row[2]) if row[2] is not None else None,
+                file_id=int(row[3]),
+                season=int(row[4]) if row[4] is not None else None,
+                episode=int(row[5]) if row[5] is not None else None,
+                probed_at=str(row[6] or ""),
+                data=str(row[7]) if row[7] else None,
+            )
+            for row in rows
+        )
+
+    def all_states(self) -> tuple[PlayState, ...]:
+        with self._connect() as connection:
+            rows = connection.execute(_STATE_SELECT).fetchall()
+        return tuple(_state_from_row(row) for row in rows)
 
     # Watch state ---------------------------------------------------------------------
 

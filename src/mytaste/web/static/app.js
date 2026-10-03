@@ -247,7 +247,7 @@
         closePopover(filterButton);
         filterButton.hidden = !document.querySelector("[data-add-filter]:not([hidden])");
       }
-      rule.querySelector("input")?.focus();
+      rule.querySelector("input:not([type='hidden']), select")?.focus();
     });
   });
   document.querySelectorAll("[data-remove-filter]").forEach((remove) => {
@@ -412,6 +412,8 @@
     let sortChanged = false;
 
     filterForm.addEventListener("change", (event) => {
+      // Search boxes only suggest; picking a suggestion applies it.
+      if (event.target.closest("[data-suggest]")) return;
       if (sourceBoxes.includes(event.target) && !sourceBoxes.some((box) => box.checked)) {
         event.target.checked = true;
         return;
@@ -429,7 +431,9 @@
         if (sortChanged && filterForm.elements[key] === sortOrder) return;
         // Defaults are left out to keep links short.
         if (filterForm.elements[key]?.dataset?.default === value) return;
-        params.append(key, value);
+        // Filters with several values list them in one parameter: genre=drama,comedy.
+        const values = params.has(key) ? params.get(key).split(",") : [];
+        if (!values.includes(value)) params.set(key, [...values, value].join(","));
       });
       ["providers", "libraries"].forEach((key) => {
         const boxes = sourceBoxes.filter((box) => box.name === key);
@@ -440,9 +444,123 @@
       });
       markNavigating();
       const path = new URL(filterForm.action).pathname;
-      window.location.assign(params.size ? `${path}?${params}` : path);
+      // Commas need no escaping in a query string and keep lists readable.
+      window.location.assign(params.size ? `${path}?${String(params).replaceAll("%2C", ",")}` : path);
     });
   }
+
+  // People and keyword filters: suggestions as you type; choosing one applies the filter.
+  document.querySelectorAll("[data-suggest]").forEach((box) => {
+    const input = box.querySelector(".suggest-input");
+    const list = box.querySelector(".suggest-list");
+    const status = box.querySelector(".suggest-status");
+    let results = [];
+    let active = -1;
+    let timer = 0;
+    let request = null;
+
+    const close = () => {
+      list.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      active = -1;
+    };
+    const highlight = (index) => {
+      const options = Array.from(list.children);
+      active = options.length ? (index + options.length) % options.length : -1;
+      options.forEach((option, position) => option.setAttribute("aria-selected", String(position === active)));
+      if (active >= 0) {
+        input.setAttribute("aria-activedescendant", options[active].id);
+        options[active].scrollIntoView({ block: "nearest" });
+      }
+    };
+    const choose = (result) => {
+      if (!filterForm || !result) return;
+      const chosen = document.createElement("input");
+      chosen.type = "hidden";
+      chosen.name = box.dataset.suggestParam;
+      chosen.value = String(result.id);
+      filterForm.append(chosen);
+      close();
+      input.value = result.name;
+      filterForm.requestSubmit();
+    };
+    const render = () => {
+      list.replaceChildren(
+        ...results.map((result, index) => {
+          const option = document.createElement("li");
+          option.id = `${list.id}-${index}`;
+          option.setAttribute("role", "option");
+          option.setAttribute("aria-selected", "false");
+          const name = document.createElement("span");
+          name.textContent = result.name;
+          option.append(name);
+          if (result.detail) {
+            const detail = document.createElement("small");
+            detail.textContent = result.detail;
+            option.append(detail);
+          }
+          // Keep focus in the box so the choice is not lost to a blur.
+          option.addEventListener("mousedown", (event) => event.preventDefault());
+          option.addEventListener("click", () => choose(result));
+          return option;
+        }),
+      );
+      const open = results.length > 0;
+      list.hidden = !open;
+      input.setAttribute("aria-expanded", String(open));
+      active = -1;
+    };
+    const search = async (text) => {
+      request?.abort();
+      request = new AbortController();
+      status.textContent = "Searching…";
+      try {
+        const response = await fetch(
+          `/api/filters/suggest?${new URLSearchParams({ kind: box.dataset.suggest, q: text })}`,
+          { headers: { Accept: "application/json" }, signal: request.signal },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || "Search failed");
+        results = payload.results || [];
+        status.textContent = results.length ? `${results.length} suggestions` : "No matches";
+      } catch (error) {
+        if (error.name === "AbortError") return;
+        results = [];
+        status.textContent = "Search is unavailable right now";
+      }
+      render();
+    };
+
+    input.addEventListener("input", () => {
+      window.clearTimeout(timer);
+      const text = input.value.trim();
+      if (text.length < 2) {
+        request?.abort();
+        results = [];
+        status.textContent = "";
+        render();
+        return;
+      }
+      timer = window.setTimeout(() => search(text), 250);
+    });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        if (list.hidden) return;
+        event.preventDefault();
+        highlight(active + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Enter") {
+        // Never submit the form with the typed text itself.
+        event.preventDefault();
+        if (!list.hidden) choose(results[Math.max(active, 0)]);
+      } else if (event.key === "Escape" && !list.hidden) {
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+    });
+    input.addEventListener("blur", close);
+  });
 
   const detailDialog = document.querySelector("#media-details");
   const detailPoster = detailDialog?.querySelector("[data-detail-poster]");
