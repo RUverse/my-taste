@@ -1,0 +1,16 @@
+{% for game in page.items %}
+<article class="media-card game-card" data-detail-url="/api/games/{{ game.id }}/details">
+  <a class="poster-link" href="/games/{{ game.id }}" data-game-open="{{ game.id }}" aria-label="Open details for {{ game.title }}">
+    <div class="poster">
+      {% if game.poster_url %}<img src="{{ game.poster_url }}" alt="" width="500" height="750" loading="lazy">{% else %}<div class="poster-placeholder" aria-hidden="true"><span>{{ game.title[0] }}</span></div>{% endif %}
+      <span class="game-platform-badge">{{ platforms.get(query.platform, 'Game') }}</span>
+    </div>
+  </a>
+  <div class="card-copy">
+    <h2><a href="/games/{{ game.id }}" data-game-open="{{ game.id }}">{{ game.title }}</a></h2>
+    <div class="card-meta"><span class="meta-year">{{ game.year }}</span>{% if game.rating is not none %}<span class="meta-rating" aria-label="Microsoft Store rating {{ game.rating }} out of 5">★ {{ '%.1f'|format(game.rating) }}<small>/5</small></span>{% endif %}</div>
+    {% if game.genres %}<p class="meta-genres">{{ game.genres|join(' · ') }}</p>{% endif %}
+    {% if game.developers %}<p class="meta-people">{{ game.developers|join(', ') }}</p>{% endif %}
+  </div>
+</article>
+{% endfor %}

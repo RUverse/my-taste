@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Game unavailable · {{ display.site_title }}{% endblock %}
+{% block content %}
+<div class="empty-state"><h1>Game unavailable</h1><p role="alert">{{ error }}</p><a class="button button-secondary" href="/collections/games">Back to games</a></div>
+{% endblock %}

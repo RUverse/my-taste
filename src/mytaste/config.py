@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,6 +57,10 @@ class AppSettings:
     ffprobe: str = "ffprobe"
     max_transcodes: int = 1
     hwaccel: str = "auto"
+    gamepass_cache_enabled: bool = False
+    gamepass_catalog_ttl: float = 7200
+    gamepass_metadata_ttl: float = 86_400
+    gamepass_stale_ttl: float = 86_400
 
     def require_tmdb_token(self) -> str:
         token = (self.tmdb_token or "").strip()
@@ -110,7 +115,34 @@ def load_app_settings() -> AppSettings:
         ffprobe=os.environ.get("MYTASTE_FFPROBE", "ffprobe"),
         max_transcodes=max_transcodes,
         hwaccel=hwaccel,
+        gamepass_cache_enabled=_parse_boolean("MYTASTE_GAMEPASS_CACHE_ENABLED", False),
+        gamepass_catalog_ttl=_parse_duration("MYTASTE_GAMEPASS_CATALOG_TTL_SECONDS", 7200),
+        gamepass_metadata_ttl=_parse_duration("MYTASTE_GAMEPASS_METADATA_TTL_SECONDS", 86_400),
+        gamepass_stale_ttl=_parse_duration(
+            "MYTASTE_GAMEPASS_STALE_TTL_SECONDS", 86_400, allow_zero=True
+        ),
     )
+
+
+def _parse_boolean(name: str, default: bool) -> bool:
+    raw = os.environ.get(name, str(default)).strip().lower()
+    if raw in {"true", "1", "yes"}:
+        return True
+    if raw in {"false", "0", "no"}:
+        return False
+    raise ConfigurationError(f"{name} must be true or false")
+
+
+def _parse_duration(name: str, default: float, *, allow_zero: bool = False) -> float:
+    try:
+        value = float(os.environ.get(name, str(default)))
+    except ValueError as exc:
+        raise ConfigurationError(f"{name} must be a number") from exc
+    if not math.isfinite(value) or value < 0 or (value == 0 and not allow_zero):
+        raise ConfigurationError(
+            f"{name} must be {'zero or greater' if allow_zero else 'greater than zero'}"
+        )
+    return value
 
 
 def _parse_library_roots(value: str | None) -> tuple[Path, ...]:

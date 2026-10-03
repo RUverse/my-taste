@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}{{ game.title }} · {{ display.site_title }}{% endblock %}
+{% block content %}
+<div class="game-detail-page"><a class="games-clear" href="/collections/games">← Back to games</a><div class="game-detail-layout">{% if game.poster_url %}<img class="game-detail-cover" src="{{ game.poster_url }}" alt="{{ game.title }} cover">{% endif %}<div><p class="games-eyebrow">Game</p><h1>{{ game.title }}</h1><p>{{ game.release_date[:4] }} · {{ game.genres|join(' · ') }}{% if game.rating is not none %} · Store {{ '%.1f'|format(game.rating) }}/5{% endif %}</p><p>{{ game.developers|join(', ') }}{% if game.publisher %} · Published by {{ game.publisher }}{% endif %}</p><a class="button button-primary" href="{{ game.store_url }}" target="_blank" rel="noopener noreferrer">Open in Xbox</a></div></div><p class="game-overview">{{ game.overview }}</p><div class="game-screenshots">{% for url in game.screenshots %}<img src="{{ url }}" alt="Screenshot {{ loop.index }} from {{ game.title }}" loading="lazy">{% endfor %}</div></div>
+{% endblock %}

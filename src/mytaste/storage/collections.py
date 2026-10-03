@@ -7,6 +7,7 @@ import sqlite3
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from mytaste.catalog.models import SORT_KEYS, MediaType
 from mytaste.collections.models import ICONS, Collection, CollectionItem
@@ -87,6 +88,20 @@ class CollectionRepository:
                         for position, (name, description, icon) in enumerate(_DEFAULT_COLLECTIONS)
                     ),
                 )
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(collections)")}
+            if "portable_id" not in columns:
+                connection.execute("ALTER TABLE collections ADD COLUMN portable_id TEXT")
+            missing = connection.execute(
+                "SELECT id FROM collections WHERE portable_id IS NULL"
+            ).fetchall()
+            connection.executemany(
+                "UPDATE collections SET portable_id = ? WHERE id = ?",
+                [(f"collection-{uuid4().hex}", row[0]) for row in missing],
+            )
+            connection.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS collections_portable_id "
+                "ON collections(portable_id)"
+            )
 
     # Collections ------------------------------------------------------------------------
 
@@ -118,10 +133,10 @@ class CollectionRepository:
             cursor = connection.execute(
                 """
                 INSERT INTO collections (name, description, icon, default_sort, position,
-                                         created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                                         created_at, portable_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (*values, int(position), utc_now()),
+                (*values, int(position), utc_now(), f"collection-{uuid4().hex}"),
             )
             collection_id = int(cursor.lastrowid or 0)
         created = self.get(collection_id)
@@ -276,7 +291,8 @@ class CollectionRepository:
 
 _COLLECTION_SELECT = """
     SELECT c.id, c.name, c.description, c.icon, c.default_sort, c.position, c.created_at,
-           (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id)
+           (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id),
+           c.portable_id
     FROM collections c
 """
 
@@ -322,6 +338,7 @@ def _collection_from_row(row: sqlite3.Row | tuple[object, ...]) -> Collection:
         position=int(row[5]),
         created_at=str(row[6]),
         item_count=int(row[7]),
+        portable_id=str(row[8]),
     )
 
 

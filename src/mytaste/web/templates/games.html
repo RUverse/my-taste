@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ heading }} · Games · {{ display.site_title }}{% endblock %}
+{% block layout %}
+<main class="games-main">
+  <header class="games-heading"><div><p class="games-eyebrow">Xbox Game Pass{% if region %} · {{ region }}{% endif %}</p><h1>{{ heading }}</h1><p>Find your next game on the plan you already have.</p></div><a class="button button-secondary" href="/games/settings">Plan and country</a></header>
+  <nav class="games-collections" aria-label="Game collections">{% for link in collection_links %}<a href="{{ link.url }}" {% if link.active %}aria-current="page"{% endif %}>{{ link.label }}</a>{% endfor %}</nav>
+  <div class="games-shell">
+    <aside class="games-filters" aria-label="Game filters">
+      <details data-game-filter-panel open><summary>Filters and platform</summary>
+      <form action="{{ page_path }}" method="get" data-game-filters>
+        <label for="game-plan">Subscription</label><select id="game-plan" name="plan">{% for value, label in plans.items() %}<option value="{{ value }}" {% if query.plan == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <label for="game-platform">Play on</label><select id="game-platform" name="platform">{% for value, label in platforms.items() %}<option value="{{ value }}" {% if query.platform == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <label for="game-search">Search games</label><input id="game-search" name="q" type="search" value="{{ query.search }}" maxlength="200" placeholder="Search titles">
+        <label for="game-genre">Genre</label><select id="game-genre" name="genre"><option value="">All genres</option>{% for genre in page.genres %}<option value="{{ genre }}" {% if query.genre == genre %}selected{% endif %}>{{ genre }}</option>{% endfor %}</select>
+        <label for="game-sort">Sort by</label><select id="game-sort" name="sort">{% for value, label in sorts.items() %}<option value="{{ value }}" {% if query.sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+        <button class="button button-primary" type="submit">Apply</button><a class="games-clear" href="{{ clear_url }}">Clear search and filters</a>
+      </form>
+      </details>
+      <p class="games-help">Availability depends on country, plan, and platform. Store ratings are out of five.</p>
+    </aside>
+    <section class="games-results" aria-label="Game catalog">
+      {% if error %}<div class="alert" role="alert"><strong>Games unavailable.</strong> {{ error }} <a href="{{ clear_url }}">Try again</a></div>
+      {% elif not region %}<div class="empty-state"><h2>Choose your country</h2><p>Set your country and Game Pass plan to see the games included.</p><a class="button button-primary" href="/games/settings">Set up Game Pass</a></div>
+      {% else %}
+        <div class="games-result-summary"><p>{{ page.total }} {{ 'game' if page.total == 1 else 'games' }}</p>{% if page.stale %}<p role="status">Showing an earlier catalog, checked {{ checked }}. Refreshing availability.</p>{% endif %}</div>
+        {% if page.incomplete %}<p class="alert" role="status">Some game details are unavailable. Covers and titles will return when Xbox's catalog updates.</p>{% endif %}
+        {% if query.collection == 'coming' %}<p class="games-help">These games are coming to Game Pass; availability can change before release.</p>{% elif query.collection == 'leaving' %}<p class="games-help">These games are leaving Game Pass soon. Check Xbox for departure details.</p>{% endif %}
+        {% if page.items %}<div class="media-grid" data-results>{% include "_games_more.html" %}</div>{% else %}<div class="empty-state"><h2>No matching games</h2><p>Try another collection, platform, or filter.</p><a class="button button-secondary" href="{{ clear_url }}">Clear filters</a></div>{% endif %}
+        {% if previous_url or next_url %}<nav class="pagination" aria-label="Game pages" data-pagination>{% if previous_url %}<a class="button button-secondary" href="{{ previous_url }}">Previous</a>{% endif %}<span>Page {{ query.page }} of {{ page.pages }}</span>{% if next_url %}<a class="button button-secondary" href="{{ next_url }}" data-next-page>Next</a>{% endif %}</nav>{% endif %}
+        {% if next_url %}<div class="load-more" data-load-more hidden><span class="load-more-status" data-load-more-status role="status" aria-live="polite"></span><button class="button button-secondary" type="button" data-load-more-retry hidden>Try again</button></div>{% endif %}
+      {% endif %}
+    </section>
+  </div>
+  <dialog class="game-dialog" id="game-dialog" aria-labelledby="game-detail-title">
+    <button class="icon-button game-dialog-close" type="button" data-game-close aria-label="Close game details">✕</button>
+    <div class="game-detail-layout"><img class="game-detail-cover" data-game-cover alt="" hidden><div><p class="games-eyebrow">Game</p><h2 id="game-detail-title" data-game-title>Loading game…</h2><p data-game-meta></p><p data-game-credits></p><a class="button button-primary" data-game-store target="_blank" rel="noopener noreferrer" hidden>Open in Xbox</a></div></div>
+    <p class="game-detail-status" data-game-status role="status">Loading details…</p><p class="game-overview" data-game-overview></p><div class="game-screenshots" data-game-screenshots></div>
+  </dialog>
+</main>
+{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='games.js') }}" defer></script>{% endblock %}
