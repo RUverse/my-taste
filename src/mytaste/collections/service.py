@@ -15,6 +15,7 @@ from mytaste.catalog.models import (
     MediaType,
     catalog_sort_key,
 )
+from mytaste.catalog.service import Refine
 from mytaste.catalog.tmdb import TMDBError
 from mytaste.collections.models import Collection, CollectionItem
 from mytaste.storage.collections import CollectionRepository, utc_now
@@ -125,10 +126,12 @@ class CollectionService:
         provider_ids: Sequence[int],
         library_ids: Sequence[int],
         page_size: int | None = None,
+        refine: Refine | None = None,
     ) -> CollectionPage:
         """Browse a collection, limited to the user's ``provider_ids`` and ``library_ids``.
 
-        The query's own source selection, filters, and sort then apply on top.
+        The query's own source selection, filters, and sort then apply on top; ``refine``
+        applies the filters that need more than the saved snapshot of a title.
         """
 
         items = [
@@ -169,6 +172,9 @@ class CollectionService:
             for item in accessible
             if reachable(item, chosen, chosen_local) and _matches_filters(item, query)
         ]
+        if refine is not None and query.filters.active:
+            allowed = await refine([item.to_catalog_item() for item in shown])
+            shown = [item for item in shown if item.key in allowed]
 
         sort, descending = query.sort_for(collection.default_sort)
         if sort == "added":

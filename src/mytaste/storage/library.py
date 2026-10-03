@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -53,6 +54,14 @@ class ItemDraft:
     @property
     def episode_count(self) -> int:
         return len({(file.season, file.episode) for file in self.files if file.episode is not None})
+
+
+@dataclass(frozen=True, slots=True)
+class TitleRef:
+    item_id: int
+    media_type: MediaType
+    tmdb_id: int | None
+    genre_ids: tuple[int, ...] = ()
 
 
 def utc_now() -> str:
@@ -411,9 +420,16 @@ class LibraryRepository:
         category: BrowseCategory,
         *,
         page_size: int = 24,
+        item_ids: AbstractSet[int] | None = None,
     ) -> CatalogPage:
+        """Browse titles; ``item_ids``, when given, limits them to those that passed filters."""
+
         clauses: list[str] = []
         params: list[object] = []
+        if item_ids is not None:
+            ids = sorted(item_ids)
+            clauses.append(f"i.id IN ({','.join('?' for _ in ids)})" if ids else "0")
+            params.extend(ids)
         if query.media_type != "all":
             clauses.append("i.media_type = ?")
             params.append(query.media_type)
@@ -473,6 +489,28 @@ class LibraryRepository:
             page=page,
             total_pages=total_pages,
             total_results=total,
+        )
+
+    def title_refs(self, library_ids: Sequence[int]) -> tuple[TitleRef, ...]:
+        """The titles of the given libraries with what filters need to know about them."""
+
+        if not library_ids:
+            return ()
+        placeholders = ",".join("?" for _ in library_ids)
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"SELECT id, media_type, tmdb_id, genre_ids FROM library_items "
+                f"WHERE library_id IN ({placeholders})",
+                tuple(library_ids),
+            ).fetchall()
+        return tuple(
+            TitleRef(
+                item_id=int(row[0]),
+                media_type=str(row[1]),  # type: ignore[arg-type]
+                tmdb_id=int(row[2]) if row[2] is not None else None,
+                genre_ids=tuple(int(token) for token in str(row[3]).split(",") if token),
+            )
+            for row in rows
         )
 
     def _folders(

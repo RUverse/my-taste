@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from mytaste.catalog.filters import GenreChoice, TitleFacts, genre_choices
 from mytaste.catalog.models import (
     BrowseCategory,
     BrowseQuery,
@@ -12,24 +13,66 @@ from mytaste.catalog.models import (
     CatalogItem,
     CatalogPage,
     Episode,
+    Genre,
     MediaDetails,
     Provider,
     Region,
     Season,
     WatchOption,
 )
-from mytaste.catalog.service import LocalSource
+from mytaste.catalog.service import LocalSource, Refine
 from mytaste.catalog.tmdb import TMDBError
 from mytaste.config import AppSettings
 from mytaste.library.models import Library, LibraryFolder, LibraryStatus
 from mytaste.library.service import FolderEntry, FolderListing
+from mytaste.storage.library import TitleRef
 from mytaste.web.app import create_app
 
 
 class FakeCatalog:
     def __init__(self) -> None:
         self.browse_queries: list[BrowseQuery] = []
+        self.browse_options: list[dict[str, object]] = []
         self.fail_browse = False
+
+    async def genre_choices(self) -> tuple[GenreChoice, ...]:
+        return genre_choices(
+            (
+                Genre(28, "Action", "movie"),
+                Genre(18, "Drama", "movie"),
+                Genre(53, "Thriller", "movie"),
+            ),
+            (
+                Genre(10759, "Action & Adventure", "tv"),
+                Genre(18, "Drama", "tv"),
+                Genre(10762, "Kids", "tv"),
+            ),
+        )
+
+    async def certifications(self, region: str) -> dict[str, tuple[str, ...]]:
+        ratings = ("0", "6", "12", "16", "18")
+        return {"movie": ratings, "tv": ratings} if region == "DE" else {"movie": (), "tv": ()}
+
+    async def countries(self) -> tuple[tuple[str, str], ...]:
+        return (("DE", "Germany"), ("KR", "South Korea"), ("US", "United States of America"))
+
+    async def languages(self) -> tuple[tuple[str, str], ...]:
+        return (("de", "German"), ("en", "English"), ("ko", "Korean"))
+
+    async def name_of(self, kind: str, item_id: int) -> str:
+        names = {("person", 525): "Christopher Nolan", ("keyword", 4379): "time travel"}
+        return names.get((kind, item_id), "")
+
+    async def search_people(self, query: str) -> tuple[tuple[int, str, str], ...]:
+        return ((525, "Christopher Nolan", "Directing · Inception"),)
+
+    async def search_keywords(self, query: str) -> tuple[tuple[int, str], ...]:
+        return ((4379, "time travel"),)
+
+    async def title_facts(self, media_type: str, item_id: int) -> TitleFacts:
+        if item_id == 70523:
+            return TitleFacts(original_language="de", countries=("DE",), runtime=55)
+        return TitleFacts(original_language="en", countries=("US",), runtime=120, directors=(525,))
 
     async def regions(self) -> tuple[Region, ...]:
         return (Region("DE", "Germany"), Region("US", "United States"))
@@ -49,11 +92,18 @@ class FakeCatalog:
         )
 
     async def browse(
-        self, region: str, query: BrowseQuery, *, local: LocalSource | None = None
+        self,
+        region: str,
+        query: BrowseQuery,
+        *,
+        local: LocalSource | None = None,
+        refine: Refine | None = None,
+        exclude: frozenset[tuple[str, int]] = frozenset(),
     ) -> CatalogPage:
         assert region == "DE"
         assert query.provider_ids and set(query.provider_ids) <= {8, 337}
         self.browse_queries.append(query)
+        self.browse_options.append({"refine": refine, "exclude": exclude})
         if self.fail_browse:
             raise TMDBError("TMDB is down")
         local_items = (await local(query, 20)).items if local is not None else ()
@@ -150,6 +200,13 @@ class FakeLibrary:
         self.scan_requests: list[int] = []
         self.roots: tuple[Path, ...] = ()
         self.browse_calls: list[tuple[BrowseQuery, BrowseCategory | None, int]] = []
+        self.item_id_calls: list[frozenset[int] | None] = []
+
+    def title_refs(self, library_ids: tuple[int, ...]) -> tuple[TitleRef, ...]:
+        return (
+            TitleRef(1, "tv", 70523, (18, 10765)),
+            TitleRef(2, "movie", None),
+        )
 
     def libraries(self) -> tuple[Library, ...]:
         return tuple(self.items)
@@ -274,8 +331,10 @@ class FakeLibrary:
         *,
         category: BrowseCategory | None = None,
         page_size: int = 24,
+        item_ids: frozenset[int] | None = None,
     ) -> CatalogPage:
         self.browse_calls.append((query, category, page_size))
+        self.item_id_calls.append(item_ids)
         return CatalogPage(
             items=(
                 CatalogItem(
@@ -545,6 +604,87 @@ def test_sidebar_filters_show_presets_and_removable_chips(tmp_path: Path) -> Non
     assert '<div class="filter-rule" data-filter-rule="rating" hidden>' in plain.text
     assert 'aria-label="Add a filter" title="Add a filter" >' in plain.text
     assert 'class="rail-dot"' not in plain.text
+
+
+def test_filters_beyond_year_and_rating_reach_every_source(tmp_path: Path) -> None:
+    catalog = FakeCatalog()
+    library = FakeLibrary()
+    with make_client(tmp_path, library=library, catalog=catalog) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        client.post("/settings/libraries", data={"name": "Media", "path": "/media/Movies"})
+        page = client.get(
+            "/collections/latest?genre=drama,unknown&country=de&language=de&director=525"
+            "&keyword=4379&runtime_min=40&content_rating=16&watch=unwatched"
+        )
+        plain = client.get("/")
+        german = client.get("/?language=de&runtime_min=40")
+
+    filters = catalog.browse_queries[0].filters
+    assert filters.genre_ids == (18,)
+    assert (filters.countries, filters.languages, filters.directors) == (("DE",), ("de",), (525,))
+    assert (filters.certifications, filters.certification_country) == (("16",), "DE")
+    assert catalog.browse_options[0]["refine"] is not None
+    assert catalog.browse_options[1] == {"refine": None, "exclude": frozenset()}, "unfiltered"
+    # Dark is not directed by Nolan; the unmatched file has no TMDB facts at all.
+    assert library.item_id_calls[0] == frozenset()
+    assert library.item_id_calls[-1] == {1}, "Dark is German and runs 55 minutes"
+    assert german.status_code == 200
+    text = page.text
+    for chip in (
+        "Genre: Drama",
+        "Country: Germany",
+        "Original language: German",
+        "Director: Christopher Nolan",
+        "Keyword: time travel",
+        "Runtime: 40 min or longer",
+        "Content rating: 16",
+        "Unwatched",
+    ):
+        assert chip in text, chip
+    assert '<span class="filter-count">8</span>' in text
+    assert "As rated in Germany" in text
+    assert 'href="/collections/latest?content_rating=16&amp;country=DE&amp;language=de' in text, (
+        "removing genre keeps the rest"
+    )
+    assert 'name="genre" value="drama" checked' in text
+    assert 'data-suggest="person" data-suggest-param="director"' in text
+    assert '<option value="KR">South Korea</option>' in text
+    assert '<option value="DE">Germany</option>' not in text, (
+        "chosen countries are not offered again"
+    )
+    assert 'href="/collections/drama?genre=drama' in text, "other collections keep the filters"
+    assert '<button type="button" data-add-filter="resolution"' not in text, "no probed files"
+    assert '<button type="button" data-add-filter="watch" hidden>' in text
+    assert '<div class="filter-rule" data-filter-rule="genre" hidden>' in plain.text
+    assert 'name="genre" value="kids"' in plain.text and "Action" in plain.text
+
+
+def test_file_filters_show_only_local_titles(tmp_path: Path) -> None:
+    catalog = FakeCatalog()
+    library = FakeLibrary()
+    with make_client(tmp_path, library=library, catalog=catalog) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        client.post("/settings/libraries", data={"name": "Media", "path": "/media/Movies"})
+        response = client.get("/?resolution=4K")
+
+    assert "Only titles in your local libraries are shown" in response.text
+    assert "Resolution: 4K" in response.text
+    assert catalog.browse_queries[-1].filters.resolutions == ("4K",)
+    assert library.item_id_calls[-1] == frozenset(), "nothing was probed, so nothing matches"
+
+
+def test_filter_suggestions(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        people = client.get("/api/filters/suggest?kind=person&q=nolan")
+        keywords = client.get("/api/filters/suggest?kind=keyword&q=time")
+        short = client.get("/api/filters/suggest?kind=person&q=n")
+        unknown = client.get("/api/filters/suggest?kind=studio&q=pixar")
+
+    assert people.json() == {
+        "results": [{"id": 525, "name": "Christopher Nolan", "detail": "Directing · Inception"}]
+    }
+    assert keywords.json()["results"][0]["name"] == "time travel"
+    assert short.json() == unknown.json() == {"results": []}
 
 
 def test_people_endpoint_returns_enrichment(tmp_path: Path) -> None:
@@ -1096,10 +1236,8 @@ def test_titles_are_grouped_into_rows(tmp_path: Path) -> None:
 
 
 class PagedCatalog(FakeCatalog):
-    async def browse(
-        self, region: str, query: BrowseQuery, *, local: LocalSource | None = None
-    ) -> CatalogPage:
-        page = await super().browse(region, query, local=local)
+    async def browse(self, region: str, query: BrowseQuery, **options: object) -> CatalogPage:
+        page = await super().browse(region, query, **options)  # type: ignore[arg-type]
         return replace(page, page=query.page, total_pages=3)
 
 

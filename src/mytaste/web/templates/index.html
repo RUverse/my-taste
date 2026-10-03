@@ -15,8 +15,7 @@
   {% set chevron_icon %}<svg class="disclosure-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>{% endset %}
   {% set collapse_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M9 4.5v15"></path></svg>{% endset %}
   {% set sources_dot = sources_changed %}
-  {% set filter_dot = year_active or rating_active %}
-  {% set active_filter_rules = (1 if year_active else 0) + (1 if rating_active else 0) %}
+  {% set filter_dot = active_filter_rules > 0 %}
   <div class="browse-layout">
     <div class="browse-side">
       <aside class="browse-sidebar" id="browse-sidebar" aria-labelledby="collection-heading" {% if not display.sidebar_open %}inert{% endif %}>
@@ -123,10 +122,20 @@
               <div class="sidebar-section-head">
                 <h2 id="filter-heading">{{ filter_icon }}Filter</h2>
                 <div class="popover-anchor">
-                  <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="filter-popover" aria-label="Add a filter" title="Add a filter" {% if active_filter_rules == 2 %}hidden{% endif %}>{{ plus_icon }}</button>
-                  <div class="popover" id="filter-popover" hidden>
-                    <button type="button" data-add-filter="year" {% if year_active %}hidden{% endif %}>Release year</button>
-                    <button type="button" data-add-filter="rating" {% if rating_active %}hidden{% endif %}>Rating</button>
+                  <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="filter-popover" aria-label="Add a filter" title="Add a filter" {% if active_filter_rules >= filter_rules|length + 2 %}hidden{% endif %}>{{ plus_icon }}</button>
+                  <div class="popover popover-filters" id="filter-popover" hidden>
+                    {% for group in filter_groups %}
+                      <div class="popover-group" role="group" aria-labelledby="filter-group-{{ loop.index }}">
+                        <p class="popover-label" id="filter-group-{{ loop.index }}">{{ group.label }}</p>
+                        {% if loop.first %}
+                          <button type="button" data-add-filter="year" {% if year_active %}hidden{% endif %}>Release year</button>
+                          <button type="button" data-add-filter="rating" {% if rating_active %}hidden{% endif %}>Rating</button>
+                        {% endif %}
+                        {% for rule in group.rules %}
+                          <button type="button" data-add-filter="{{ rule.key }}" {% if rule.active %}hidden{% endif %}>{{ rule.label }}</button>
+                        {% endfor %}
+                      </div>
+                    {% endfor %}
                   </div>
                 </div>
               </div>
@@ -147,6 +156,12 @@
                 </div>
                 <div class="chip-row">
                   {% for preset in year_presets %}
+                    <a class="chip" href="{{ preset.url }}" {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
+                  {% endfor %}
+                </div>
+                <p class="sidebar-label" id="decade-heading">Decade</p>
+                <div class="chip-row" role="group" aria-labelledby="decade-heading">
+                  {% for preset in decade_presets %}
                     <a class="chip" href="{{ preset.url }}" {% if preset.active %}aria-current="true"{% endif %}>{{ preset.label }}</a>
                   {% endfor %}
                 </div>
@@ -174,6 +189,78 @@
                   <input class="switch" type="checkbox" name="unrated" value="1" {% if query.include_unrated %}checked{% endif %}>
                 </label>
               </div>
+
+              {% for rule in filter_rules %}
+                <div class="filter-rule" data-filter-rule="{{ rule.key }}" {% if not rule.active %}hidden{% endif %}>
+                  <div class="filter-rule-head">
+                    <p id="{{ rule.key }}-heading">{{ rule.label }}</p>
+                    {% if rule.active %}
+                      <a class="row-button" href="{{ rule.clear_url }}" aria-label="Remove the {{ rule.label|lower }} filter" title="Remove">{{ minus_icon }}</a>
+                    {% else %}
+                      <button class="row-button" type="button" data-remove-filter="{{ rule.key }}" aria-label="Remove the {{ rule.label|lower }} filter" title="Remove">{{ minus_icon }}</button>
+                    {% endif %}
+                  </div>
+                  {% if rule.kind == 'chips' %}
+                    <div class="chip-row" role="group" aria-labelledby="{{ rule.key }}-heading">
+                      {% for option in rule.options %}
+                        <label class="chip chip-choice">
+                          <input type="checkbox" name="{{ rule.param }}" value="{{ option.value }}" {% if option.checked %}checked{% endif %}>
+                          <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ option.label }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  {% elif rule.kind == 'radio' %}
+                    <div class="segmented segmented-wrap" role="radiogroup" aria-labelledby="{{ rule.key }}-heading">
+                      {% for option in rule.options %}
+                        <label>
+                          <input type="radio" name="{{ rule.param }}" value="{{ option.value }}" {% if option.checked %}checked{% endif %}>
+                          <span>{{ option.label }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  {% elif rule.kind == 'runtime' %}
+                    <div class="year-range" role="group" aria-labelledby="{{ rule.key }}-heading">
+                      <label><span class="sr-only">At least, in minutes</span><input type="number" name="runtime_min" min="1" max="1000" value="{{ rule.minimum or '' }}" placeholder="From" inputmode="numeric"></label>
+                      <span class="year-range-dash" aria-hidden="true">–</span>
+                      <label><span class="sr-only">At most, in minutes</span><input type="number" name="runtime_max" min="1" max="1000" value="{{ rule.maximum or '' }}" placeholder="To" inputmode="numeric"></label>
+                    </div>
+                    <div class="chip-row">
+                      {% for option in rule.options %}
+                        <a class="chip" href="{{ option.url }}" {% if option.checked %}aria-current="true"{% endif %}>{{ option.label }}</a>
+                      {% endfor %}
+                    </div>
+                  {% else %}
+                    {% if rule.selected %}
+                      <div class="chip-row" role="group" aria-label="Chosen for {{ rule.label|lower }}">
+                        {% for option in rule.selected %}
+                          <label class="chip chip-choice" title="Uncheck to remove">
+                            <input type="checkbox" name="{{ rule.param }}" value="{{ option.value }}" checked>
+                            <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ option.label }}</span>
+                          </label>
+                        {% endfor %}
+                      </div>
+                    {% endif %}
+                    {% if rule.kind == 'pick' %}
+                      <label class="select-field">
+                        <span class="sr-only">Add a value to {{ rule.label|lower }}</span>
+                        <select name="{{ rule.param }}" data-add-value>
+                          <option value="">{{ 'Add another…' if rule.selected else 'Choose…' }}</option>
+                          {% for option in rule.options %}
+                            <option value="{{ option.value }}">{{ option.label }}</option>
+                          {% endfor %}
+                        </select>
+                      </label>
+                    {% else %}
+                      <div class="suggest" data-suggest="{{ rule.suggest }}" data-suggest-param="{{ rule.param }}">
+                        <input class="suggest-input" type="search" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ rule.key }}-suggestions" aria-label="Find {{ 'a person' if rule.suggest == 'person' else 'a keyword' }} for {{ rule.label|lower }}" placeholder="{{ 'Search people…' if rule.suggest == 'person' else 'Search keywords…' }}" autocomplete="off" spellcheck="false">
+                        <ul class="suggest-list" id="{{ rule.key }}-suggestions" role="listbox" aria-label="Suggestions" hidden></ul>
+                        <p class="suggest-status" role="status" aria-live="polite"></p>
+                      </div>
+                    {% endif %}
+                  {% endif %}
+                  {% if rule.hint %}<p class="filter-hint">{{ rule.hint }}</p>{% endif %}
+                </div>
+              {% endfor %}
             </section>
 
             <section class="sidebar-section" id="sidebar-group" aria-labelledby="group-heading">

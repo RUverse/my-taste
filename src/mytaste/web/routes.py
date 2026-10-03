@@ -2,16 +2,18 @@ from __future__ import annotations
 
 import asyncio
 import math
-from collections.abc import Callable
-from dataclasses import replace
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass, replace
 from datetime import date, datetime
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
+from mytaste.catalog.filtering import FilterResolver
+from mytaste.catalog.filters import PERSON_ROLES, GenreChoice, TitleFilters
 from mytaste.catalog.grouping import GROUP_TITLE_LIMIT, GROUPINGS, TitleGroup, group_titles
 from mytaste.catalog.models import (
     SORT_KEYS,
@@ -31,6 +33,16 @@ from mytaste.catalog.tmdb import TMDBError
 from mytaste.collections.models import HOME_COLLECTION, ICONS, Collection, smart_collection
 from mytaste.library.models import Library, LibraryStatus
 from mytaste.storage.preferences import DisplayPreferences, Preferences
+from mytaste.web.filter_options import (
+    FILTER_GROUPS,
+    FilterOptions,
+    active_filter_chips,
+    filter_params,
+    filter_rules,
+    parse_filters,
+)
+
+T = TypeVar("T")
 
 _MEDIA_LABELS: tuple[tuple[BrowseMediaType, str], ...] = (
     ("all", "All"),
@@ -128,6 +140,11 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         all_provider_ids = preferences.provider_ids if preferences.configured else ()
         all_library_ids = tuple(sorted(item.id for item in libraries))
         query = _parse_browse_query(request, all_provider_ids, all_library_ids, key)
+        lists = await _filter_lists(catalog, preferences.region or "US")
+        query = replace(
+            query,
+            filters=parse_filters(request.query_params, lists.genres, lists.certification_country),
+        )
         # Grouped, the page number pages through rows and the services are asked for the first
         # titles of the collection instead.
         group = query.group
@@ -136,7 +153,9 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
 
         def url(value: BrowseQuery, *, grouping: str | None = None) -> str:
             chosen = group if grouping is None else grouping
-            return _browse_url(replace(value, group=chosen), all_provider_ids, all_library_ids)
+            return _browse_url(
+                replace(value, group=chosen), all_provider_ids, all_library_ids, lists.genres
+            )
 
         def collection_url(value: BrowseQuery, collection_key: str) -> str:
             """Open another collection, keeping sources and filters but not the sort."""
@@ -197,6 +216,22 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     pass
             return await library.categories(media_type)
 
+        filters = query.filters
+        playback = request.app.state.playback
+        # What local files contain, for the library filters' choices and for filtering.
+        local_facets = playback.local_facets() if libraries else {}
+        resolver = FilterResolver(
+            filters,
+            facts=request.app.state.facts,
+            library=library,
+            playback=playback,
+            library_ids=query.library_ids,
+            local=local_facets,
+        )
+        refine = resolver.allowed if filters.active else None
+        item_ids = await resolver.local_item_ids() if query.library_ids else None
+        exclude = resolver.streaming_exclude()
+
         async def browse_library(
             value: BrowseQuery,
         ) -> tuple[tuple[BrowseCategory, ...], BrowseQuery, CatalogPage]:
@@ -204,13 +239,9 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             chosen = _SEARCH_CATEGORY if value.search else _pick_category(options, value.category)
             if not value.search:
                 value = replace(value, category=chosen.slug)
-            if group:
-                return (
-                    options,
-                    value,
-                    await library.browse(value, category=chosen, page_size=GROUP_TITLE_LIMIT),
-                )
-            return options, value, await library.browse(value, category=chosen)
+            size = GROUP_TITLE_LIMIT if group else 24
+            found = await library.browse(value, category=chosen, page_size=size, item_ids=item_ids)
+            return options, value, found
 
         providers: tuple[Provider, ...] = ()
         categories: tuple[BrowseCategory, ...] = ()
@@ -229,6 +260,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     provider_ids=all_provider_ids,
                     library_ids=all_library_ids,
                     page_size=GROUP_TITLE_LIMIT if group else None,
+                    refine=refine,
                 ),
             )
             page = result.page
@@ -246,10 +278,17 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                         else _pick_category(categories, query.category)
                     )
                     query = replace(query, category=category.slug)
-                    local = _local_source(library, query, category) if query.library_ids else None
-                    page = await catalog.browse(preferences.region, query, local=local)
+                    local = (
+                        _local_source(library, query, category, item_ids)
+                        if query.library_ids
+                        else None
+                    )
+                    narrowing = {"refine": refine, "exclude": exclude} if filters.active else {}
+                    page = await catalog.browse(preferences.region, query, local=local, **narrowing)
                     if group:
-                        page = await _first_titles(catalog, preferences.region, query, local, page)
+                        page = await _first_titles(
+                            catalog, preferences.region, query, local, page, narrowing
+                        )
                 else:
                     providers = await load_providers()
                     categories, query, page = await browse_library(query)
@@ -318,12 +357,30 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         sources_changed = (
             query.provider_ids != all_provider_ids or query.library_ids != all_library_ids
         )
+        if filters.local_only and query.provider_ids and manual is None and error is None:
+            notice = (
+                "Only titles in your local libraries are shown: filters on files and watch "
+                "status do not apply to streaming."
+            )
+        rules = filter_rules(
+            query,
+            replace(
+                lists,
+                names=await _filter_names(catalog, filters),
+                local=tuple(local_facets.values()),
+                has_libraries=bool(libraries),
+                certifications=lists.certifications_for(query.media_type),
+            ),
+            url,
+        )
+        active_rules = sum(1 for rule in rules if rule["active"])
         active_filter_count = sum(
             (
                 sources_changed,
                 query.year_from is not None or query.year_to is not None,
                 query.minimum_rating is not None,
                 query.include_unrated,
+                active_rules,
             )
         )
         if query.search:
@@ -370,27 +427,38 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             ),
         )
         this_year = date.today().year
-        year_presets = tuple(
-            {
-                "label": label,
-                "url": url(replace(query, year_from=start, year_to=end, page=1)),
-                "active": (query.year_from, query.year_to) == (start, end),
-            }
-            for label, start, end in (
-                ("This year", this_year, None),
-                ("Last 5 years", this_year - 4, None),
-                ("2010s", 2010, 2019),
-                ("2000s", 2000, 2009),
-                ("Before 2000", None, 1999),
+        decade = this_year - this_year % 10
+
+        def year_links(
+            ranges: tuple[tuple[str, int | None, int | None], ...],
+        ) -> tuple[dict[str, object], ...]:
+            return tuple(
+                {
+                    "label": label,
+                    "url": url(replace(query, year_from=start, year_to=end, page=1)),
+                    "active": (query.year_from, query.year_to) == (start, end),
+                }
+                for label, start, end in ranges
+            )
+
+        year_presets = year_links(
+            (("This year", this_year, None), ("Last 5 years", this_year - 4, None))
+        )
+        decade_presets = year_links(
+            (
+                *((f"{start}s", start, start + 9) for start in range(decade, 1950, -10)),
+                ("Earlier", None, 1959),
             )
         )
-        active_filters = _active_filters(
-            query,
-            source_options,
-            sources_url=all_sources_url if sources_changed else None,
-            url=url,
+        active_filters = (
+            *_active_filters(
+                query,
+                source_options,
+                sources_url=all_sources_url if sources_changed else None,
+                url=url,
+            ),
+            *active_filter_chips(rules),
         )
-        playback = request.app.state.playback
         play_states = playback.states(_card_state_keys(page)) if libraries else {}
         is_home = manual is None and query.category == HOME_COLLECTION
         continue_items = (
@@ -503,6 +571,15 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "sources_changed": sources_changed,
             "all_sources_url": all_sources_url,
             "year_presets": year_presets,
+            "decade_presets": decade_presets,
+            "filter_rules": rules,
+            "filter_groups": tuple(
+                {"key": value, "label": label, "rules": [r for r in rules if r["group"] == value]}
+                for value, label in FILTER_GROUPS
+            ),
+            "active_filter_rules": active_rules
+            + (1 if year_active else 0)
+            + (1 if rating_active else 0),
             "year_clear_url": url(replace(query, year_from=None, year_to=None, page=1)),
             "rating_options": (None, 5, 6, 7, 8),
             "active_filters": active_filters,
@@ -882,6 +959,32 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         )
         return JSONResponse({"saved": False, "removed": removed})
 
+    @router.get("/api/filters/suggest", response_class=JSONResponse)
+    async def filter_suggestions(request: Request) -> JSONResponse:
+        """Suggest people or keywords for a filter as the user types."""
+
+        kind = request.query_params.get("kind", "")
+        text = " ".join((request.query_params.get("q") or "").split())[:60]
+        if kind not in {"person", "keyword"} or len(text) < 2:
+            return JSONResponse({"results": []})
+        catalog = request.app.state.catalog
+        try:
+            if kind == "person":
+                people = await catalog.search_people(text)
+                results = [
+                    {"id": person_id, "name": name, "detail": detail}
+                    for person_id, name, detail in people[:10]
+                ]
+            else:
+                keywords = await catalog.search_keywords(text)
+                results = [
+                    {"id": keyword_id, "name": name, "detail": ""}
+                    for keyword_id, name in keywords[:10]
+                ]
+        except TMDBError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=502)
+        return JSONResponse({"results": results})
+
     @router.get("/api/items/providers", response_class=JSONResponse)
     async def item_providers(request: Request) -> JSONResponse:
         """Map ``media:id`` keys to the user's enabled services that carry each title."""
@@ -1082,6 +1185,7 @@ async def _first_titles(
     query: BrowseQuery,
     local: LocalSource | None,
     first: CatalogPage,
+    narrowing: dict[str, Any],
 ) -> CatalogPage:
     """Read the top of a collection, up to the number of titles grouping looks at."""
 
@@ -1089,7 +1193,9 @@ async def _first_titles(
     number = 1
     while len(items) < GROUP_TITLE_LIMIT and number < first.total_pages:
         number += 1
-        following = await catalog.browse(region, replace(query, page=number), local=local)
+        following = await catalog.browse(
+            region, replace(query, page=number), local=local, **narrowing
+        )
         if not following.items:
             break
         items.extend(following.items)
@@ -1297,17 +1403,89 @@ def _guess_region(accept_language: str, codes: set[str]) -> str:
     return sorted(codes)[0]
 
 
+@dataclass(frozen=True, slots=True)
+class _FilterLists(FilterOptions):
+    movie_certifications: tuple[str, ...] = ()
+    tv_certifications: tuple[str, ...] = ()
+
+    def certifications_for(self, media_type: BrowseMediaType) -> tuple[str, ...]:
+        if media_type == "movie":
+            return self.movie_certifications
+        if media_type == "tv":
+            return self.tv_certifications
+        return tuple(dict.fromkeys((*self.movie_certifications, *self.tv_certifications)))
+
+
+async def _filter_lists(catalog: Any, region: str) -> _FilterLists:
+    """TMDB's genres, content ratings, countries, and languages; empty when unavailable."""
+
+    async def attempt(load: Callable[[], Awaitable[T]], fallback: T) -> T:
+        try:
+            return await load()
+        except TMDBError:
+            return fallback
+
+    genres, ratings, countries, languages = await asyncio.gather(
+        attempt(catalog.genre_choices, ()),
+        attempt(lambda: catalog.certifications(region), {}),
+        attempt(catalog.countries, ()),
+        attempt(catalog.languages, ()),
+    )
+    rating_country = region
+    if not any(ratings.values()) and region != "US":
+        # Ratings are filtered by the user's country; countries TMDB has none for use the US.
+        rating_country = "US"
+        ratings = await attempt(lambda: catalog.certifications("US"), {})
+    country_names = dict(countries)
+    return _FilterLists(
+        genres=genres,
+        certification_country=rating_country,
+        certification_region=country_names.get(rating_country, rating_country),
+        countries=countries,
+        languages=languages,
+        movie_certifications=ratings.get("movie", ()),
+        tv_certifications=ratings.get("tv", ()),
+    )
+
+
+async def _filter_names(catalog: Any, filters: TitleFilters) -> dict[tuple[str, int], str]:
+    """Names of the people and keywords chosen in filters, which the URL holds as ids."""
+
+    wanted = [("keyword", value) for value in filters.keyword_ids] + [
+        ("person", value) for role in PERSON_ROLES for value in filters.people(role)
+    ]
+
+    async def name(kind: str, value: int) -> tuple[tuple[str, int], str]:
+        try:
+            return (kind, value), await catalog.name_of(kind, value)
+        except TMDBError:
+            return (kind, value), ""
+
+    found = await asyncio.gather(*(name(kind, value) for kind, value in dict.fromkeys(wanted)))
+    return {key: text for key, text in found if text}
+
+
 def _pick_category(categories: tuple[BrowseCategory, ...], slug: str) -> BrowseCategory:
     return next((category for category in categories if category.slug == slug), categories[0])
 
 
-def _local_source(library: Any, query: BrowseQuery, category: BrowseCategory) -> LocalSource:
-    """Load the first ``limit`` titles of the chosen libraries in the order the catalog asks."""
+def _local_source(
+    library: Any,
+    query: BrowseQuery,
+    category: BrowseCategory,
+    item_ids: frozenset[int] | None,
+) -> LocalSource:
+    """Load the first ``limit`` titles of the chosen libraries in the order the catalog asks.
+
+    ``item_ids`` are the titles that passed the filters, when there are any.
+    """
 
     async def load(value: BrowseQuery, limit: int) -> CatalogPage:
         # The catalog strips the library selection from its query; restore it here.
         local_query = replace(value, page=1, library_ids=query.library_ids)
-        return await library.browse(local_query, category=category, page_size=limit)
+        return await library.browse(
+            local_query, category=category, page_size=limit, item_ids=item_ids
+        )
 
     return load
 
@@ -1429,6 +1607,7 @@ def _browse_url(
     query: BrowseQuery,
     all_provider_ids: tuple[int, ...],
     all_library_ids: tuple[int, ...],
+    genres: Sequence[GenreChoice] = (),
 ) -> str:
     """Link to a collection (or search results) with the query's sources, filters, and sort.
 
@@ -1452,6 +1631,7 @@ def _browse_url(
         params["rating_min"] = query.minimum_rating
     if query.include_unrated:
         params["unrated"] = 1
+    params.update(filter_params(query.filters, genres))
     if query.sort is not None and not query.search:
         params["sort"] = query.sort
     if query.descending is not None and not query.search:
@@ -1464,7 +1644,8 @@ def _browse_url(
         path = "/"
     else:
         path = f"/collections/{query.category}"
-    return f"{path}?{urlencode(params)}" if params else path
+    # Lists such as genre=drama,comedy keep their commas readable.
+    return f"{path}?{urlencode(params, safe=',')}" if params else path
 
 
 def _optional_int(value: str | None, minimum: int, maximum: int) -> int | None:

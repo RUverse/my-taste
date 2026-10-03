@@ -17,8 +17,8 @@ matching releases in a clean poster grid.
 - A Watch button that opens the title on each of your services that carries it, and an episode
   grid for series with one row per season, marking the episodes you have in a local library
 - A sidebar for the open collection: its sources (add or remove services and folders right
-  there), sort, release-year and rating filters, grouping into rows (by director, genre, decade, or
-  type), and card appearance; changes apply instantly and
+  there), sort, Plex-style filters (see [Filters](#filters)), grouping into rows (by director,
+  genre, decade, or type), and card appearance; changes apply instantly and
   stay in the URL. Collapsed, it becomes a rail of icons that marks changed sections with a dot
 - Storage libraries: connect local folders (USB drive, NAS share, the same folders Plex uses),
   scan and match them on TMDB, and see them mixed into every category with your streaming picks
@@ -112,6 +112,29 @@ sidebar's sources, sort, and filters apply on top of whichever collection is ope
 another collection keeps the sources and filters and returns to that collection's own sort.
 Collections live at `/collections/<name>` (or `/collections/<number>` for your own), and the
 older `/?category=…` links redirect there.
+
+## Filters
+
+The **+** in the sidebar's **Filter** section adds a filter. Values within one filter are
+alternatives (Drama *or* Crime); different filters must all match. Each active filter also shows
+as a chip above the grid that removes it.
+
+- **Details:** release year (with decade shortcuts), rating, genre, genres to exclude, content
+  rating (as rated in your region), runtime, country of origin, original language, and TMDB
+  keywords such as “time travel”.
+- **People:** actor, director, writer, and producer. Type a name and pick the person; series
+  creators count as directors and writers. Appearances as oneself, such as talk-show guests, do
+  not count as acting.
+- **Local files** (only with a library): watch status, resolution, video codec, dynamic range,
+  audio codec, audio channels, audio language, and subtitle language. The choices are what your
+  probed files contain. These filters only match titles in your libraries, so streaming titles
+  are left out while one is on; **Unwatched** keeps streaming titles, since you have not played
+  them here.
+
+TMDB applies the detail filters to streaming titles itself. Local titles, your own collections,
+search results, and people's credits are checked against the same facts, which MyTaste reads
+from TMDB once per title and keeps in its database; titles in your libraries are read ahead of
+time. Runtime uses episode length for series, and series without one on TMDB do not match.
 
 ## Storage libraries
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal
+
+from mytaste.catalog.filters import TitleFilters
 
 MediaType = Literal["movie", "tv"]
 BrowseMediaType = Literal["all", "movie", "tv"]
@@ -244,6 +246,7 @@ class BrowseQuery:
     descending: bool | None = None
     # Rows to split the titles into (see ``catalog.grouping``); empty shows one grid.
     group: str = ""
+    filters: TitleFilters = field(default_factory=TitleFilters)
 
     def sort_for(self, default: SortKey) -> tuple[SortKey, bool]:
         sort = self.sort or default

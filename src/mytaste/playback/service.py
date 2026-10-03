@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import shutil
@@ -13,6 +14,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from mytaste.catalog.filters import LocalFacets, WatchStatus
 from mytaste.library.models import LibraryFile
 from mytaste.playback.decision import (
     Capabilities,
@@ -21,7 +23,7 @@ from mytaste.playback.decision import (
     codec_string,
     decide,
 )
-from mytaste.playback.models import MediaInfo
+from mytaste.playback.models import MediaInfo, VideoStream, channel_label, language_tag
 from mytaste.playback.probe import ProbeError, probe_file
 from mytaste.playback.sessions import CommandFactory, SegmentPlan, Session, SessionManager
 from mytaste.playback.subtitles import (
@@ -31,7 +33,7 @@ from mytaste.playback.subtitles import (
     to_webvtt,
 )
 from mytaste.storage.library import LibraryRepository
-from mytaste.storage.playback import PlaybackRepository, PlayState, utc_now
+from mytaste.storage.playback import FileRow, PlaybackRepository, PlayState, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +130,7 @@ class PlaybackService:
             cache_dir / "streams" / str(os.getpid()), max_transcodes=max_transcodes
         )
         self._probe_locks: dict[int, asyncio.Lock] = {}
+        self._file_facets: dict[tuple[int, str], LocalFacets] = {}
         self._probe_wanted = asyncio.Event()
         self._prober: asyncio.Task[None] | None = None
         self._extractions: dict[str, asyncio.Task[Path]] = {}
@@ -515,6 +518,41 @@ class PlaybackService:
         self.repository.save_state(state)
         return state
 
+    def local_facets(self) -> dict[int, LocalFacets]:
+        """What each library title's files contain and how far it was watched, by item id.
+
+        A series is watched when every local episode is, and in progress when some are.
+        """
+
+        states = {state.key: state for state in self.repository.all_states()}
+        parsed: dict[tuple[int, str], LocalFacets] = {}
+        files: dict[int, list[LocalFacets]] = {}
+        progress: dict[int, list[PlayState | None]] = {}
+        for row in self.repository.library_files():
+            cache_key = (row.file_id, row.probed_at)
+            facets = self._file_facets.get(cache_key) or file_facets(row.data)
+            parsed[cache_key] = facets
+            files.setdefault(row.item_id, []).append(facets)
+            progress.setdefault(row.item_id, []).append(states.get(_row_state_key(row)))
+        # Only files that are still indexed stay cached.
+        self._file_facets = parsed
+        result: dict[int, LocalFacets] = {}
+        for item_id, found in files.items():
+            item_states = progress[item_id]
+            if all(state is not None and state.watched for state in item_states):
+                status: WatchStatus = "watched"
+            elif any(
+                state is not None and (state.watched or state.resumable) for state in item_states
+            ):
+                status = "in_progress"
+            else:
+                status = "unwatched"
+            combined = found[0]
+            for facets in found[1:]:
+                combined = combined.merge(facets)
+            result[item_id] = replace(combined, watch=status)
+        return result
+
     def continue_watching(self, limit: int = 12) -> tuple[ContinueEntry, ...]:
         entries: list[ContinueEntry] = []
         seen_shows: set[int] = set()
@@ -549,6 +587,66 @@ class PlaybackService:
         if kind == "file" and rest.isdigit():
             return self.local(int(rest))
         return None
+
+
+def file_facets(data: str | None) -> LocalFacets:
+    """Read what a filter can ask of one file from its stored probe JSON."""
+
+    if not data:
+        return LocalFacets()
+    try:
+        payload = json.loads(data)
+    except ValueError:
+        return LocalFacets()
+    if not isinstance(payload, dict):
+        return LocalFacets()
+    video = payload.get("video") if isinstance(payload.get("video"), dict) else None
+    audio = [item for item in payload.get("audio") or () if isinstance(item, dict)]
+    subtitles = [
+        item
+        for key in ("subtitles", "external_subtitles")
+        for item in payload.get(key) or ()
+        if isinstance(item, dict)
+    ]
+    resolutions: frozenset[str] = frozenset()
+    dynamic_ranges: frozenset[str] = frozenset()
+    video_codecs: frozenset[str] = frozenset()
+    if video is not None:
+        stream = VideoStream(
+            index=0,
+            codec=str(video.get("codec") or ""),
+            width=int(video.get("width") or 0),
+            height=int(video.get("height") or 0),
+        )
+        resolutions = frozenset({stream.resolution_label})
+        dynamic_ranges = frozenset({"hdr" if video.get("hdr") else "sdr"})
+        video_codecs = frozenset({stream.codec}) if stream.codec else frozenset()
+    return LocalFacets(
+        resolutions=resolutions,
+        video_codecs=video_codecs,
+        dynamic_ranges=dynamic_ranges,
+        audio_codecs=frozenset(str(item["codec"]) for item in audio if item.get("codec")),
+        audio_channels=frozenset(
+            channel_label(int(item.get("channels") or 0)) for item in audio if item.get("channels")
+        ),
+        audio_languages=frozenset(
+            tag for item in audio if (tag := language_tag(str(item.get("language") or "")))
+        ),
+        subtitle_languages=frozenset(
+            tag for item in subtitles if (tag := language_tag(str(item.get("language") or "")))
+        ),
+    )
+
+
+def _row_state_key(row: FileRow) -> str:
+    """The watch-progress key of a file, as ``state_key`` gives it for a ``LibraryFile``."""
+
+    if row.tmdb_id is not None:
+        if row.media_type == "movie":
+            return f"movie:{row.tmdb_id}"
+        if row.season is not None and row.episode is not None:
+            return f"tv:{row.tmdb_id}:{row.season}:{row.episode}"
+    return f"file:{row.file_id}"
 
 
 def segment_plan(info: MediaInfo, decision: Decision) -> SegmentPlan:
