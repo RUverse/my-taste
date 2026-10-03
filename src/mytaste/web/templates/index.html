@@ -43,54 +43,60 @@
             <section class="sidebar-section" id="sidebar-sources" aria-labelledby="sources-heading">
               <div class="sidebar-section-head">
                 <h2 id="sources-heading">
-                  <button class="section-disclosure" type="button" aria-expanded="false" aria-controls="sources-body" data-disclosure="sources">{{ sources_icon }}Sources{{ chevron_icon }}</button>
+                  <button class="section-disclosure" type="button" aria-expanded="false" aria-controls="sources-body" data-disclosure="sources">
+                    {{ sources_icon }}<span>Services</span>
+                    {# Collapsed, the section is one row: its name, then the services' icons. #}
+                    <span class="source-logos" data-disclosure-summary="sources" aria-hidden="true">
+                      {% for option in source_options[:5] %}
+                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}{% if not option.checked %} is-excluded{% endif %}" title="{{ option.name }}">
+                          {% if option.logo_url %}
+                            <img src="{{ option.logo_url }}" alt="" width="22" height="22">
+                          {% elif option.kind == 'library' %}
+                            <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
+                          {% else %}
+                            {{ option.name[0] }}
+                          {% endif %}
+                        </span>
+                      {% endfor %}
+                      {% if source_options|length > 5 %}<span class="source-logos-more">+{{ source_options|length - 5 }}</span>{% endif %}
+                    </span>
+                    {{ chevron_icon }}
+                  </button>
                 </h2>
-                {% if sources_changed %}<a class="section-action" href="{{ all_sources_url }}">Use all</a>{% endif %}
-                <div class="popover-anchor">
-                  <button class="section-button" type="button" data-popover-button aria-expanded="false" aria-controls="sources-popover" aria-label="Add a source" title="Add a source">{{ plus_icon }}</button>
-                  <div class="popover" id="sources-popover" hidden>
-                    <a href="/settings?add=streaming&amp;next={{ return_to|urlencode }}">Streaming service</a>
-                    <a href="/settings?add=local&amp;next={{ return_to|urlencode }}">Local folder</a>
-                    <a href="/settings?next={{ return_to|urlencode }}">Manage sources and region</a>
-                  </div>
-                </div>
               </div>
               {% if configured_providers %}<input type="hidden" name="providers" value="none">{% endif %}
               {% if libraries %}<input type="hidden" name="libraries" value="none">{% endif %}
-              <div class="source-logos" data-disclosure-summary="sources" aria-hidden="true">
-                {% for option in source_options %}
-                  <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}{% if not option.checked %} is-excluded{% endif %}" title="{{ option.name }}">
-                    {% if option.logo_url %}
-                      <img src="{{ option.logo_url }}" alt="" width="26" height="26">
-                    {% elif option.kind == 'library' %}
-                      <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
-                    {% else %}
-                      {{ option.name[0] }}
-                    {% endif %}
-                  </span>
-                {% endfor %}
+              <div class="source-body" id="sources-body" data-disclosure-body="sources" hidden>
+                <ul class="source-list" role="list">
+                  {% for option in source_options %}
+                    {% set input_id = 'source-' ~ option.kind ~ '-' ~ option.id %}
+                    <li class="source-row">
+                      <input class="source-input" type="checkbox" id="{{ input_id }}" name="{{ 'providers' if option.kind == 'provider' else 'libraries' }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
+                      <label class="source-toggle" for="{{ input_id }}" title="{{ 'Hide from this view' if option.checked else 'Show in this view' }}">
+                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}" aria-hidden="true">
+                          {% if option.logo_url %}
+                            <img src="{{ option.logo_url }}" alt="" width="26" height="26">
+                          {% elif option.kind == 'library' %}
+                            <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
+                          {% else %}
+                            {{ option.name[0] }}
+                          {% endif %}
+                        </span>
+                        <span class="source-row-name">{{ option.name }}</span>
+                        {% if option.kind == 'library' %}<span class="source-row-detail" title="{{ option.detail }}">Local</span>{% endif %}
+                      </label>
+                      {% if not option.only %}
+                        <a class="source-only" href="{{ option.only_url }}" aria-label="Show only {{ option.name }}" title="Show only {{ option.name }}">Only</a>
+                      {% endif %}
+                      <label class="source-check" for="{{ input_id }}" aria-hidden="true">{{ check_icon }}</label>
+                    </li>
+                  {% endfor %}
+                </ul>
+                <div class="source-footer">
+                  <a href="/settings?next={{ return_to|urlencode }}">Manage</a>
+                  {% if sources_changed %}<a href="{{ all_sources_url }}">Show all</a>{% endif %}
+                </div>
               </div>
-              <ul class="source-list" role="list" id="sources-body" data-disclosure-body="sources" hidden>
-                {% for option in source_options %}
-                  <li class="source-row">
-                    <label class="source-toggle" title="{{ 'Leave out of this view' if option.checked else 'Include in this view' }}">
-                      <input type="checkbox" name="{{ 'providers' if option.kind == 'provider' else 'libraries' }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
-                      <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}" aria-hidden="true">
-                        {% if option.logo_url %}
-                          <img src="{{ option.logo_url }}" alt="" width="26" height="26">
-                        {% elif option.kind == 'library' %}
-                          <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
-                        {% else %}
-                          {{ option.name[0] }}
-                        {% endif %}
-                      </span>
-                      <span class="source-row-name">{{ option.name }}</span>
-                      {% if option.kind == 'library' %}<span class="source-row-detail" title="{{ option.detail }}">Local</span>{% endif %}
-                    </label>
-                    <button class="row-button" type="submit" form="remove-{{ option.kind }}-{{ option.id }}" aria-label="Remove {{ option.name }}" title="Remove {{ option.name }}">{{ minus_icon }}</button>
-                  </li>
-                {% endfor %}
-              </ul>
             </section>
 
             {% if not query.search %}
@@ -295,11 +301,6 @@
             <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
           </form>
 
-          {% for option in source_options %}
-            <form id="remove-{{ option.kind }}-{{ option.id }}" method="post" action="{{ '/settings/services/' if option.kind == 'provider' else '/settings/libraries/' }}{{ option.id }}/remove" data-confirm="{% if option.kind == 'provider' %}Remove {{ option.name }} from your services?{% else %}Remove the local library “{{ option.name }}”? Your files are not touched.{% endif %}" hidden>
-              <input type="hidden" name="next" value="{{ return_to }}">
-            </form>
-          {% endfor %}
 
           <details class="sidebar-section sidebar-appearance" id="sidebar-appearance">
             <summary class="sidebar-section-head">
@@ -345,7 +346,7 @@
 
       <nav class="sidebar-rail" aria-label="Sidebar" {% if display.sidebar_open %}inert{% endif %}>
         <button class="icon-button rail-button" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Show the sidebar" title="Show the sidebar">{{ collapse_icon }}</button>
-        <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Sources{% if sources_dot %} (narrowed){% endif %}" title="Sources">
+        <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Services{% if sources_dot %} (some hidden){% endif %}" title="Services">
           {% set rail_logos = configured_providers[:3 if libraries else 4] %}
           <span class="rail-logo-stack" aria-hidden="true">
             {% for provider in rail_logos %}
@@ -367,7 +368,7 @@
 
     <div class="browse-main">
       <div class="browse-toolbar">
-        <button class="icon-button sidebar-toggle" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="false" aria-label="Show sources, sort, and filters" title="Sources, sort, and filters">
+        <button class="icon-button sidebar-toggle" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="false" aria-label="Show services, sort, and filters" title="Services, sort, and filters">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
           {% if active_filter_count %}<span class="filter-count">{{ active_filter_count }}</span>{% endif %}
         </button>

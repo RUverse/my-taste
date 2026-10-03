@@ -213,10 +213,6 @@
       if (summary) summary.hidden = open;
     };
     button.addEventListener("click", () => setOpen(button.getAttribute("aria-expanded") !== "true"));
-    summary?.addEventListener("click", () => {
-      setOpen(true);
-      body?.querySelector("input")?.focus();
-    });
     body?.addEventListener("change", () => {
       try {
         sessionStorage.setItem(keepOpenKey, "1");
@@ -406,7 +402,7 @@
   const filterForm = document.querySelector("[data-filter-form]");
 
   if (filterForm) {
-    const sourceBoxes = Array.from(filterForm.querySelectorAll('.source-toggle input[type="checkbox"]'));
+    const sourceBoxes = Array.from(filterForm.querySelectorAll(".source-input"));
 
     const sortOrder = filterForm.querySelector("[data-sort-order]");
     let sortChanged = false;

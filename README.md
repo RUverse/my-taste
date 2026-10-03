@@ -16,7 +16,7 @@ matching releases in a clean poster grid.
 - Animated movie and show details with YouTube trailers, descriptions, and cast
 - A Watch button that opens the title on each of your services that carries it, and an episode
   grid for series with one row per season, marking the episodes you have in a local library
-- A sidebar for the open collection: its sources (add or remove services and folders right
+- A sidebar for the open collection: its services and folders (hide one, or show only one, right
   there), sort, Plex-style filters (see [Filters](#filters)), grouping into rows (by director,
   genre, decade, or type), and card appearance; changes apply instantly and
   stay in the URL. Collapsed, it becomes a rail of icons that marks changed sections with a dot
@@ -138,8 +138,10 @@ time. Runtime uses episode length for series, and series without one on TMDB do 
 
 ## Storage libraries
 
-The sidebar's **Sources** section lists what you have enabled: streaming subscriptions and local
-libraries. Its **+** adds a streaming service or a local folder, and **−** removes one. The
+The sidebar's **Services** section lists what you have enabled: streaming subscriptions and local
+libraries. Collapsed, it shows their icons beside its name; expanded, each one has a checkmark
+that hides it from (or shows it in) the current view and an **Only** link that shows just that
+one. Nothing is removed there: **Manage** opens the Services page, which adds and removes them. The
 Services page (**Sources and region** in the menu under the site's name) also lets you change
 the region, add folders to a library, rename it, and rescan it. To add a library, choose **Add**,
 pick **Local library**, browse to a folder, and say whether it holds

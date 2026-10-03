@@ -426,6 +426,10 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 for item in libraries
             ),
         )
+        # The one source left showing needs no "Only" link.
+        shown = [option for option in source_options if option["checked"]]
+        for option in source_options:
+            option["only"] = len(shown) == 1 and option["checked"]
         this_year = date.today().year
         decade = this_year - this_year % 10
 

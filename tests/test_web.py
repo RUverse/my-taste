@@ -424,10 +424,12 @@ def test_services_are_added_and_render_catalog(tmp_path: Path) -> None:
     assert 'data-sidebar="open"' in home.text
     assert "data-sidebar-toggle" in home.text
     assert 'id="sources-heading">' in home.text
-    assert 'aria-label="Remove Netflix"' in home.text
-    assert 'action="/settings/services/8/remove"' in home.text
-    assert '<input type="hidden" name="next" value="/">' in home.text
-    assert 'href="/settings?add=streaming&amp;next=/"' in home.text
+    assert "<span>Services</span>" in home.text
+    assert 'class="source-logos" data-disclosure-summary="sources"' in home.text
+    assert 'aria-label="Remove Netflix"' not in home.text, "services are only hidden here"
+    assert "/settings/services/8/remove" not in home.text
+    assert 'href="/settings?next=/">Manage</a>' in home.text
+    assert 'aria-label="Show only Netflix"' not in home.text, "the only service needs no Only"
     assert 'class="services-link"' not in home.text, "services moved into the sidebar"
     assert 'data-rail-section="sidebar-sources"' in home.text
     assert "controls-drawer" not in home.text
@@ -836,7 +838,9 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert 'name="providers" value="8" checked' in mixed.text
     assert 'name="libraries" value="1" checked' in mixed.text
     assert 'title="Local · Movies">Local</span>' in mixed.text
-    assert 'action="/settings/libraries/1/remove"' in mixed.text
+    assert "/settings/libraries/1/remove" not in mixed.text
+    assert 'href="/?libraries=none" aria-label="Show only Netflix"' in mixed.text
+    assert 'href="/?providers=none" aria-label="Show only Movies"' in mixed.text
     assert "mini-logo-library" in mixed.text, "the collapsed rail shows the folder too"
     local_query, local_category, local_page_size = local_calls[0]
     assert local_category is not None and local_category.slug == "popular"
@@ -857,7 +861,8 @@ def test_library_can_be_added_and_is_mixed_into_browse(tmp_path: Path) -> None:
     assert "A New Film" in streaming_only.text
     assert "Dark" not in streaming_only.text
     assert '<span class="filter-count">1</span>' in streaming_only.text
-    assert 'class="section-action" href="/">Use all' in streaming_only.text
+    assert '<a href="/">Show all</a>' in streaming_only.text
+    assert 'aria-label="Show only Netflix"' not in streaming_only.text
     assert streaming_only.text.count('<span class="rail-dot"') == 1, "sources are narrowed"
 
     assert status.json()["libraries"][0]["text"].startswith("2 movies")
