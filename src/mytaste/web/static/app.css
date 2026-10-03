@@ -299,7 +299,7 @@ select:focus-visible {
   border-radius: 5px;
 }
 
-.mini-logo-library { color: var(--accent); background: var(--accent-soft); }
+.mini-logo-library { color: var(--on-accent); background: var(--accent); }
 
 .mini-logo-library svg {
   width: 12px;
@@ -1588,7 +1588,15 @@ body[data-sidebar="closed"] .browse-sidebar {
 
 .section-action:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-.source-list { display: grid; gap: 1px; margin: 8px -6px 0; padding: 0; list-style: none; }
+.source-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+  margin: 8px -6px 0;
+  padding: 0;
+  list-style: none;
+}
+
 .source-row { position: relative; display: flex; align-items: center; gap: 2px; }
 
 .source-toggle {
@@ -1605,9 +1613,72 @@ body[data-sidebar="closed"] .browse-sidebar {
   transition: background 120ms ease;
 }
 
-.source-toggle:hover { background: var(--surface-raised); }
-.source-toggle input { position: absolute; opacity: 0; pointer-events: none; }
-.source-toggle:has(input:focus-visible) { outline: 3px solid var(--focus); outline-offset: -2px; }
+.source-row:hover .source-toggle { background: var(--surface-raised); }
+.source-input { position: absolute; opacity: 0; pointer-events: none; }
+.source-row:has(.source-input:focus-visible) .source-toggle { outline: 3px solid var(--focus); outline-offset: -2px; }
+
+/* "Only" shows just this service; it appears on hover or focus, and always on touch screens. */
+.source-only {
+  flex: none;
+  padding: 4px 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-decoration: none;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.source-row:hover .source-only,
+.source-only:focus-visible { opacity: 1; }
+.source-only:hover { color: var(--text); background: var(--surface-raised); }
+.source-only:focus-visible { outline: 3px solid var(--focus); outline-offset: -1px; }
+@media (hover: none) { .source-only { opacity: 1; } }
+
+.source-check {
+  display: grid;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-right: 6px;
+  place-items: center;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.source-check svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.source-input:not(:checked) ~ .source-check { color: transparent; background: transparent; border-color: var(--strong-border); }
+
+.source-footer {
+  display: flex;
+  margin-top: 6px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.source-footer a {
+  padding: 6px 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.source-footer a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
 
 .source-row-logo {
   display: grid;
@@ -1625,7 +1696,8 @@ body[data-sidebar="closed"] .browse-sidebar {
 }
 
 .source-row-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.source-row-logo.is-local { color: var(--accent); background: var(--accent-soft); }
+/* Solid, so it does not show through where the collapsed icons overlap. */
+.source-row-logo.is-local { color: var(--on-accent); background: var(--accent); }
 
 .source-row-logo svg {
   width: 17px;
@@ -1658,8 +1730,8 @@ body[data-sidebar="closed"] .browse-sidebar {
   stroke-linejoin: round;
 }
 
-.source-toggle:has(input:not(:checked)) .source-row-logo { opacity: 0.45; filter: grayscale(1); }
-.source-toggle:has(input:not(:checked)) .source-row-name { color: var(--muted); }
+.source-input:not(:checked) + .source-toggle .source-row-logo { opacity: 0.45; filter: grayscale(1); }
+.source-input:not(:checked) + .source-toggle .source-row-name { color: var(--muted); }
 
 .year-range {
   display: grid;
@@ -1690,8 +1762,6 @@ body[data-sidebar="closed"] .browse-sidebar {
   gap: 8px;
   margin-top: 12px;
 }
-
-.sort-row select { min-height: 38px; padding-inline: 10px 4px; font-size: 0.82rem; }
 
 .chip {
   position: relative;
@@ -1926,8 +1996,33 @@ body[data-sidebar="closed"] .browse-sidebar {
   gap: 6px;
 }
 
+/* Sidebar selects draw their own chevron so the padding is the same on both sides. */
+.sidebar-form .select-field { position: relative; display: block; }
 .sort-row .select-field { min-width: 0; flex: 1; }
-.sort-row select { min-height: 38px; padding-inline: 10px 6px; font-size: 0.84rem; }
+
+.sidebar-form .select-field select {
+  min-height: 34px;
+  padding: 0 30px 0 10px;
+  font-size: 0.82rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.sidebar-form .select-field::after {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid var(--muted);
+  border-bottom: 1.6px solid var(--muted);
+  content: "";
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+}
+
+.sort-row .square-button { width: 34px; height: 34px; }
+.sort-row .square-button svg { width: 16px; height: 16px; }
 .sort-row .row-button { margin-right: -6px; }
 
 .filter-rule { margin-top: 12px; }
@@ -2039,20 +2134,45 @@ body[data-sidebar="closed"] .browse-sidebar {
 }
 
 .section-disclosure svg:first-child { color: var(--muted); }
+.section-disclosure > :not(.source-logos) { flex: none; }
 .section-disclosure .disclosure-chevron { margin-left: auto; }
 .section-disclosure[aria-expanded="true"] .disclosure-chevron { transform: rotate(180deg); }
 .section-disclosure:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
 
+/* Collapsed, the services' icons sit beside the section name, slightly overlapping. */
 .source-logos {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 10px;
-  cursor: pointer;
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  align-items: center;
+  /* Room for the overlap and the ring around each icon. */
+  padding: 2px;
 }
 
 .source-logos[hidden] { display: none; }
+.source-logos:not([hidden]) + .disclosure-chevron { margin-left: 4px; }
+
+.source-logos .source-row-logo {
+  flex-basis: 20px;
+  width: 20px;
+  height: 20px;
+  font-size: 0.66rem;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.source-logos .source-row-logo + .source-row-logo { margin-left: -5px; }
+/* Each icon overlaps the next, so the first one (your library) stays whole. */
+.source-logos .source-row-logo { position: relative; }
+.source-logos .source-row-logo:nth-child(1) { z-index: 5; }
+.source-logos .source-row-logo:nth-child(2) { z-index: 4; }
+.source-logos .source-row-logo:nth-child(3) { z-index: 3; }
+.source-logos .source-row-logo:nth-child(4) { z-index: 2; }
+.source-logos .source-row-logo:nth-child(5) { z-index: 1; }
+.source-logos .source-row-logo svg { width: 13px; height: 13px; }
 .source-logos .is-excluded { opacity: 0.35; filter: grayscale(1); }
+.source-logos-more { margin-left: 5px; color: var(--muted); font-size: 0.7rem; font-weight: 700; }
 
 .sidebar-appearance summary {
   min-height: 28px;
