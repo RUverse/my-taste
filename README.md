@@ -154,7 +154,9 @@ product on Microsoft's site. Trials, demos, add-ons, and free games with subscri
 in Store metadata.
 
 Game Pass caching is **disabled by default**; browsing stays available and each request fetches
-live catalog data. Full metadata hydration can involve dozens of requests for a large catalog.
+live catalog data. The Games tab and controls appear immediately; live results load into the
+grid afterward. Full metadata hydration can involve dozens of requests for a large catalog.
+Without JavaScript, Games automatically opens a fully rendered page instead.
 For deployment, enable the optional persistent cache with
 `MYTASTE_GAMEPASS_CACHE_ENABLED=true`; see [cache configuration](docs/deployment.md#game-pass-caching).
 Microsoft's public website feeds are isolated behind an adapter because they have no confirmed

@@ -129,6 +129,12 @@ Reuse the movie/TV browse template's sidebar, collapsible rail, mobile overlay, 
 header search, and Appearance controls. Games provides its own service/filter controls and
 results inside that shared template; it must not introduce a separate browse layout. Version
 CSS and JavaScript URLs by content so browsers fetch matching assets after a deployment.
+Return the Games layout before contacting Microsoft, then fetch its results with
+`X-MyTaste-Fragment: games-page`. That response includes the rendered grid, pagination, and
+genre options. Loading, failure/retry, and empty states stay inside the shared browse area;
+the shared infinite-scroll behavior attaches when results arrive. This does not cache data or
+change global filtering/sorting. A no-JavaScript redirect with `render=1` retains full server
+rendering. Regular pagination fragments continue using `X-MyTaste-Fragment: results`.
 Reuse semantic CSS, display preferences, and accessible dialog patterns. Add
 game-specific card and detail markup instead of passing strings into `_cards.html`, which
 compares IDs numerically and generates TMDB routes. Extract shared presentation only where it

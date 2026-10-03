@@ -401,7 +401,7 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=catalog, games=games)
     with TestClient(app) as client:
         app.state.preferences.save("DE", (8, 337))
-        game_page = client.get("/collections/games?q=A+Game&sort=title&order=desc")
+        game_page = client.get("/collections/games?q=A+Game&sort=title&order=desc&render=1")
         assert game_page.status_code == 200
         assert games.calls[-1].search == "A Game" and games.calls[-1].order == "desc"
         for markup in (
@@ -443,7 +443,7 @@ def test_games_routes_settings_fragments_and_details(tmp_path):
         assert "Set up Game Pass" in client.get("/collections/games").text
         assert not games.calls
         app.state.preferences.save("DE", (8, 337))
-        response = client.get("/collections/games?q=A+Game&sort=title")
+        response = client.get("/collections/games?q=A+Game&sort=title&render=1")
         assert response.status_code == 200 and response.headers["cache-control"] == "no-store"
         assert "A Game" in response.text and "Microsoft Store rating 4.5 out of 5" in response.text
         assert "data-game-open" in response.text and "games.js" in response.text
@@ -472,6 +472,78 @@ def test_games_routes_settings_fragments_and_details(tmp_path):
         assert app.state.preferences.get().provider_ids == (8, 337)
         assert app.state.game_preferences.get().plan == "premium"
         games.fail = True
-        assert client.get("/collections/games").status_code == 503
+        assert client.get("/collections/games?render=1").status_code == 503
         assert client.get(f"/api/games/{A}/details").status_code == 503
         assert "Back to games" in client.get(f"/games/{A}").text
+
+
+def test_games_layout_does_not_wait_for_catalog_and_deferred_results_can_retry(tmp_path):
+    games = WebGames()
+    games.fail = True
+    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=object(), games=games)
+    url = "/collections/games/recent?q=A+Game&genre=Action&sort=title&order=desc&page=2"
+    with TestClient(app) as client:
+        app.state.preferences.save("DE", (8, 337))
+        shell = client.get(url)
+        assert shell.status_code == 200 and not games.calls
+        assert 'id="browse-sidebar"' in shell.text and "data-collection-bar" in shell.text
+        assert "Loading Game Pass games" in shell.text and 'aria-busy="true"' in shell.text
+        assert 'http-equiv="refresh"' in shell.text and "render=1" in shell.text
+        assert 'value="Action" selected' in shell.text
+        headers = {"X-MyTaste-Fragment": "games-page"}
+        failure = client.get(url, headers=headers)
+        assert failure.status_code == 503
+        assert "Xbox outage" in failure.json()["html"]
+        assert "data-game-retry" in failure.json()["html"]
+        assert client.get(url).status_code == 200
+        assert len(games.calls) == 1  # Layouts do not retry the catalog themselves.
+        games.fail = False
+        results = client.get(url, headers=headers)
+        assert results.status_code == 200 and results.headers["cache-control"] == "no-store"
+        assert "A Game" in results.json()["html"] and "<html" not in results.json()["html"]
+        assert results.json()["genres"] == ["Action"]
+        query = games.calls[-1]
+        assert (
+            query.collection,
+            query.search,
+            query.genre,
+            query.sort,
+            query.order,
+            query.page,
+        ) == (
+            "recent",
+            "A Game",
+            "Action",
+            "title",
+            "desc",
+            2,
+        )
+        assert 'aria-busy="true"' not in client.get(url + "&render=1").text
+
+
+@pytest.mark.anyio
+async def test_game_layout_is_available_while_results_are_blocked(tmp_path):
+    started, release = asyncio.Event(), asyncio.Event()
+
+    class SlowGames(WebGames):
+        async def browse(self, region, language, query):
+            started.set()
+            await release.wait()
+            return await super().browse(region, language, query)
+
+    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=object(), games=SlowGames())
+    app.state.preferences.save("DE", (8,))
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app), base_url="http://test"
+    ) as client:
+        request = asyncio.create_task(
+            client.get("/collections/games", headers={"X-MyTaste-Fragment": "games-page"})
+        )
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            shell = await asyncio.wait_for(client.get("/collections/games"), timeout=1)
+            assert shell.status_code == 200 and "Loading Game Pass games" in shell.text
+            assert not request.done()
+        finally:
+            release.set()
+            await request

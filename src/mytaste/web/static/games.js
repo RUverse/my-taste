@@ -1,4 +1,61 @@
 (() => {
+  const results = document.querySelector("[data-game-results]");
+  let loadController;
+  const loadResults = async () => {
+    if (!results) return;
+    loadController?.abort();
+    const pending = new AbortController();
+    loadController = pending;
+    results.setAttribute("aria-busy", "true");
+    results.querySelector("[data-game-retry]")?.setAttribute("aria-disabled", "true");
+    try {
+      const response = await fetch(results.dataset.gameLoadUrl || window.location.href, {
+        headers: { "X-MyTaste-Fragment": "games-page" },
+        cache: "no-store",
+        signal: pending.signal,
+      });
+      const payload = await response.json();
+      if (typeof payload.html !== "string") throw new Error("Game Pass games could not be loaded.");
+      if (pending.signal.aborted) return;
+      results.innerHTML = payload.html;
+      const genre = document.querySelector("#game-genre");
+      if (genre) {
+        const selected = genre.value;
+        const options = Array.from(new Set([...(payload.genres || []), selected].filter(Boolean)));
+        genre.replaceChildren(new Option("All genres", ""), ...options.map((value) => new Option(value, value)));
+        genre.value = selected;
+        genre.removeAttribute("aria-busy");
+      }
+      document.dispatchEvent(new Event("mytaste:results-ready"));
+    } catch (error) {
+      if (error.name === "AbortError") return;
+      const alert = document.createElement("div");
+      alert.className = "alert";
+      alert.setAttribute("role", "alert");
+      alert.textContent = "Game Pass games could not be loaded. ";
+      const retry = document.createElement("button");
+      retry.className = "button button-secondary";
+      retry.type = "button";
+      retry.dataset.gameRetry = "";
+      retry.textContent = "Try again";
+      alert.append(retry);
+      results.replaceChildren(alert);
+    } finally {
+      if (!pending.signal.aborted) results.setAttribute("aria-busy", "false");
+    }
+  };
+  results?.addEventListener("click", (event) => {
+    const retry = event.target.closest("[data-game-retry]");
+    if (!retry) return;
+    event.preventDefault();
+    if (results.getAttribute("aria-busy") !== "true") loadResults();
+  });
+  window.addEventListener("pagehide", () => loadController?.abort());
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted && results?.getAttribute("aria-busy") === "true") loadResults();
+  });
+  if (results?.dataset.gameLoadUrl) loadResults();
+
   const dialog = document.querySelector("#game-dialog");
   if (!dialog) return;
   const title = dialog.querySelector("[data-game-title]");

@@ -72,6 +72,8 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
         page = GamePage()
         status = 200
         error = ""
+        loading = False
+        fragment = request.headers.get("X-MyTaste-Fragment")
         query = GameQuery(plan=defaults.plan, platform=defaults.platform, collection=key)
         try:
             params = request.query_params
@@ -87,14 +89,16 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
             )
             query.validate()
             if preferences.region:
-                page = await request.app.state.games.browse(
-                    preferences.region, request.app.state.settings.language, query
-                )
+                loading = not fragment and params.get("render") != "1"
+                if not loading:
+                    page = await request.app.state.games.browse(
+                        preferences.region, request.app.state.settings.language, query
+                    )
         except ValueError as exc:
             error, status = str(exc), 422
         except GamePassError as exc:
             error, status = str(exc), 503
-        if request.headers.get("X-MyTaste-Fragment") == "results":
+        if fragment == "results":
             return templates.TemplateResponse(
                 request=request,
                 name="_games_more.html",
@@ -110,6 +114,8 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
         context.update(
             {
                 "query": query,
+                "loading": loading,
+                "full_url": browse_url(query) + "&render=1",
                 "search_query": query.search,
                 "page": page,
                 "region": preferences.region,
@@ -184,6 +190,15 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
                 else [],
             }
         )
+        if fragment == "games-page":
+            return JSONResponse(
+                {
+                    "html": templates.env.get_template("_games_results.html").render(context),
+                    "genres": page.genres,
+                },
+                status_code=status,
+                headers={"Cache-Control": "no-store"},
+            )
         return templates.TemplateResponse(
             request=request,
             name="games.html",

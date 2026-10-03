@@ -9,6 +9,7 @@
     <title>{% block title %}{{ display.site_title }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}?v={{ asset_version }}">
     <script src="{{ request.url_for('static', path='app.js') }}?v={{ asset_version }}" defer></script>
+    {% block head %}{% endblock %}
   </head>
   <body
     data-show-year="{{ 'true' if display.show_year else 'false' }}"
