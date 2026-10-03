@@ -348,7 +348,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 "label": label,
                 "value": value,
                 "active": query.media_type == value,
-                "url": url(replace(query, media_type=value, search="", page=1))
+                "url": url(replace(query, media_type=value, page=1))
                 if manual is not None or (smart is not None and smart.supports(value))
                 else collection_url(replace(query, media_type=value), HOME_COLLECTION),
             }
