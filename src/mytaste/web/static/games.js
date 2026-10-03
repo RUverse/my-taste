@@ -131,6 +131,7 @@
     poster.replaceChildren(coverFrom(card));
     kind.textContent = [card.querySelector(".meta-year")?.textContent.replace("—", "").trim(), "Game"].filter(Boolean).join(" · ");
     rating.textContent = card.querySelector(".meta-rating") ? `Store ${card.querySelector(".meta-rating").textContent.trim()}` : "";
+    rating.removeAttribute("aria-label");
     renderGenres((card.querySelector(".meta-genres")?.textContent || "").split("·"));
     setDeveloper(card.querySelector(".meta-people")?.textContent || "");
     status.textContent = "Loading details…";
