@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -162,6 +163,11 @@ def create_app(
     app.state.game_preferences = game_preferences
 
     templates = Jinja2Templates(directory=_WEB_ROOT / "templates")
+    templates.env.globals["asset_version"] = hashlib.sha256(
+        b"".join(
+            (_WEB_ROOT / "static" / name).read_bytes() for name in ("app.css", "app.js", "games.js")
+        )
+    ).hexdigest()[:12]
     app.mount("/static", StaticFiles(directory=_WEB_ROOT / "static"), name="static")
     app.include_router(create_games_router(templates))
     app.include_router(create_router(templates))

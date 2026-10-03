@@ -7,8 +7,8 @@
     <meta name="theme-color" content="#050505" media="(prefers-color-scheme: dark)">
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
     <title>{% block title %}{{ display.site_title }}{% endblock %}</title>
-    <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}">
-    <script src="{{ request.url_for('static', path='app.js') }}" defer></script>
+    <link rel="stylesheet" href="{{ request.url_for('static', path='app.css') }}?v={{ asset_version }}">
+    <script src="{{ request.url_for('static', path='app.js') }}?v={{ asset_version }}" defer></script>
   </head>
   <body
     data-show-year="{{ 'true' if display.show_year else 'false' }}"
@@ -48,13 +48,19 @@
         </div>
 
         <div class="primary-controls">
-          {% if header_media != 'game' %}
-          <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="/" role="search">
+          <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="{{ page_path|default('/collections/games') if header_media == 'game' else '/' }}" role="search">
             <input type="hidden" name="media" value="{{ header_media }}">
+            {% if header_media == 'game' and query %}
+              <input type="hidden" name="plan" value="{{ query.plan }}">
+              <input type="hidden" name="platform" value="{{ query.platform }}">
+              {% if query.genre %}<input type="hidden" name="genre" value="{{ query.genre }}">{% endif %}
+              {% if query.sort != 'catalog' %}<input type="hidden" name="sort" value="{{ query.sort }}">{% endif %}
+              {% if query.order %}<input type="hidden" name="order" value="{{ query.order }}">{% endif %}
+            {% endif %}
             <button class="icon-button search-toggle" type="button" aria-label="Open search" aria-expanded="{{ 'true' if search_query else 'false' }}">
               <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-4-4"></path></svg>
             </button>
-            <label class="sr-only" for="catalog-search">Search movies and TV shows</label>
+            <label class="sr-only" for="catalog-search">{{ 'Search games' if header_media == 'game' else 'Search movies and TV shows' }}</label>
             <input id="catalog-search" class="search-input" type="search" name="q" value="{{ search_query }}" placeholder="Search titles" autocomplete="off">
             <script>
               // After a live search loads this page, keys pressed while the rest of it loads land in the box.
@@ -67,7 +73,6 @@
               } catch {}
             </script>
           </form>
-          {% endif %}
 
           <nav class="media-switch" aria-label="Media type">
             {% if media_links %}

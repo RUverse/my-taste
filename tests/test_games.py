@@ -194,6 +194,24 @@ async def test_global_filter_sort_pagination_and_live_mode(tmp_path):
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("sort", "order", "first", "second"),
+    [
+        ("catalog", "desc", B, A),
+        ("title", "desc", A, B),
+        ("release", "asc", A, B),
+        ("rating", "asc", A, B),
+    ],
+)
+async def test_reverse_order_applies_before_pagination(tmp_path, sort, order, first, second):
+    service = GamesService(Source(), GamePassCache(tmp_path / "cache.db"), page_size=1)
+    query = GameQuery(sort=sort, order=order)
+    assert (await service.browse("DE", "en-US", query)).items[0].id == first
+    assert (await service.browse("DE", "en-US", replace(query, page=2))).items[0].id == second
+    await service.close()
+
+
+@pytest.mark.anyio
 async def test_plan_cloud_and_coming_membership(tmp_path):
     service = GamesService(Source(), GamePassCache(tmp_path / "cache.db"))
     popular = await service.browse("DE", "en-US", GameQuery(collection="popular"))
@@ -374,6 +392,48 @@ class WebGames:
         if self.fail:
             raise GamePassError("Xbox outage")
         return normalize_game(product(key))
+
+
+def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_path):
+    from test_web import FakeCatalog
+
+    catalog, games = FakeCatalog(), WebGames()
+    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=catalog, games=games)
+    with TestClient(app) as client:
+        app.state.preferences.save("DE", (8, 337))
+        game_page = client.get("/collections/games?q=A+Game&sort=title&order=desc")
+        assert game_page.status_code == 200
+        assert games.calls[-1].search == "A Game" and games.calls[-1].order == "desc"
+        for markup in (
+            'class="browse-layout"',
+            'id="browse-sidebar"',
+            'class="browse-toolbar"',
+            "data-collection-bar",
+            "data-collection-more",
+            'id="display-form"',
+            "data-filter-form",
+            "data-sidebar-toggle",
+            'data-rail-section="sidebar-sort"',
+            'name="show_people"',
+            'name="show_media_type"',
+            'aria-label="Media type"',
+            'href="/?media=movie"',
+            'href="/?media=tv"',
+        ):
+            assert markup in game_page.text
+        assert 'action="/collections/games" role="search"' in game_page.text
+        assert 'name="autoplay_trailer"' not in game_page.text
+        assert 'class="games-shell"' not in game_page.text
+        assert not catalog.browse_queries
+        for media in ("movie", "tv"):
+            response = client.get(f"/?media={media}")
+            assert response.status_code == 200 and "A New" in response.text
+            assert 'id="browse-sidebar"' in response.text
+            assert "data-collection-bar" in response.text
+            assert 'name="autoplay_trailer"' in response.text
+            assert catalog.browse_queries[-1].media_type == media
+        assert len(games.calls) == 1
+        assert app.state.preferences.get().provider_ids == (8, 337)
 
 
 def test_games_routes_settings_fragments_and_details(tmp_path):

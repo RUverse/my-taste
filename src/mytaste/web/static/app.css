@@ -3868,16 +3868,7 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 }
 
 /* Game Pass uses the same poster grid and theme, with its own catalog controls. */
-.games-main { width: min(1880px, 100%); padding: 32px var(--content-padding) 80px; }
-.games-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
-.games-heading h1 { margin: 4px 0 8px; font-size: clamp(1.65rem, 3vw, 2.5rem); letter-spacing: -0.04em; }
-.games-heading > div > p:last-child { color: var(--muted); margin: 0; }
 .games-eyebrow { color: var(--accent); font-size: 0.74rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.games-collections { display: flex; gap: 8px; overflow-x: auto; margin: 26px 0; padding-bottom: 5px; }
-.games-collections a { flex: none; padding: 10px 16px; border-radius: 9px; color: var(--muted); background: var(--surface); text-decoration: none; font-size: 0.84rem; font-weight: 600; }
-.games-collections a:hover { color: var(--text); background: var(--surface-hover); }
-.games-collections a[aria-current] { color: var(--text); background: var(--selected-control); }
-.games-shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 32px; }
 .games-filters form, form.games-filters { display: grid; gap: 9px; }
 .games-filters { min-width: 0; }
 .games-filters summary { padding: 12px 0; cursor: pointer; font-weight: 650; }
@@ -3887,9 +3878,6 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .games-clear { color: var(--muted); font-size: 0.8rem; text-underline-offset: 3px; }
 .games-filters .games-clear { text-align: center; padding: 7px; }
 .games-help { color: var(--muted); font-size: 0.75rem; line-height: 1.65; margin-top: 22px; }
-.games-results { min-width: 0; }
-.games-result-summary { display: flex; justify-content: space-between; flex-wrap: wrap; color: var(--muted); font-size: 0.8rem; margin-bottom: 20px; }
-.games-result-summary p { margin: 0; }
 .game-card h2 a { text-decoration: none; }
 .game-platform-badge { position: absolute; right: 7px; bottom: 7px; padding: 5px 7px; border-radius: 6px; font-size: 0.65rem; color: var(--badge-text); background: var(--badge-background); border: 1px solid var(--badge-border); }
 .game-detail-layout > div { min-width: 0; overflow-wrap: anywhere; }
@@ -3909,23 +3897,12 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .game-screenshots { display: flex; overflow-x: auto; gap: 12px; margin-top: 24px; padding-bottom: 12px; }
 .game-screenshots img { width: min(360px, 85%); flex: none; object-fit: contain; border-radius: 8px; }
 .game-detail-page { max-width: 1000px; margin: auto; }
-@media (min-width: 901px) {
-  .games-filters summary { display: none; }
-}
-@media (max-width: 900px) {
-  .games-shell { grid-template-columns: minmax(0, 1fr); gap: 22px; }
-  .games-filters form { grid-template-columns: 90px minmax(0, 1fr); align-items: center; }
-  .games-filters label { margin: 0; }
-  .games-filters .games-help { grid-column: 1 / -1; }
-  .games-filters button, .games-filters .games-clear { grid-column: 2; }
-}
 @media (max-width: 640px) {
-  .games-heading { align-items: flex-start; gap: 12px; }
-  .games-heading .button { font-size: 0.7rem; padding: 9px 11px; min-width: max-content; }
-  .games-heading > div > p:last-child { font-size: 0.8rem; line-height: 1.5; }
   .game-dialog { padding: 28px 20px; }
   .game-detail-layout { gap: 18px; align-items: flex-start; }
   .game-detail-cover { width: 100px; max-height: 150px; }
   .game-detail-layout h1, .game-detail-layout h2 { font-size: 1.4rem; margin-bottom: 12px; }
   .game-detail-layout p { font-size: 0.75rem; }
 }
+
+body[data-show-media-type="false"] .game-platform-badge { display: none; }

@@ -125,7 +125,11 @@ parameters such as `plan`, `platform`, `genre`, `q`, `sort`, and `page` for the 
 Details live at `/api/games/{product_id}/details`. Register the games router before the existing
 `/collections/{key}` route so the Games entry is not captured as a movie/TV collection.
 
-Reuse the base layout, semantic CSS, display preferences, and accessible dialog patterns. Add
+Reuse the movie/TV browse template's sidebar, collapsible rail, mobile overlay, collection bar,
+header search, and Appearance controls. Games provides its own service/filter controls and
+results inside that shared template; it must not introduce a separate browse layout. Version
+CSS and JavaScript URLs by content so browsers fetch matching assets after a deployment.
+Reuse semantic CSS, display preferences, and accessible dialog patterns. Add
 game-specific card and detail markup instead of passing strings into `_cards.html`, which
 compares IDs numerically and generates TMDB routes. Extract shared presentation only where it
 avoids duplication without changing movie/TV semantics. Game details must not request actors,

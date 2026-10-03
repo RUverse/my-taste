@@ -145,8 +145,10 @@ Pass and your platform. Games works without movie subscriptions; the country is 
 movie/TV browsing. Plan selection is manual and needs no Xbox login. The existing app still
 requires its TMDB token.
 
-Browse All games, Popular, Recently added, Coming soon, and Leaving soon. Search, genre filters,
-and sorting apply across the whole selected collection before pagination. Store ratings are
+Games uses the same sidebar, collection bar, header search, and Appearance controls as movies
+and series. Browse All games, Popular, Recently added, Coming soon, and Leaving soon. The sidebar
+selects the plan, platform, genre, and sort direction; search and sorting apply across the whole
+selected collection before pagination. Store ratings are
 out of five; release dates refer to the Store product/edition. **Open in Xbox** opens the
 product on Microsoft's site. Trials, demos, add-ons, and free games with subscriber benefits are omitted when identified
 in Store metadata.

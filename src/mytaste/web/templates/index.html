@@ -36,6 +36,7 @@
             {% if description %}<p class="sidebar-collection-description">{{ description }}</p>{% endif %}
           </header>
 
+          {% block sidebar_controls scoped %}
           <form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
             <input type="hidden" name="media" value="{{ query.media_type }}" data-default="all">
             {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
@@ -300,7 +301,7 @@
 
             <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
           </form>
-
+          {% endblock %}
 
           <details class="sidebar-section sidebar-appearance" id="sidebar-appearance">
             <summary class="sidebar-section-head">
@@ -321,7 +322,7 @@
               </div>
               <p class="sidebar-label" id="card-details-label">Show on cards</p>
               <div class="chip-row" role="group" aria-labelledby="card-details-label">
-                {% for key, label, hint, checked in [
+                {% set card_options = [
                   ('show_year', 'Year', 'Release or first-air year', display.show_year),
                   ('show_rating', 'Rating', 'TMDB community score', display.show_rating),
                   ('show_media_type', 'Type', 'Movie or series badge', display.show_media_type),
@@ -329,16 +330,28 @@
                   ('show_people', 'Director', 'Director or creator, loaded for visible cards', display.show_people),
                   ('show_providers', 'Sources', 'Your streaming services and local folders that have the title', display.show_providers)
                 ] %}
+                {% if header_media == 'game' %}
+                  {% set card_options = [
+                    ('show_year', 'Year', 'Store release year', display.show_year),
+                    ('show_rating', 'Rating', 'Microsoft Store score out of five', display.show_rating),
+                    ('show_media_type', 'Platform', 'Selected game platform', display.show_media_type),
+                    ('show_genres', 'Genres', 'Game genres', display.show_genres),
+                    ('show_people', 'Developer', 'Game developer', display.show_people)
+                  ] %}
+                {% endif %}
+                {% for key, label, hint, checked in card_options %}
                   <label class="chip chip-choice" title="{{ hint }}">
                     <input type="checkbox" name="{{ key }}" {% if checked %}checked{% endif %}>
                     <span><span class="chip-check" aria-hidden="true">{{ check_icon }}</span>{{ label }}</span>
                   </label>
                 {% endfor %}
               </div>
+              {% if header_media != 'game' %}
               <label class="switch-row">
                 <span>Autoplay trailers<small>Play when title details open</small></span>
                 <input class="switch" type="checkbox" name="autoplay_trailer" {% if display.autoplay_trailer %}checked{% endif %}>
               </label>
+              {% endif %}
             </form>
           </details>
         </div>
@@ -348,19 +361,23 @@
         <button class="icon-button rail-button" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Show the sidebar" title="Show the sidebar">{{ collapse_icon }}</button>
         <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Services{% if sources_dot %} (some hidden){% endif %}" title="Services">
           {% set rail_logos = configured_providers[:3 if libraries else 4] %}
+          {% if header_media == 'game' %}{{ sources_icon }}{% else %}
           <span class="rail-logo-stack" aria-hidden="true">
             {% if libraries %}<span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
             {% for provider in rail_logos %}
               {% if provider.logo_url %}<img src="{{ provider.logo_url }}" alt="" width="17" height="17">{% else %}<span class="mini-logo">{{ provider.name[0] }}</span>{% endif %}
             {% endfor %}
           </span>
+          {% endif %}
           {% if sources_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}
         </button>
-        {% if not query.search %}
+        {% if not query.search or header_media == 'game' %}
           <button class="icon-button rail-button" type="button" data-rail-section="sidebar-sort" aria-label="Sort: {{ sort_label }}{% if sort_changed %} (changed){% endif %}" title="Sort: {{ sort_label }}">{{ sort_icon }}{% if sort_changed %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
         {% endif %}
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-filter" aria-label="Filter{% if filter_dot %} ({{ active_filter_rules }} active){% endif %}" title="Filter">{{ filter_icon }}{% if filter_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
+        {% if header_media != 'game' %}
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-group" aria-label="Grouping{% if grouping %}: by {{ grouping_label|lower }}{% endif %}" title="Grouping">{{ group_icon }}{% if grouping %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
+        {% endif %}
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-appearance" aria-label="Appearance" title="Appearance">{{ appearance_icon }}</button>
       </nav>
     </div>
@@ -390,14 +407,15 @@
               {% for item in collection_links if not item.active %}
                 <a href="{{ item.url }}" data-collection-overflow="{{ item.key }}">{{ collection_icon(item.icon) }}{{ item.label }}</a>
               {% endfor %}
-              <button class="popover-separated" type="button" data-new-collection aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
+              {% if header_media != 'game' %}<button class="popover-separated" type="button" data-new-collection aria-haspopup="dialog">{{ plus_icon }}New collection…</button>{% endif %}
             </div>
           </div>
-          <button class="collection-add" type="button" data-new-collection data-collection-add aria-haspopup="dialog" aria-label="New collection" title="New collection">{{ plus_icon }}</button>
+          {% if header_media != 'game' %}<button class="collection-add" type="button" data-new-collection data-collection-add aria-haspopup="dialog" aria-label="New collection" title="New collection">{{ plus_icon }}</button>{% endif %}
         </nav>
       </div>
 
       <main class="browse-content" {% if collection %}data-collection-id="{{ collection.id }}"{% endif %}>
+        {% block browse_results scoped %}
         {% if active_filters %}
           <div class="active-filters" role="group" aria-label="Active filters">
             {% for chip in active_filters %}
@@ -492,6 +510,8 @@
       </div>
     {% endif %}
 
+        {% endblock %}
+        {% block browse_dialogs scoped %}
     <dialog class="media-details" id="media-details" aria-labelledby="media-detail-title">
       <div class="media-detail-hero" aria-hidden="true">
         <div class="media-detail-visual" data-detail-visual>
@@ -650,6 +670,7 @@
         </footer>
       </form>
     </dialog>
+        {% endblock %}
       </main>
     </div>
   </div>

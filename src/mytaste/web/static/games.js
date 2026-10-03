@@ -1,10 +1,4 @@
 (() => {
-  const panel = document.querySelector("[data-game-filter-panel]");
-  const narrow = window.matchMedia("(max-width: 900px)");
-  if (panel) {
-    panel.open = !narrow.matches;
-    narrow.addEventListener("change", () => { panel.open = !narrow.matches; });
-  }
   const dialog = document.querySelector("#game-dialog");
   if (!dialog) return;
   const title = dialog.querySelector("[data-game-title]");
@@ -80,14 +74,5 @@
     controller?.abort();
     document.body.classList.remove("dialog-open");
     origin?.focus();
-  });
-  document.querySelector("[data-game-filters]")?.addEventListener("submit", (event) => {
-    const button = event.currentTarget.querySelector("button[type='submit']");
-    button.textContent = "Loading games…";
-    button.disabled = true;
-  });
-  window.addEventListener("pageshow", () => {
-    const button = document.querySelector("[data-game-filters] button[type='submit']");
-    if (button) { button.disabled = false; button.textContent = "Apply"; }
   });
 })();

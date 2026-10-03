@@ -83,6 +83,14 @@
     const pageSearch = searchInput.defaultValue.trim();
     const media = searchForm.querySelector('input[name="media"]')?.value ?? "all";
     const searchUrl = (text) => {
+      if (media === "game") {
+        const target = new URL(searchForm.action);
+        new FormData(searchForm).forEach((value, key) => {
+          if (value && !["media", "q", "page"].includes(key)) target.searchParams.set(key, value);
+        });
+        if (text) target.searchParams.set("q", text);
+        return target.pathname + target.search;
+      }
       const target = new URL(text ? "/" : recall(searchOriginKey) || "/", window.location.origin);
       if (text) target.searchParams.set("q", text);
       if (media === "all") target.searchParams.delete("media");

@@ -39,6 +39,9 @@ def _context(request: Request) -> dict[str, Any]:
         ],
         "plans": PLANS,
         "platforms": PLATFORMS,
+        "configured_providers": (),
+        "libraries": (),
+        "sources_changed": False,
     }
 
 
@@ -50,6 +53,7 @@ def browse_url(query: GameQuery) -> str:
         ("genre", query.genre),
         ("sort", query.sort if query.sort != "catalog" else ""),
         ("page", query.page if query.page != 1 else ""),
+        ("order", query.order),
     ):
         if value:
             params[name] = value
@@ -79,6 +83,7 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
                 genre=params.get("genre", ""),
                 sort=params.get("sort", "catalog"),
                 page=int(params.get("page", "1")),
+                order=params.get("order", ""),
             )
             query.validate()
             if preferences.region:
@@ -105,6 +110,7 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
         context.update(
             {
                 "query": query,
+                "search_query": query.search,
                 "page": page,
                 "region": preferences.region,
                 "error": error,
@@ -113,9 +119,20 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
                 "page_path": request.url.path,
                 "collection_links": [
                     {
+                        "kind": "smart",
+                        "key": value,
+                        "icon": {
+                            "all": "list",
+                            "popular": "flame",
+                            "recent": "sparkle",
+                            "coming": "clock",
+                            "leaving": "clock",
+                        }[value],
                         "label": label,
                         "active": value == key,
-                        "url": browse_url(replace(query, collection=value, page=1, sort="catalog")),
+                        "url": browse_url(
+                            replace(query, collection=value, page=1, sort="catalog", order="")
+                        ),
                     }
                     for value, label in COLLECTIONS.items()
                 ],
@@ -126,13 +143,45 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
                 if query.page < page.pages and not error
                 else "",
                 "clear_url": browse_url(
-                    replace(query, search="", genre="", sort="catalog", page=1)
+                    replace(query, search="", genre="", sort="catalog", order="", page=1)
                 ),
                 "checked": datetime.fromtimestamp(page.checked_at, UTC).strftime(
                     "%Y-%m-%d %H:%M UTC"
                 )
                 if page.checked_at is not None
                 else "",
+            }
+        )
+        natural_order = "desc" if query.sort in {"release", "rating"} else "asc"
+        order = query.order or natural_order
+        context.update(
+            {
+                "current_link": next(
+                    (link for link in context["collection_links"] if link["active"]), None
+                ),
+                "icon": {
+                    "all": "list",
+                    "popular": "flame",
+                    "recent": "sparkle",
+                    "coming": "clock",
+                    "leaving": "clock",
+                }.get(key, "list"),
+                "description": "Xbox Game Pass"
+                + (f" · {preferences.region}" if preferences.region else ""),
+                "sort_label": SORTS.get(query.sort, "Collection order"),
+                "sort_changed": query.sort != "catalog" or bool(query.order),
+                "sort_order": order,
+                "natural_order": natural_order,
+                "sort_flip_url": browse_url(
+                    replace(query, order="asc" if order == "desc" else "desc", page=1)
+                ),
+                "active_filter_rules": int(bool(query.genre)),
+                "active_filter_count": int(bool(query.genre)),
+                "active_filters": [
+                    {"label": query.genre, "url": browse_url(replace(query, genre="", page=1))}
+                ]
+                if query.genre
+                else [],
             }
         )
         return templates.TemplateResponse(

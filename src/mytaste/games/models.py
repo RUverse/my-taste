@@ -96,6 +96,7 @@ class GameQuery:
     genre: str = ""
     sort: str = "catalog"
     page: int = 1
+    order: str = ""
 
     def validate(self) -> None:
         if self.plan not in PLANS or self.platform not in PLATFORMS:
@@ -106,6 +107,8 @@ class GameQuery:
             )
         if self.collection not in COLLECTIONS or self.sort not in SORTS:
             raise ValueError("Choose a supported collection and sort order")
+        if self.order not in {"", "asc", "desc"}:
+            raise ValueError("Choose ascending or descending order")
         if not 1 <= self.page <= 1000:
             raise ValueError("Page must be between 1 and 1000")
         if len(self.search) > 200 or len(self.genre) > 100:

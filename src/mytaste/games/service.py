@@ -107,6 +107,9 @@ class GamesService:
         games = [game for game in games if game_matches(game, query)]
         if query.sort != "catalog":
             games.sort(key=lambda game: game_sort_key(game, query.sort))
+        natural_order = "desc" if query.sort in {"release", "rating"} else "asc"
+        if query.order and query.order != natural_order:
+            games.reverse()
         start = (query.page - 1) * self.page_size
         return GamePage(
             tuple(games[start : start + self.page_size]),
