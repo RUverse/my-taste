@@ -349,10 +349,10 @@
         <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Services{% if sources_dot %} (some hidden){% endif %}" title="Services">
           {% set rail_logos = configured_providers[:3 if libraries else 4] %}
           <span class="rail-logo-stack" aria-hidden="true">
+            {% if libraries %}<span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
             {% for provider in rail_logos %}
               {% if provider.logo_url %}<img src="{{ provider.logo_url }}" alt="" width="17" height="17">{% else %}<span class="mini-logo">{{ provider.name[0] }}</span>{% endif %}
             {% endfor %}
-            {% if libraries %}<span class="mini-logo mini-logo-library"><svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
           </span>
           {% if sources_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}
         </button>

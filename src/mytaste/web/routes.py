@@ -396,21 +396,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         all_sources_url = url(
             replace(query, provider_ids=all_provider_ids, library_ids=all_library_ids, page=1)
         )
+        # Local libraries come first, then the streaming services.
         source_options = (
-            *(
-                {
-                    "kind": "provider",
-                    "id": provider.id,
-                    "name": provider.name,
-                    "logo_url": provider.logo_url,
-                    "detail": "Streaming",
-                    "checked": provider.id in query.provider_ids,
-                    "only_url": url(
-                        replace(query, provider_ids=(provider.id,), library_ids=(), page=1)
-                    ),
-                }
-                for provider in configured_providers
-            ),
             *(
                 {
                     "kind": "library",
@@ -424,6 +411,20 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     ),
                 }
                 for item in libraries
+            ),
+            *(
+                {
+                    "kind": "provider",
+                    "id": provider.id,
+                    "name": provider.name,
+                    "logo_url": provider.logo_url,
+                    "detail": "Streaming",
+                    "checked": provider.id in query.provider_ids,
+                    "only_url": url(
+                        replace(query, provider_ids=(provider.id,), library_ids=(), page=1)
+                    ),
+                }
+                for provider in configured_providers
             ),
         )
         # The one source left showing needs no "Only" link.

@@ -299,7 +299,7 @@ select:focus-visible {
   border-radius: 5px;
 }
 
-.mini-logo-library { color: var(--accent); background: var(--accent-soft); }
+.mini-logo-library { color: var(--on-accent); background: var(--accent); }
 
 .mini-logo-library svg {
   width: 12px;
@@ -1696,7 +1696,8 @@ body[data-sidebar="closed"] .browse-sidebar {
 }
 
 .source-row-logo img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.source-row-logo.is-local { color: var(--accent); background: var(--accent-soft); }
+/* Solid, so it does not show through where the collapsed icons overlap. */
+.source-row-logo.is-local { color: var(--on-accent); background: var(--accent); }
 
 .source-row-logo svg {
   width: 17px;
@@ -1761,8 +1762,6 @@ body[data-sidebar="closed"] .browse-sidebar {
   gap: 8px;
   margin-top: 12px;
 }
-
-.sort-row select { min-height: 38px; padding-inline: 10px 4px; font-size: 0.82rem; }
 
 .chip {
   position: relative;
@@ -1997,8 +1996,33 @@ body[data-sidebar="closed"] .browse-sidebar {
   gap: 6px;
 }
 
+/* Sidebar selects draw their own chevron so the padding is the same on both sides. */
+.sidebar-form .select-field { position: relative; display: block; }
 .sort-row .select-field { min-width: 0; flex: 1; }
-.sort-row select { min-height: 38px; padding-inline: 10px 6px; font-size: 0.84rem; }
+
+.sidebar-form .select-field select {
+  min-height: 34px;
+  padding: 0 30px 0 10px;
+  font-size: 0.82rem;
+  appearance: none;
+  cursor: pointer;
+}
+
+.sidebar-form .select-field::after {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.6px solid var(--muted);
+  border-bottom: 1.6px solid var(--muted);
+  content: "";
+  pointer-events: none;
+  transform: translateY(-70%) rotate(45deg);
+}
+
+.sort-row .square-button { width: 34px; height: 34px; }
+.sort-row .square-button svg { width: 16px; height: 16px; }
 .sort-row .row-button { margin-right: -6px; }
 
 .filter-rule { margin-top: 12px; }
@@ -2139,6 +2163,13 @@ body[data-sidebar="closed"] .browse-sidebar {
 }
 
 .source-logos .source-row-logo + .source-row-logo { margin-left: -5px; }
+/* Each icon overlaps the next, so the first one (your library) stays whole. */
+.source-logos .source-row-logo { position: relative; }
+.source-logos .source-row-logo:nth-child(1) { z-index: 5; }
+.source-logos .source-row-logo:nth-child(2) { z-index: 4; }
+.source-logos .source-row-logo:nth-child(3) { z-index: 3; }
+.source-logos .source-row-logo:nth-child(4) { z-index: 2; }
+.source-logos .source-row-logo:nth-child(5) { z-index: 1; }
 .source-logos .source-row-logo svg { width: 13px; height: 13px; }
 .source-logos .is-excluded { opacity: 0.35; filter: grayscale(1); }
 .source-logos-more { margin-left: 5px; color: var(--muted); font-size: 0.7rem; font-weight: 700; }
