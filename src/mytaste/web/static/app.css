@@ -393,8 +393,9 @@ body[data-card-size="compact"] .media-grid {
   background: var(--poster-placeholder);
 }
 
-/* Movie or series, as an icon tile matching the service logos beside it. */
-.type-badge {
+/* Media type or game platform, as an icon tile beside the service logos. */
+.type-badge,
+.game-platform-badge {
   position: absolute;
   right: 7px;
   bottom: 7px;
@@ -409,7 +410,8 @@ body[data-card-size="compact"] .media-grid {
   backdrop-filter: blur(7px);
 }
 
-.type-badge svg {
+.type-badge svg,
+.game-platform-badge svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -419,8 +421,10 @@ body[data-card-size="compact"] .media-grid {
   stroke-linejoin: round;
 }
 
-body[data-card-size="compact"] .type-badge { width: 20px; height: 20px; border-radius: 5px; }
-body[data-card-size="compact"] .type-badge svg { width: 12px; height: 12px; }
+body[data-card-size="compact"] .type-badge,
+body[data-card-size="compact"] .game-platform-badge { width: 20px; height: 20px; border-radius: 5px; }
+body[data-card-size="compact"] .type-badge svg,
+body[data-card-size="compact"] .game-platform-badge svg { width: 12px; height: 12px; }
 
 /* Watch progress on posters and episode stills. */
 .card-progress {
@@ -3880,7 +3884,6 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .games-filters .games-clear { text-align: center; padding: 7px; }
 .games-help { color: var(--muted); font-size: 0.75rem; line-height: 1.65; margin-top: 22px; }
 .game-card h2 a { text-decoration: none; }
-.game-platform-badge { position: absolute; right: 7px; bottom: 7px; padding: 5px 7px; border-radius: 6px; font-size: 0.65rem; color: var(--badge-text); background: var(--badge-background); border: 1px solid var(--badge-border); }
 .game-card small { font-size: 0.66rem; color: var(--muted); margin-left: 2px; }
 .game-settings { max-width: 520px; margin: 0 auto; }
 .game-settings > p { color: var(--muted); line-height: 1.65; }

@@ -158,6 +158,9 @@ genre chips, and main action in the same places. Developer/publisher and Store s
 movie-specific metadata. Use the neighboring covers or arrow keys to browse games, and the
 back control or Escape to return to the collection. Direct game links use that layout as well.
 
+Cover badges show the selected platform with a PC, controller, or cloud icon in the bottom-right
+corner. Hover for its name; the sidebar's Appearance controls can hide the badges.
+
 Game Pass caching is **disabled by default**; browsing stays available and each request fetches
 live catalog data. The Games tab and controls appear immediately; live results load into the
 grid afterward. Full metadata hydration can involve dozens of requests for a large catalog.
