@@ -30,7 +30,7 @@
 {% block browse_results %}
   <div data-game-results {% if loading %}data-game-load-url="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}" aria-busy="true"{% endif %}>
     {% if loading %}
-      <p role="status" aria-live="polite" data-game-load-status>Loading Game Pass games…</p>
+      <p class="sr-only" role="status" aria-live="polite" data-game-load-status>Loading Game Pass games…</p>
       <section class="media-grid skeleton-grid" aria-hidden="true">
         {% for unused in range(24) %}<div class="skeleton-card"><div class="poster skeleton-poster"></div><div class="card-copy"><h2><span class="skeleton-line"></span></h2><div class="card-meta"><span class="meta-year skeleton-line"></span><span class="meta-rating skeleton-line"></span></div></div></div>{% endfor %}
       </section>
