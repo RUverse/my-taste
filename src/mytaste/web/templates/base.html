@@ -23,6 +23,7 @@
     data-media-mode="{{ header_media }}"
     data-sidebar="{{ 'open' if display.sidebar_open else 'closed' }}"
   >
+    {% block header %}
     <header class="site-header">
       <div class="header-primary">
         <div class="popover-anchor brand-menu">
@@ -92,9 +93,11 @@
 
       </div>
     </header>
+    {% endblock %}
 
     {% block layout %}<main>{% block content %}{% endblock %}</main>{% endblock %}
 
+    {% block footer %}
     <footer>
       {% block credits %}
       {% if header_media == 'game' %}{% include "_game_credits.html" %}{% else %}
@@ -103,6 +106,7 @@
       {% endif %}
       {% endblock %}
     </footer>
+    {% endblock %}
     {% block scripts %}{% endblock %}
   </body>
 </html>

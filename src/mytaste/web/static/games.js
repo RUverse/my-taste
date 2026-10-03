@@ -58,58 +58,129 @@
 
   const dialog = document.querySelector("#game-dialog");
   if (!dialog) return;
-  const title = dialog.querySelector("[data-game-title]");
-  const status = dialog.querySelector("[data-game-status]");
-  const cover = dialog.querySelector("[data-game-cover]");
+  const title = dialog.querySelector("[data-detail-title]");
+  const status = dialog.querySelector("[data-detail-status]");
+  const poster = dialog.querySelector("[data-detail-poster]");
+  const backdrop = dialog.querySelector("[data-detail-backdrop]");
   const store = dialog.querySelector("[data-game-store]");
+  const playGroup = dialog.querySelector("[data-play-group]");
+  const genres = dialog.querySelector("[data-detail-genres]");
+  const kind = dialog.querySelector("[data-detail-kind]");
+  const rating = dialog.querySelector("[data-detail-rating]");
+  const credit = dialog.querySelector("[data-detail-credit]");
+  const publisher = dialog.querySelector("[data-game-publisher]");
+  const overview = dialog.querySelector("[data-detail-overview]");
   const shots = dialog.querySelector("[data-game-screenshots]");
+  const neighbors = Array.from(dialog.querySelectorAll("[data-detail-neighbor]"));
   let origin;
   let controller;
   let revision = 0;
+  let closing = false;
   const httpsURL = (value) => {
     try {
       const url = new URL(value);
       return url.protocol === "https:" ? url.href : null;
     } catch { return null; }
   };
-  document.addEventListener("click", async (event) => {
-    const link = event.target.closest("[data-game-open]");
-    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
+  const coverFrom = (card) => {
+    const visual = card.querySelector(".poster img, .poster-placeholder")?.cloneNode(true);
+    if (visual) {
+      visual.removeAttribute("loading");
+      return visual;
+    }
+    const placeholder = document.createElement("div");
+    placeholder.className = "poster-placeholder";
+    placeholder.textContent = card.querySelector("h2").textContent.trim().charAt(0);
+    return placeholder;
+  };
+  const renderGenres = (values) => {
+    genres.replaceChildren(...values.filter(Boolean).map((value) => {
+      const chip = document.createElement("span");
+      chip.textContent = value.trim();
+      return chip;
+    }));
+  };
+  const setDeveloper = (names) => {
+    credit.hidden = !names;
+    credit.title = names ? `Developer: ${names}` : "";
+    credit.querySelector("[data-detail-credit-label]").textContent = "Developer:";
+    credit.querySelector("[data-detail-credit-names]").textContent = names;
+  };
+  const neighboringCard = (direction) => {
+    const cards = Array.from(document.querySelectorAll(".game-card"));
+    const index = cards.indexOf(origin?.closest(".game-card"));
+    return index < 0 ? null : cards[index + direction];
+  };
+  const renderNeighbors = () => neighbors.forEach((button) => {
+    const direction = Number(button.dataset.detailNeighbor);
+    const card = neighboringCard(direction);
+    button.hidden = !card;
+    if (!card) return;
+    button.replaceChildren(coverFrom(card));
+    button.setAttribute("aria-label", `${direction < 0 ? "Previous" : "Next"} game: ${card.querySelector("h2").textContent}`);
+  });
+  const openGame = async (link) => {
+    if (closing) return;
+    const card = link.closest(".game-card");
+    if (!card) return;
     origin = link;
     controller?.abort();
     controller = new AbortController();
     const current = ++revision;
-    title.textContent = link.closest(".game-card").querySelector("h2").textContent;
+    title.textContent = card.querySelector("h2").textContent;
+    poster.replaceChildren(coverFrom(card));
+    kind.textContent = [card.querySelector(".meta-year")?.textContent.replace("—", "").trim(), "Game"].filter(Boolean).join(" · ");
+    rating.textContent = card.querySelector(".meta-rating") ? `Store ${card.querySelector(".meta-rating").textContent.trim()}` : "";
+    renderGenres((card.querySelector(".meta-genres")?.textContent || "").split("·"));
+    setDeveloper(card.querySelector(".meta-people")?.textContent || "");
     status.textContent = "Loading details…";
-    dialog.querySelector("[data-game-meta]").textContent = "";
-    dialog.querySelector("[data-game-credits]").textContent = "";
-    dialog.querySelector("[data-game-overview]").textContent = "";
-    cover.hidden = true;
-    cover.removeAttribute("src");
-    store.hidden = true;
+    overview.textContent = "";
+    publisher.textContent = "";
+    publisher.hidden = true;
+    backdrop.onload = null;
+    backdrop.removeAttribute("src");
+    backdrop.classList.remove("has-image");
+    playGroup.hidden = true;
     store.removeAttribute("href");
     shots.replaceChildren();
+    dialog.querySelector("[data-detail-content]").hidden = false;
+    renderNeighbors();
+    dialog.scrollTop = 0;
     if (!dialog.open) dialog.showModal();
-    document.body.classList.add("dialog-open");
+    document.body.classList.add("media-details-open");
+    requestAnimationFrame(() => {
+      if (dialog.open && current === revision) dialog.classList.add("is-visible");
+    });
     try {
       const response = await fetch(`/api/games/${encodeURIComponent(link.dataset.gameOpen)}/details`, {signal: controller.signal, cache: "no-store"});
       const game = await response.json();
       if (!response.ok) throw new Error(game.error || "Game details are unavailable.");
       if (current !== revision || !dialog.open) return;
       title.textContent = game.title;
-      const parts = [game.release_date?.slice(0, 4), ...(game.genres || [])].filter(Boolean);
-      if (game.rating !== null) parts.push(`Store ${Number(game.rating).toFixed(1)}/5`);
-      dialog.querySelector("[data-game-meta]").textContent = parts.join(" · ");
-      dialog.querySelector("[data-game-credits]").textContent = [...(game.developers || []), game.publisher ? `Published by ${game.publisher}` : ""].filter(Boolean).join(" · ");
-      dialog.querySelector("[data-game-overview]").textContent = game.overview || "No description is available.";
+      kind.textContent = [game.release_date?.slice(0, 4), "Game"].filter(Boolean).join(" · ");
+      rating.textContent = game.rating !== null ? `Store ${Number(game.rating).toFixed(1)}/5 ★` : "";
+      rating.setAttribute("aria-label", game.rating !== null ? `Microsoft Store rating ${game.rating} out of 5` : "No Store rating");
+      renderGenres(game.genres || []);
+      setDeveloper((game.developers || []).join(", "));
+      publisher.textContent = game.publisher ? `Published by ${game.publisher}` : "";
+      publisher.hidden = !game.publisher;
+      overview.textContent = game.overview || "No description is available.";
       if (httpsURL(game.poster_url)) {
-        cover.src = httpsURL(game.poster_url);
-        cover.hidden = false;
+        const image = document.createElement("img");
+        image.src = httpsURL(game.poster_url);
+        image.alt = "";
+        poster.replaceChildren(image);
+      }
+      const background = (game.screenshots || []).find(httpsURL);
+      if (background) {
+        backdrop.onload = () => {
+          if (current === revision && dialog.open) backdrop.classList.add("has-image");
+        };
+        backdrop.src = httpsURL(background);
       }
       if (httpsURL(game.store_url)) {
         store.href = httpsURL(game.store_url);
-        store.hidden = false;
+        playGroup.hidden = false;
       }
       (game.screenshots || []).forEach((url, index) => {
         if (!httpsURL(url)) return;
@@ -121,15 +192,54 @@
       });
       status.textContent = "";
     } catch (error) {
-      if (error.name !== "AbortError" && current === revision) status.textContent = error.message || "Game details could not be loaded. Close and try again.";
+      if (error.name !== "AbortError" && current === revision) {
+        status.textContent = `${error.message || "Game details could not be loaded."} `;
+        const retry = document.createElement("button");
+        retry.className = "detail-link";
+        retry.type = "button";
+        retry.textContent = "Try again";
+        retry.addEventListener("click", () => openGame(origin));
+        status.append(retry);
+      }
+    }
+  };
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("[data-game-open]");
+    if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    openGame(link);
+  });
+  neighbors.forEach((button) => button.addEventListener("click", () => {
+    const card = neighboringCard(Number(button.dataset.detailNeighbor));
+    if (card) openGame(card.querySelector("[data-game-open]"));
+  }));
+  dialog.addEventListener("keydown", (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.target.closest("input, textarea, select, [contenteditable=true]")) return;
+    const direction = event.key === "ArrowLeft" ? -1 : event.key === "ArrowRight" ? 1 : 0;
+    const button = neighbors.find((neighbor) => Number(neighbor.dataset.detailNeighbor) === direction);
+    if (button && !button.hidden) {
+      event.preventDefault();
+      button.click();
     }
   });
-  dialog.querySelector("[data-game-close]").addEventListener("click", () => dialog.close());
-  dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+  const closeGame = () => {
+    if (closing || !dialog.open) return;
+    closing = true;
+    ++revision;
+    controller?.abort();
+    dialog.classList.add("is-closing");
+    dialog.classList.remove("is-visible");
+    window.setTimeout(() => dialog.close(), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 340);
+  };
+  dialog.querySelector("[data-game-close]").addEventListener("click", closeGame);
+  dialog.addEventListener("cancel", (event) => { event.preventDefault(); closeGame(); });
   dialog.addEventListener("close", () => {
     ++revision;
     controller?.abort();
-    document.body.classList.remove("dialog-open");
+    backdrop.onload = null;
+    closing = false;
+    dialog.classList.remove("is-visible", "is-closing");
+    document.body.classList.remove("media-details-open");
     origin?.focus();
   });
 })();

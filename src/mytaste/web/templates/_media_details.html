@@ -1,0 +1,148 @@
+{% set game_details = header_media == 'game' %}
+{% set standalone = standalone|default(false) %}
+{% set back_label = 'Search results' if query and query.search else heading|default('Games') %}
+{% set title_id = 'game-detail-title' if game_details else 'media-detail-title' %}
+{% if standalone %}<main class="media-details is-visible" aria-labelledby="{{ title_id }}">{% else %}<dialog class="media-details" id="{{ 'game-dialog' if game_details else 'media-details' }}" aria-labelledby="{{ title_id }}">{% endif %}
+      <div class="media-detail-hero" aria-hidden="true">
+        <div class="media-detail-visual" data-detail-visual>
+          <img data-detail-backdrop alt="" {% if standalone and game.screenshots %}src="{{ game.screenshots[0] }}" class="has-image"{% endif %}>
+          <div class="media-detail-video" data-detail-video></div>
+        </div>
+      </div>
+      {% if not game_details %}
+      <button
+        class="media-detail-sound"
+        type="button"
+        data-detail-sound
+        data-muted="true"
+        aria-label="Unmute trailer"
+        aria-pressed="false"
+        title="Unmute trailer"
+        hidden
+      >
+        <svg data-sound-muted aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+          <path d="m16 9 5 5M21 9l-5 5"></path>
+        </svg>
+        <svg data-sound-on aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M11 6 7.5 9H4v6h3.5l3.5 3V6Z"></path>
+          <path d="M15 9.5a4 4 0 0 1 0 5M18 7a7 7 0 0 1 0 10"></path>
+        </svg>
+      </button>
+      {% endif %}
+      <div class="media-detail-shell">
+        {# Closing returns to the collection (or search) the title was opened from. #}
+        {% if standalone %}
+        <a class="media-detail-close" href="/collections/games" aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </a>
+        {% elif game_details %}
+        <button class="media-detail-close" type="button" data-game-close aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </button>
+        {% else %}
+        <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </button>
+        {% endif %}
+        <div class="media-detail-layout">
+          <aside class="media-detail-identity">
+            <div class="media-detail-poster" data-detail-poster aria-hidden="true">{% if standalone %}{% if game.poster_url %}<img src="{{ game.poster_url }}" alt="">{% else %}<div class="poster-placeholder"><span>{{ game.title[0] }}</span></div>{% endif %}{% endif %}</div>
+            <p class="media-detail-kind" data-detail-kind>{% if standalone %}{{ game.release_date[:4] }}{% if game.release_date %} · {% endif %}Game{% endif %}</p>
+            {% if standalone %}<h1 id="{{ title_id }}" data-detail-title>{{ game.title }}</h1>{% else %}<h2 id="{{ title_id }}" data-detail-title>Loading…</h2>{% endif %}
+            <p class="media-detail-credit" data-detail-credit {% if not standalone or not game.developers %}hidden{% endif %}>
+              {% if game_details %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 8h10a4 4 0 0 1 3.8 3l1 5a2.6 2.6 0 0 1-4.4 2.4L15 16H9l-2.4 2.4A2.6 2.6 0 0 1 2.2 16l1-5A4 4 0 0 1 7 8ZM7 10v4M5 12h4"></path><circle cx="16" cy="11" r=".5"></circle><circle cx="18" cy="13" r=".5"></circle></svg>{% else %}
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10h16v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5V10Z"></path><path d="m4 10-.6-2.6a1.5 1.5 0 0 1 1.1-1.8L17.7 2.5a1.5 1.5 0 0 1 1.8 1.1L20 6 4 10ZM8.5 4.8l2.3 3.6M13.6 3.6l2.3 3.6"></path></svg>
+              {% endif %}
+              <span class="sr-only" data-detail-credit-label>{% if standalone %}Developer:{% endif %}</span>
+              <span data-detail-credit-names>{% if standalone %}{{ game.developers|join(', ') }}{% endif %}</span>
+            </p>
+            <p class="media-detail-scoreline">
+              <span class="media-detail-rating" data-detail-rating>{% if standalone and game.rating is not none %}Store {{ '%.1f'|format(game.rating) }}/5 ★{% endif %}</span>
+            </p>
+          </aside>
+
+          <section class="media-detail-stage" aria-live="polite">
+            <div class="media-detail-copy">
+              <div class="media-detail-content" data-detail-content {% if not standalone %}hidden{% endif %}>
+                <div class="media-detail-head">
+                  {% if not game_details %}
+                  <div class="media-detail-links">
+                    <div class="popover-anchor detail-save">
+                      <button class="detail-link" type="button" data-detail-save data-popover-button aria-expanded="false" aria-controls="save-popover">
+                        <svg class="detail-save-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6.5 4.5h11v15.5l-5.5-4-5.5 4V4.5Z"></path></svg>
+                        <span data-detail-save-label>Save</span>
+                      </button>
+                      <div class="popover popover-start save-popover" id="save-popover" hidden>
+                        <p class="popover-title" id="save-popover-title">Save to</p>
+                        <div class="save-list" role="group" aria-labelledby="save-popover-title" data-save-list></div>
+                        <p class="form-error" data-save-error role="alert" hidden></p>
+                        <button class="popover-separated" type="button" data-save-new aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
+                      </div>
+                    </div>
+                    <a class="detail-link" data-detail-trailer target="_blank" rel="noreferrer" hidden>
+                      <svg class="detail-link-fill" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                      Trailer
+                    </a>
+                  </div>
+                  {% endif %}
+                  <div class="media-detail-actions">
+                  {% if game_details %}
+                    <div class="play-group" data-play-group {% if not standalone %}hidden{% endif %}>
+                      <a class="play-primary" data-game-store {% if standalone %}href="{{ game.store_url }}"{% endif %} target="_blank" rel="noopener noreferrer">
+                        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                        <span>Open in Xbox</span><span class="play-source" aria-hidden="true">X</span>
+                      </a>
+                    </div>
+                  {% else %}
+                    <div class="play-group" data-play-group hidden>
+                      <a class="play-primary" data-detail-play>
+                        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+                        <span data-detail-play-label>Play</span>
+                        <span class="play-source" data-detail-play-source></span>
+                      </a>
+                      <div class="watch-alternatives" data-watch-alternatives></div>
+                    </div>
+                    <span class="media-detail-runtime" data-detail-runtime></span>
+                  {% endif %}
+                  </div>
+                </div>
+                <div class="media-detail-genres" data-detail-genres>{% if standalone %}{% for genre in game.genres %}<span>{{ genre }}</span>{% endfor %}{% endif %}</div>
+                {% if game_details %}<p class="media-detail-credit" data-game-publisher {% if not standalone or not game.publisher %}hidden{% endif %}>{% if standalone and game.publisher %}Published by {{ game.publisher }}{% endif %}</p>{% endif %}
+                <p class="media-detail-overview" data-detail-overview>{% if standalone %}{{ game.overview or 'No description is available.' }}{% endif %}</p>
+                {% if game_details %}<div class="game-screenshots" data-game-screenshots aria-label="Screenshots">{% if standalone %}{% for url in game.screenshots %}<img src="{{ url }}" alt="Screenshot {{ loop.index }} from {{ game.title }}" loading="lazy">{% endfor %}{% endif %}</div>
+                {% else %}
+                <button class="media-detail-cast" type="button" data-detail-cast aria-expanded="false" aria-controls="media-detail-cast-list" hidden>
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"></circle><path d="M3.5 19a5.5 5.5 0 0 1 11 0M15.5 5.2a3.2 3.2 0 0 1 0 5.6M17.5 13.7A5.5 5.5 0 0 1 20.5 19"></path></svg>
+                  <span class="sr-only">Starring</span>
+                  <span class="media-detail-cast-names" data-detail-cast-names></span>
+                  <svg class="media-detail-cast-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+                </button>
+                <div class="media-detail-cast-list" id="media-detail-cast-list" data-detail-cast-list role="list" aria-label="Cast" hidden></div>
+                {% endif %}
+              </div>
+              <div class="media-detail-status" data-detail-status role="status">{% if not standalone %}Loading details…{% endif %}</div>
+            </div>
+          </section>
+        </div>
+      </div>
+      {% if standalone %}<div class="media-detail-status">{% include "_game_credits.html" %}</div>{% endif %}
+      {% if not game_details %}
+      <section class="media-detail-episodes" data-detail-episodes aria-labelledby="media-detail-episodes-title" hidden>
+        <header class="episodes-head sr-only">
+          <h3 id="media-detail-episodes-title">Episodes</h3>
+          <p data-episodes-summary></p>
+        </header>
+        <p class="episodes-status" data-episodes-status role="status"></p>
+        <div class="season-rows" data-episodes-seasons></div>
+      </section>
+      {% endif %}
+      {% if not standalone %}<div class="detail-neighbors">
+        <button class="detail-neighbor detail-neighbor-prev" type="button" data-detail-neighbor="-1" hidden></button>
+        <button class="detail-neighbor detail-neighbor-next" type="button" data-detail-neighbor="1" hidden></button>
+      </div>
+      {% endif %}
+{% if standalone %}</main>{% else %}</dialog>{% endif %}

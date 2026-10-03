@@ -153,6 +153,11 @@ out of five; release dates refer to the Store product/edition. **Open in Xbox** 
 product on Microsoft's site. Trials, demos, add-ons, and free games with subscriber benefits are omitted when identified
 in Store metadata.
 
+Game details use the same full-screen layout as movie details, with the cover, artwork backdrop,
+genre chips, and main action in the same places. Developer/publisher and Store scores replace
+movie-specific metadata. Use the neighboring covers or arrow keys to browse games, and the
+back control or Escape to return to the collection. Direct game links use that layout as well.
+
 Game Pass caching is **disabled by default**; browsing stays available and each request fetches
 live catalog data. The Games tab and controls appear immediately; live results load into the
 grid afterward. Full metadata hydration can involve dozens of requests for a large catalog.

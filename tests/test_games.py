@@ -424,6 +424,10 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
         assert 'action="/collections/games" role="search"' in game_page.text
         assert 'name="autoplay_trailer"' not in game_page.text
         assert 'class="games-shell"' not in game_page.text
+        assert 'class="media-details" id="game-dialog"' in game_page.text
+        assert 'class="media-detail-identity"' in game_page.text
+        assert 'class="media-detail-actions"' in game_page.text
+        assert "data-detail-save" not in game_page.text
         assert not catalog.browse_queries
         for media in ("movie", "tv"):
             response = client.get(f"/?media={media}")
@@ -457,6 +461,13 @@ def test_games_routes_settings_fragments_and_details(tmp_path):
         detail = client.get(f"/api/games/{A}/details")
         assert detail.json()["portable_id"] == f"game-xbox-{A}"
         assert "&lt;script&gt;" in client.get(f"/games/{A}").text
+        standalone = client.get(f"/games/{A}").text
+        assert '<main class="media-details is-visible"' in standalone
+        assert '<h1 id="game-detail-title" data-detail-title>A Game</h1>' in standalone
+        assert "Developer:" in standalone and "Published by A Publisher" in standalone
+        assert "Store 4.5/5" in standalone and 'class="play-primary"' in standalone
+        assert 'class="site-header"' not in standalone
+        assert "data-detail-cast" not in standalone and "data-detail-episodes" not in standalone
         assert client.get("/api/games/not-an-id/details").status_code == 404
         invalid = client.post(
             "/games/settings", data={"region": "DE", "plan": "pc", "platform": "cloud"}

@@ -38,11 +38,5 @@
     {% else %}{% include "_games_results.html" %}{% endif %}
   </div>
 {% endblock %}
-{% block browse_dialogs %}
-  <dialog class="game-dialog" id="game-dialog" aria-labelledby="game-detail-title">
-    <button class="icon-button game-dialog-close" type="button" data-game-close aria-label="Close game details">✕</button>
-    <div class="game-detail-layout"><img class="game-detail-cover" data-game-cover alt="" hidden><div><p class="games-eyebrow">Game</p><h2 id="game-detail-title" data-game-title>Loading game…</h2><p data-game-meta></p><p data-game-credits></p><a class="button button-primary" data-game-store target="_blank" rel="noopener noreferrer" hidden>Open in Xbox</a></div></div>
-    <p class="game-detail-status" data-game-status role="status">Loading details…</p><p class="game-overview" data-game-overview></p><div class="game-screenshots" data-game-screenshots></div>
-  </dialog>
-{% endblock %}
+{% block browse_dialogs %}{% include "_media_details.html" %}{% endblock %}
 {% block scripts %}<script src="{{ request.url_for('static', path='games.js') }}?v={{ asset_version }}" defer></script>{% endblock %}
