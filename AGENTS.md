@@ -54,6 +54,8 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   third-party file is the vendored hls.js light build in `static/vendor/` (Apache-2.0).
 - `tests/` — unit and route tests. Web tests inject fake catalog implementations through
   `create_app()` and must not call live services.
+- `site/` — the project's landing page: static HTML, CSS, and vanilla JavaScript with no build
+  step and no dependencies. It is not part of the Python package; see `site/README.md`.
 
 ## Implementation conventions
 
@@ -104,6 +106,7 @@ uv run ruff check .
 uv run ruff format --check .
 node --check src/mytaste/web/static/app.js
 node --check src/mytaste/web/static/player.js
+node --check site/main.js
 ```
 
 Run `uv build` when packaging, templates, or static assets change. For UI work, inspect the real

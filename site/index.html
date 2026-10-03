@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MyTaste – everything you can watch, in one place</title>
+  <meta name="description" content="MyTaste is a small self-hosted guide to the movies and shows on your streaming services, mixed with the files in your own media folders. Open source, MIT licensed.">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f6f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0a0a0b" media="(prefers-color-scheme: dark)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="MyTaste">
+  <meta property="og:description" content="Everything you can watch, in one place: your streaming services and your own media folders, browsed as one.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#features">Skip to content</a>
+
+  <header class="topbar" data-topbar>
+    <nav class="topbar-inner" aria-label="Site">
+      <ul class="topbar-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how-it-works">How it works</a></li>
+      </ul>
+      <a class="github-link" href="https://github.com/RUverse/my-taste" rel="noreferrer">
+        <span>GitHub</span>
+        <svg class="icon icon-star" aria-hidden="true" viewBox="0 0 24 24"><path d="m12 3.6 2.5 5.3 5.8.7-4.3 4 1.1 5.8L12 16.6l-5.1 2.8 1.1-5.8-4.3-4 5.8-.7L12 3.6Z"></path></svg>
+        <span class="github-stars" data-stars hidden></span>
+      </a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero" data-hero aria-labelledby="hero-title">
+      <div class="glasses" aria-hidden="true">
+        <span class="glass" style="--x:-2%; --w:12vw; --r:-1.5deg; --shade:.10; --shine:.5; --delay:-3s; --dur:19s"></span>
+        <span class="glass" style="--x:9%; --w:9vw; --r:2deg; --shade:.05; --shine:.9; --delay:-9s; --dur:23s"></span>
+        <span class="glass glass-short" style="--x:27%; --w:7.5vw; --r:-2.5deg; --shade:.14; --shine:.7; --delay:-6s; --dur:17s"></span>
+        <span class="glass" style="--x:39%; --w:3vw; --r:1deg; --shade:.09; --shine:.4; --blur:1px; --delay:-14s; --dur:21s"></span>
+        <span class="glass" style="--x:53%; --w:6vw; --r:-1deg; --shade:.06; --shine:.8; --delay:-2s; --dur:25s"></span>
+        <span class="glass" style="--x:65%; --w:11vw; --r:2.5deg; --shade:.08; --shine:.55; --delay:-11s; --dur:18s"></span>
+        <span class="glass glass-short" style="--x:79%; --w:5vw; --r:-3deg; --shade:.12; --shine:.65; --blur:.5px; --delay:-7s; --dur:22s"></span>
+        <span class="glass" style="--x:90%; --w:13vw; --r:1.5deg; --shade:.11; --shine:.45; --delay:-5s; --dur:20s"></span>
+        <span class="bokeh" style="--x:16%; --y:12%; --s:28vmin; --o:.5"></span>
+        <span class="bokeh" style="--x:72%; --y:58%; --s:36vmin; --o:.35"></span>
+        <span class="bead" style="--x:78%; --y:29%; --s:2.6vmin"></span>
+        <span class="sweep"></span>
+      </div>
+
+      <canvas class="brush" data-brush aria-hidden="true"></canvas>
+      <canvas class="brush glitter" data-glitter aria-hidden="true"></canvas>
+      <svg class="brush-fallback" data-brush-fallback aria-hidden="true" viewBox="-889 0 1778 1000" preserveAspectRatio="xMidYMin meet">
+        <path d="M-322 318 L-338 1100 M-318 326 L-168 530 L50 338 L14 1100 M100 300 L244 480 L392 306 M244 474 L206 1100"></path>
+      </svg>
+      <noscript><style>.brush-fallback { display: block; }</style></noscript>
+
+      <div class="hero-content">
+        <h1 class="wordmark" id="hero-title">
+          <span class="visually-hidden">MyTaste</span>
+          <svg class="taste" aria-hidden="true" viewBox="0 0 760 300">
+            <defs>
+              <g id="taste-paths">
+                <path class="t-dot" d="M52 214h.01" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:.25s; --dur:.42s" d="M150 62C146 112 143 166 150 200 155 224 172 232 199 219" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:.62s; --dur:.22s" d="M106 124C140 115 170 112 202 114" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:.84s; --dur:.46s" d="M316 128C298 106 254 104 237 132 220 160 229 207 258 221 286 234 313 211 318 184" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:1.22s; --dur:.3s" d="M322 112C320 152 320 193 328 215 334 233 354 232 372 216" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:1.46s; --dur:.4s" d="M468 126C452 108 414 110 410 134 406 160 462 162 466 190 470 220 424 232 406 210" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:1.8s; --dur:.42s" d="M535 62C531 112 528 166 535 200 540 224 557 232 584 219" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:2.16s; --dur:.22s" d="M491 124C525 115 555 112 587 114" pathLength="1"></path>
+                <path class="t-stroke" style="--delay:2.36s; --dur:.5s" d="M630 170C660 170 700 166 700 142 700 116 664 104 640 116 610 130 604 178 622 204 640 230 684 228 708 206" pathLength="1"></path>
+              </g>
+            </defs>
+            <use class="taste-halo" href="#taste-paths"></use>
+            <use class="taste-ink" href="#taste-paths"></use>
+          </svg>
+        </h1>
+        <p class="tagline">Everything you can watch, in one place.</p>
+        <a class="download" href="https://github.com/RUverse/my-taste/releases/latest">
+          <svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 19h14"></path></svg>
+          Download for Mac
+        </a>
+        <p class="alt-install">or <a href="#how-it-works">run it anywhere with Python</a></p>
+      </div>
+    </section>
+
+    <section class="section features" id="features" aria-labelledby="features-title">
+      <div class="section-inner">
+        <p class="eyebrow">Features</p>
+        <h2 class="section-title" id="features-title">Your streaming services and your own files, browsed as one.</h2>
+        <p class="section-lead">MyTaste shows what you can actually watch right now: the movies and shows on the subscriptions you pay for, mixed with the videos in your own folders. One grid, one order, one set of filters.</p>
+
+        <ul class="feature-grid">
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11.5" rx="2"></rect><path d="m9 3.5 3 3 3-3M8.5 21h7"></path></svg>
+            <h3>Your services, one catalog</h3>
+            <p>Choose your country and the subscriptions you already have, such as Netflix, Prime Video, or Apple TV+. You only see titles that are available on them, with posters, trailers, and cast from TMDB.</p>
+          </li>
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z"></path></svg>
+            <h3>Your folders, mixed in</h3>
+            <p>Point it at the folders you already have: a USB drive, a NAS share, the same ones Plex scans. Files are matched on TMDB and appear in the same grid, in the same order, with a small badge.</p>
+          </li>
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M6.5 4.5h11v15.5l-5.5-4-5.5 4V4.5Z"></path></svg>
+            <h3>Collections</h3>
+            <p>Popular, Latest, and genres out of the box, plus lists of your own. A list tells you how many of its titles you can watch right now, for example “12 of 23 titles are on your services”.</p>
+          </li>
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"></path><circle cx="9" cy="7" r="2"></circle><circle cx="15" cy="12" r="2"></circle><circle cx="8" cy="17" r="2"></circle></svg>
+            <h3>Plex-style filters</h3>
+            <p>Year, rating, genre, runtime, country, language, keywords, and people; for local files also resolution, codec, audio and subtitle language. A filter means the same thing for every source.</p>
+          </li>
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="m10 8.5 5 3.5-5 3.5v-7Z"></path></svg>
+            <h3>A player for your files</h3>
+            <p>Direct play when the browser can, ffmpeg when it cannot. Subtitles next to the file or inside it, resume where you stopped, Continue watching, and links that open an exact episode.</p>
+          </li>
+          <li class="feature">
+            <svg class="feature-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-5v-5h-4v5H5a1 1 0 0 1-1-1v-8.5Z"></path></svg>
+            <h3>Yours to host</h3>
+            <p>A small Python app with a single SQLite file. No accounts, no cloud, no tracking. Run it natively, with Docker, or on a Raspberry Pi. Open source under the MIT License.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section how" id="how-it-works" aria-labelledby="how-title">
+      <div class="section-inner">
+        <p class="eyebrow">How it works</p>
+        <h2 class="section-title" id="how-title">Up and running in a few minutes.</h2>
+
+        <ol class="steps">
+          <li class="step">
+            <h3>Get a TMDB key</h3>
+            <p>Create a free account on <a href="https://www.themoviedb.org/" rel="noreferrer">TMDB</a> and copy an API key or Read Access Token from the API section of its settings. MyTaste uses it for metadata and for what is streaming in your country.</p>
+          </li>
+          <li class="step">
+            <h3>Install and start</h3>
+            <p>Python 3.11 or newer and <a href="https://docs.astral.sh/uv/" rel="noreferrer">uv</a> are all you need. There is also a Docker image recipe in the repository.</p>
+            <pre class="code"><code>git clone https://github.com/RUverse/my-taste.git
+cd my-taste &amp;&amp; uv sync
+export MYTASTE_TMDB_TOKEN=your-token
+uv run mytaste serve</code></pre>
+            <p>Then open <code>http://127.0.0.1:8000</code>.</p>
+          </li>
+          <li class="step">
+            <h3>Pick your services and folders</h3>
+            <p>Choose your region and subscriptions on the Services page. Optionally connect a folder of movies or shows; MyTaste scans and matches it in the background, and keeps rescanning on its own.</p>
+          </li>
+          <li class="step">
+            <h3>Browse, filter, play</h3>
+            <p>Everything you can watch is in one place: by collection, with filters, in the same order TMDB would use, with your own files mixed in. Press Play on anything you own.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="section-inner footer-inner">
+      <p class="footer-brand"><svg class="taste taste-mini" aria-hidden="true" viewBox="0 0 760 300"><use class="taste-ink" href="#taste-paths"></use></svg><span>MyTaste is open source under the <a href="https://github.com/RUverse/my-taste/blob/main/LICENSE" rel="noreferrer">MIT License</a>.</span></p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/RUverse/my-taste" rel="noreferrer">GitHub</a></li>
+        <li><a href="https://github.com/RUverse/my-taste/releases" rel="noreferrer">Releases</a></li>
+        <li><a href="https://github.com/RUverse/my-taste/issues" rel="noreferrer">Issues</a></li>
+        <li><a href="https://github.com/RUverse/my-taste/blob/main/docs/deployment.md" rel="noreferrer">Deployment</a></li>
+      </ul>
+      <p class="footer-credits">Movie and TV metadata from <a href="https://www.themoviedb.org/" rel="noreferrer">TMDB</a>. Streaming availability powered by JustWatch. This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+    </div>
+  </footer>
+
+  <script src="main.js" defer></script>
+</body>
+</html>

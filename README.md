@@ -204,6 +204,9 @@ uv run ruff check .
 
 The test suite does not call TMDB; external services are replaced with deterministic test doubles.
 
+The project's landing page is a static site in [`site/`](site/README.md) with no build step;
+preview it with `python3 -m http.server -d site 4173`.
+
 ## Contributing
 
 Work happens on branches from `dev`, and pull requests target `dev`; `main` only receives

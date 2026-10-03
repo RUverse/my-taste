@@ -51,6 +51,7 @@ uv run ruff check .
 uv run ruff format --check .
 node --check src/mytaste/web/static/app.js
 node --check src/mytaste/web/static/player.js
+node --check site/main.js
 ```
 
 Also:

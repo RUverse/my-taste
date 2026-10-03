@@ -1,0 +1,719 @@
+/* MyTaste landing page. Plain CSS, no build step. Dark mode follows the OS theme. */
+
+:root {
+  color-scheme: light dark;
+  --bg: #f4f4f6;
+  --ink: #0b0b0c;
+  --text: #1d1d1f;
+  --muted: #65656c;
+  --line: rgba(0, 0, 0, 0.1);
+  --surface: #ffffff;
+  --surface-2: #e9e9ec;
+  --glass-ink: 0 0 0;
+  --glass-light: 255 255 255;
+  --shine-k: 1;
+  --button-bg: rgba(255, 255, 255, 0.8);
+  --button-line: rgba(0, 0, 0, 0.16);
+  --button-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --topbar-bg: rgba(244, 244, 246, 0.72);
+  --focus: #2a7fff;
+  --code-bg: #111113;
+  --code-text: #f1f1f3;
+  --grain-blend: multiply;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0b;
+    --ink: #f5f5f7;
+    --text: #e8e8ea;
+    --muted: #9a9aa1;
+    --line: rgba(255, 255, 255, 0.12);
+    --surface: #141416;
+    --surface-2: #1d1d20;
+    --glass-ink: 255 255 255;
+    --glass-light: 255 255 255;
+    --shine-k: 0.32;
+    --button-bg: rgba(24, 24, 26, 0.78);
+    --button-line: rgba(255, 255, 255, 0.2);
+    --button-shadow: 0 12px 32px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    --topbar-bg: rgba(10, 10, 11, 0.72);
+    --focus: #72b7ff;
+    --code-bg: #151518;
+    --grain-blend: screen;
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: absolute;
+  top: -100px;
+  left: 1rem;
+  z-index: 100;
+  padding: 0.5rem 0.75rem;
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 8px;
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Top bar ------------------------------------------------------------- */
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  border-bottom: 1px solid transparent;
+  transition: background-color 0.25s, border-color 0.25s;
+}
+
+.topbar.is-scrolled {
+  background: var(--topbar-bg);
+  border-bottom-color: var(--line);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  backdrop-filter: blur(14px) saturate(1.4);
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.1rem 1.5rem;
+}
+
+.topbar-links {
+  display: flex;
+  gap: 1.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.topbar a {
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 500;
+  text-decoration: none;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+
+.topbar a:hover {
+  opacity: 1;
+}
+
+.github-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.icon {
+  width: 1.1em;
+  height: 1.1em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.icon-star {
+  width: 1em;
+  height: 1em;
+  transition: fill 0.15s;
+}
+
+.github-link:hover .icon-star {
+  fill: currentColor;
+}
+
+.github-stars {
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Hero ---------------------------------------------------------------- */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  height: 100vh;
+  height: 100svh;
+  min-height: 640px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+/* Tall glasses behind everything: light, shade and rims as gradients. */
+.glasses {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.glass {
+  position: absolute;
+  top: var(--top, -14%);
+  left: var(--x);
+  width: var(--w);
+  height: var(--h, 128%);
+  border-radius: 999px;
+  transform: rotate(var(--r, 0deg));
+  transform-origin: 50% 45%;
+  filter: blur(var(--blur, 0px));
+  background:
+    linear-gradient(
+      180deg,
+      rgb(var(--glass-light) / calc(var(--shine) * var(--shine-k) * 0.45)) 0%,
+      transparent 32%,
+      transparent 68%,
+      rgb(var(--glass-ink) / calc(var(--shade) * 0.6)) 100%
+    ),
+    linear-gradient(
+      90deg,
+      rgb(var(--glass-ink) / calc(var(--shade) * 1.5)) 0%,
+      rgb(var(--glass-light) / calc(var(--shine) * var(--shine-k))) 6%,
+      rgb(var(--glass-ink) / calc(var(--shade) * 0.45)) 18%,
+      rgb(var(--glass-ink) / var(--shade)) 52%,
+      rgb(var(--glass-ink) / calc(var(--shade) * 0.7)) 80%,
+      rgb(var(--glass-light) / calc(var(--shine) * var(--shine-k) * 0.85)) 92%,
+      rgb(var(--glass-ink) / calc(var(--shade) * 1.7)) 100%
+    );
+  animation: glass-sway var(--dur, 20s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+}
+
+.glass-short {
+  --top: -8%;
+  --h: 104%;
+}
+
+@keyframes glass-sway {
+  from {
+    translate: -1.4% 0;
+  }
+
+  to {
+    translate: 1.4% 0;
+  }
+}
+
+.bokeh {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  opacity: var(--o, 0.5);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgb(var(--glass-ink) / 0.09) 0%,
+    rgb(var(--glass-ink) / 0.035) 45%,
+    transparent 70%
+  );
+}
+
+.bead {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: var(--s);
+  height: var(--s);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgb(var(--glass-light) / 0.95),
+    rgb(var(--glass-ink) / 0.12) 55%,
+    rgb(var(--glass-ink) / 0.24)
+  );
+}
+
+.sweep {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 38%, rgb(var(--glass-light) / 0.6) 50%, transparent 62%);
+  background-size: 260% 100%;
+  mix-blend-mode: soft-light;
+  animation: sweep 34s linear infinite;
+}
+
+@keyframes sweep {
+  from {
+    background-position: 130% 0;
+  }
+
+  to {
+    background-position: -30% 0;
+  }
+}
+
+.brush {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.glitter {
+  z-index: 1;
+}
+
+.brush-fallback {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 42;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.hero[data-brush-failed] .brush-fallback {
+  display: block;
+}
+
+/* Paper grain over the paint and the glasses. */
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: var(--grain-blend);
+  background-image: var(--grain);
+}
+
+.hero-content {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 1.25rem;
+  text-align: center;
+}
+
+.wordmark {
+  margin: 0;
+  line-height: 0;
+}
+
+/* The handwritten ".taste": one set of paths, drawn twice (halo under ink). */
+.taste {
+  width: clamp(230px, 40vh, 72vw);
+  height: auto;
+  overflow: visible;
+}
+
+#taste-paths path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.taste-halo {
+  stroke: var(--bg);
+  stroke-width: 50;
+}
+
+.taste-ink {
+  stroke: var(--ink);
+  stroke-width: 30;
+}
+
+.t-stroke {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: write var(--dur, 0.4s) cubic-bezier(0.4, 0, 0.3, 1) forwards;
+  animation-delay: var(--delay, 0s);
+}
+
+.t-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(0);
+  animation: pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3) forwards;
+  animation-delay: 0.08s;
+}
+
+@keyframes write {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes pop {
+  to {
+    transform: scale(1);
+  }
+}
+
+.tagline,
+.alt-install {
+  text-shadow: 0 0 1px var(--bg), 0 0 3px var(--bg), 0 0 6px var(--bg), 0 0 12px var(--bg), 0 0 20px var(--bg);
+}
+
+.tagline {
+  margin: 1.5rem 0 0;
+  font-size: clamp(1rem, 0.6rem + 1.4vh, 1.25rem);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--muted);
+}
+
+.download {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: clamp(1.2rem, 3.4vh, 2.4rem);
+  padding: 0.95rem 1.75rem 0.95rem 1.4rem;
+  border: 1px solid var(--button-line);
+  border-radius: 999px;
+  background: var(--button-bg);
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-decoration: none;
+  letter-spacing: -0.01em;
+  box-shadow: var(--button-shadow);
+  -webkit-backdrop-filter: blur(18px) saturate(1.4);
+  backdrop-filter: blur(18px) saturate(1.4);
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+
+.download .icon {
+  width: 1.2em;
+  height: 1.2em;
+  stroke-width: 2;
+}
+
+.download:hover {
+  transform: translateY(-2px);
+  border-color: var(--ink);
+}
+
+.download:active {
+  transform: translateY(0);
+}
+
+.alt-install {
+  margin: 1rem 0 0;
+  font-size: 0.92rem;
+  color: var(--muted);
+}
+
+/* Sections ------------------------------------------------------------ */
+
+.section {
+  padding: clamp(4rem, 10vh, 7.5rem) 1.25rem;
+  scroll-margin-top: 3.5rem;
+}
+
+.section-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+}
+
+.eyebrow {
+  margin: 0 0 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.section-title {
+  max-width: 24ch;
+  margin: 0;
+  font-size: clamp(1.75rem, 1rem + 2.6vw, 2.9rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.section-lead {
+  max-width: 62ch;
+  margin: 1.3rem 0 0;
+  font-size: 1.12rem;
+  color: var(--muted);
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 1.1rem;
+  margin: 3rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature {
+  padding: 1.7rem 1.6rem;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--surface);
+}
+
+.feature-icon {
+  width: 2rem;
+  height: 2rem;
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feature h3 {
+  margin: 1rem 0 0.4rem;
+  font-size: 1.12rem;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.feature p {
+  margin: 0;
+  font-size: 0.98rem;
+  color: var(--muted);
+}
+
+.steps {
+  display: grid;
+  gap: 2.2rem;
+  max-width: 780px;
+  margin: 3rem 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding-left: 4rem;
+  counter-increment: step;
+}
+
+.step::before {
+  content: counter(step, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.05rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  opacity: 0.3;
+}
+
+.step h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.25rem;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.step p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.step p + p,
+.step .code + p {
+  margin-top: 0.6rem;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+p > code {
+  padding: 0.1em 0.4em;
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.code {
+  margin: 1rem 0 0;
+  padding: 1rem 1.2rem;
+  overflow-x: auto;
+  border-radius: 14px;
+  background: var(--code-bg);
+  color: var(--code-text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.code code {
+  font-size: inherit;
+}
+
+/* Footer -------------------------------------------------------------- */
+
+.footer {
+  padding: 3rem 1.25rem 4rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.footer-inner {
+  display: grid;
+  gap: 1.3rem;
+}
+
+.footer-brand {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin: 0;
+  color: var(--text);
+}
+
+.taste-mini {
+  width: 76px;
+  height: auto;
+  overflow: visible;
+  flex: none;
+}
+
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.footer-credits {
+  max-width: 70ch;
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  .topbar-inner {
+    padding: 0.9rem 1.1rem;
+  }
+
+  .topbar-links {
+    gap: 1.1rem;
+  }
+
+  .tagline {
+    margin-top: 1.2rem;
+    font-size: 1rem;
+  }
+
+  .step {
+    padding-left: 3rem;
+  }
+
+  .feature {
+    padding: 1.4rem 1.3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .glass,
+  .sweep {
+    animation: none;
+  }
+
+  .t-stroke {
+    animation: none;
+    stroke-dashoffset: 0;
+  }
+
+  .t-dot {
+    animation: none;
+    transform: none;
+  }
+
+  .download,
+  .topbar,
+  .topbar a {
+    transition: none;
+  }
+}
