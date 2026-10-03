@@ -158,8 +158,9 @@ genre chips, and main action in the same places. Developer/publisher and Store s
 movie-specific metadata. Use the neighboring covers or arrow keys to browse games, and the
 back control or Escape to return to the collection. Direct game links use that layout as well.
 
-Cover badges show the selected platform with a PC, controller, or cloud icon in the bottom-right
-corner. Hover for its name; the sidebar's Appearance controls can hide the badges.
+Game covers show the Xbox logo for Game Pass in the bottom-left service position. The bottom-right
+type badge uses a monitor for Windows PC, a joystick for console, and a cloud for Cloud games.
+Hover for the badge names; the sidebar's Appearance controls hide Type and Sources independently.
 
 Game Pass caching is **disabled by default**; browsing stays available and each request fetches
 live catalog data. The Games tab and controls appear immediately; live results load into the

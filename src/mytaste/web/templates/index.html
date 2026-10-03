@@ -334,9 +334,10 @@
                   {% set card_options = [
                     ('show_year', 'Year', 'Store release year', display.show_year),
                     ('show_rating', 'Rating', 'Microsoft Store score out of five', display.show_rating),
-                    ('show_media_type', 'Platform', 'Selected game platform', display.show_media_type),
+                    ('show_media_type', 'Type', 'PC, console, or cloud game badge', display.show_media_type),
                     ('show_genres', 'Genres', 'Game genres', display.show_genres),
-                    ('show_people', 'Developer', 'Game developer', display.show_people)
+                    ('show_people', 'Developer', 'Game developer', display.show_people),
+                    ('show_providers', 'Sources', 'Xbox Game Pass badge', display.show_providers)
                   ] %}
                 {% endif %}
                 {% for key, label, hint, checked in card_options %}

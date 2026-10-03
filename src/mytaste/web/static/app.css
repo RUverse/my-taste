@@ -393,9 +393,8 @@ body[data-card-size="compact"] .media-grid {
   background: var(--poster-placeholder);
 }
 
-/* Media type or game platform, as an icon tile beside the service logos. */
-.type-badge,
-.game-platform-badge {
+/* Media type, as an icon tile beside the service logos. */
+.type-badge {
   position: absolute;
   right: 7px;
   bottom: 7px;
@@ -410,8 +409,7 @@ body[data-card-size="compact"] .media-grid {
   backdrop-filter: blur(7px);
 }
 
-.type-badge svg,
-.game-platform-badge svg {
+.type-badge svg {
   width: 14px;
   height: 14px;
   fill: none;
@@ -421,10 +419,8 @@ body[data-card-size="compact"] .media-grid {
   stroke-linejoin: round;
 }
 
-body[data-card-size="compact"] .type-badge,
-body[data-card-size="compact"] .game-platform-badge { width: 20px; height: 20px; border-radius: 5px; }
-body[data-card-size="compact"] .type-badge svg,
-body[data-card-size="compact"] .game-platform-badge svg { width: 12px; height: 12px; }
+body[data-card-size="compact"] .type-badge { width: 20px; height: 20px; border-radius: 5px; }
+body[data-card-size="compact"] .type-badge svg { width: 12px; height: 12px; }
 
 /* Watch progress on posters and episode stills. */
 .card-progress {
@@ -619,7 +615,7 @@ body[data-card-size="compact"] .game-platform-badge svg { width: 12px; height: 1
 body[data-show-year="false"] .meta-year,
 body[data-show-rating="false"] .meta-rating,
 body[data-show-media-type="false"] .type-badge,
-body:not([data-media-mode="all"]) .type-badge,
+body:not([data-media-mode="all"]) .media-card:not(.game-card) .type-badge,
 body[data-show-genres="false"] .meta-genres,
 body[data-show-people="false"] .meta-people { display: none; }
 
@@ -2703,6 +2699,8 @@ body[data-show-providers="false"] .provider-strip { display: none; }
   stroke-linejoin: round;
 }
 
+.poster .provider-strip svg.gamepass-logo { fill: currentColor; stroke: none; }
+
 .poster .provider-strip > :not(.source-local):nth-child(n + 4),
 .poster .provider-strip:has(.source-local) > :not(.source-local):nth-child(n + 3) { display: none; }
 body:not([data-media-mode="all"]) .provider-strip,
@@ -3890,5 +3888,3 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .game-settings form { margin-top: 24px; }
 .game-screenshots { display: flex; overflow-x: auto; gap: 12px; margin-top: 24px; padding-bottom: 12px; }
 .game-screenshots img { width: min(360px, 85%); flex: none; object-fit: contain; border-radius: 8px; }
-
-body[data-show-media-type="false"] .game-platform-badge { display: none; }

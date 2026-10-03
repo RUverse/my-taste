@@ -416,6 +416,7 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
             'data-rail-section="sidebar-sort"',
             'name="show_people"',
             'name="show_media_type"',
+            'name="show_providers"',
             'aria-label="Media type"',
             'href="/?media=movie"',
             'href="/?media=tv"',
