@@ -83,6 +83,14 @@
     const pageSearch = searchInput.defaultValue.trim();
     const media = searchForm.querySelector('input[name="media"]')?.value ?? "all";
     const searchUrl = (text) => {
+      if (media === "game") {
+        const target = new URL(searchForm.action);
+        new FormData(searchForm).forEach((value, key) => {
+          if (value && !["media", "q", "page"].includes(key)) target.searchParams.set(key, value);
+        });
+        if (text) target.searchParams.set("q", text);
+        return target.pathname + target.search;
+      }
       const target = new URL(text ? "/" : recall(searchOriginKey) || "/", window.location.origin);
       if (text) target.searchParams.set("q", text);
       if (media === "all") target.searchParams.delete("media");
@@ -1828,77 +1836,84 @@
     observeProviders();
   };
 
-  const results = document.querySelector("[data-results]");
-  const loadMore = document.querySelector("[data-load-more]");
-  const pagination = document.querySelector("[data-pagination]");
-  let nextPage = pagination?.querySelector("[data-next-page]")?.href ?? null;
+  const initializeInfiniteScroll = () => {
+    const results = document.querySelector("[data-results]");
+    const loadMore = document.querySelector("[data-load-more]");
+    const pagination = document.querySelector("[data-pagination]");
+    let nextPage = pagination?.querySelector("[data-next-page]")?.href ?? null;
 
-  if (results && loadMore && pagination && nextPage && "IntersectionObserver" in window) {
-    const status = loadMore.querySelector("[data-load-more-status]");
-    const retry = loadMore.querySelector("[data-load-more-retry]");
-    const reach = 1200;
-    let loading = false;
-    let observer;
+    if (results?.dataset.scrollReady) return;
 
-    const nearBottom = () => loadMore.getBoundingClientRect().top < window.innerHeight + reach;
+    if (results && loadMore && pagination && nextPage && "IntersectionObserver" in window) {
+      results.dataset.scrollReady = "true";
+      const status = loadMore.querySelector("[data-load-more-status]");
+      const retry = loadMore.querySelector("[data-load-more-retry]");
+      const reach = 1200;
+      let loading = false;
+      let observer;
 
-    const fetchNext = async () => {
-      if (loading || !nextPage) return;
-      loading = true;
-      retry.hidden = true;
-      status.textContent = "Loading more…";
-      // A grid shows two rows of skeleton cards; grouped rows keep the text.
-      const placeholders = results.matches(".media-grid") ? skeletonCards(columnsOf(results) * 2) : [];
-      results.append(...placeholders);
-      status.classList.toggle("sr-only", placeholders.length > 0);
-      let loaded = false;
-      try {
-        const response = await fetch(nextPage, { headers: { "X-MyTaste-Fragment": "results" } });
-        if (!response.ok) throw new Error("More titles are unavailable");
-        const batch = document.createElement("template");
-        batch.innerHTML = await response.text();
-        // Pages can overlap (search results shift between requests), so a title already in the
-        // grid is not added twice. Grouped rows repeat titles on purpose and are kept whole.
-        const shown = new Set(
-          Array.from(results.children, (element) => element.dataset.detailUrl).filter(Boolean),
-        );
-        const added = Array.from(batch.content.children).filter(
-          (element) => !element.dataset.detailUrl || !shown.has(element.dataset.detailUrl),
-        );
-        placeholders.forEach((card) => card.remove());
-        results.append(...added);
-        enhanceCards(
-          added.flatMap((element) =>
-            element.matches(".media-card") ? [element] : Array.from(element.querySelectorAll(".media-card")),
-          ),
-        );
-        nextPage = response.headers.get("X-Next-Page") || null;
-        status.textContent = nextPage ? "" : "That’s everything.";
-        loaded = true;
-      } catch {
-        status.textContent = "More titles could not be loaded.";
-        retry.hidden = false;
-      } finally {
-        loading = false;
-        placeholders.forEach((card) => card.remove());
-        status.classList.remove("sr-only");
-      }
-      if (!nextPage) {
-        observer.disconnect();
-      } else if (loaded && nearBottom()) {
-        // A short batch can leave the end of the list on screen; keep filling.
-        fetchNext();
-      }
-    };
+      const nearBottom = () => loadMore.getBoundingClientRect().top < window.innerHeight + reach;
 
-    pagination.hidden = true;
-    loadMore.hidden = false;
-    observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) fetchNext();
-    }, { rootMargin: `${reach}px 0px` });
-    observer.observe(loadMore);
-    retry.addEventListener("click", fetchNext);
-  }
+      const fetchNext = async () => {
+        if (loading || !nextPage) return;
+        loading = true;
+        retry.hidden = true;
+        status.textContent = "Loading more…";
+        // A grid shows two rows of skeleton cards; grouped rows keep the text.
+        const placeholders = results.matches(".media-grid") ? skeletonCards(columnsOf(results) * 2) : [];
+        results.append(...placeholders);
+        status.classList.toggle("sr-only", placeholders.length > 0);
+        let loaded = false;
+        try {
+          const response = await fetch(nextPage, { headers: { "X-MyTaste-Fragment": "results" } });
+          if (!response.ok) throw new Error("More titles are unavailable");
+          const batch = document.createElement("template");
+          batch.innerHTML = await response.text();
+          // Pages can overlap (search results shift between requests), so a title already in the
+          // grid is not added twice. Grouped rows repeat titles on purpose and are kept whole.
+          const shown = new Set(
+            Array.from(results.children, (element) => element.dataset.detailUrl).filter(Boolean),
+          );
+          const added = Array.from(batch.content.children).filter(
+            (element) => !element.dataset.detailUrl || !shown.has(element.dataset.detailUrl),
+          );
+          placeholders.forEach((card) => card.remove());
+          results.append(...added);
+          enhanceCards(
+            added.flatMap((element) =>
+              element.matches(".media-card") ? [element] : Array.from(element.querySelectorAll(".media-card")),
+            ),
+          );
+          nextPage = response.headers.get("X-Next-Page") || null;
+          status.textContent = nextPage ? "" : "That’s everything.";
+          loaded = true;
+        } catch {
+          status.textContent = "More titles could not be loaded.";
+          retry.hidden = false;
+        } finally {
+          loading = false;
+          placeholders.forEach((card) => card.remove());
+          status.classList.remove("sr-only");
+        }
+        if (!nextPage) {
+          observer.disconnect();
+        } else if (loaded && nearBottom()) {
+          // A short batch can leave the end of the list on screen; keep filling.
+          fetchNext();
+        }
+      };
+
+      pagination.hidden = true;
+      loadMore.hidden = false;
+      observer = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) fetchNext();
+      }, { rootMargin: `${reach}px 0px` });
+      observer.observe(loadMore);
+      retry.addEventListener("click", fetchNext);
+    }
+  };
+  initializeInfiniteScroll();
+  document.addEventListener("mytaste:results-ready", initializeInfiniteScroll);
 
   document.querySelectorAll("form[data-confirm]").forEach((form) => {
     form.addEventListener("submit", (event) => {

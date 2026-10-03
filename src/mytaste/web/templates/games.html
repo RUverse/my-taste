@@ -1,0 +1,42 @@
+{% extends "index.html" %}
+{% block head %}{% if loading %}<noscript><meta http-equiv="refresh" content="0;url={{ full_url }}"></noscript>{% endif %}{% endblock %}
+{% block title %}{{ heading }} · Games · {{ display.site_title }}{% endblock %}
+{% block sidebar_controls %}
+<form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
+  {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
+  <section class="sidebar-section" id="sidebar-sources" aria-labelledby="sources-heading">
+    <div class="sidebar-section-head"><h2 id="sources-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="17" height="11.5" rx="2"></rect><path d="m9 3.5 3 3 3-3M8.5 21h7"></path></svg>Services</h2></div>
+    <p class="sidebar-label">Xbox Game Pass · {{ region or 'Choose country' }}</p>
+    <label class="select-field"><span class="sr-only">Subscription</span><select id="game-plan" name="plan">{% for value, label in plans.items() %}<option value="{{ value }}" {% if query.plan == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label class="select-field"><span class="sr-only">Play on</span><select id="game-platform" name="platform">{% for value, label in platforms.items() %}<option value="{{ value }}" {% if query.platform == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <div class="source-footer"><a href="/games/settings">Plan and country</a></div>
+  </section>
+  <section class="sidebar-section" id="sidebar-sort" aria-labelledby="sort-heading">
+    <div class="sidebar-section-head"><h2 id="sort-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9M4 12h6M4 17h3M17 5v14M14 16l3 3 3-3"></path></svg>Sort</h2></div>
+    <div class="sort-row">
+      <label class="select-field"><span class="sr-only">Sort by</span><select id="game-sort" name="sort" data-default="catalog" data-sort-field>{% for value, label in sorts.items() %}<option value="{{ value }}" {% if query.sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <input type="hidden" name="order" value="{{ sort_order }}" data-default="{{ natural_order }}" data-sort-order>
+      <a class="square-button" href="{{ sort_flip_url }}" aria-label="{{ sorts[query.sort] }}, {{ 'descending' if sort_order == 'desc' else 'ascending' }}. Reverse the order" title="Reverse the order"><svg aria-hidden="true" viewBox="0 0 24 24">{% if sort_order == 'desc' %}<path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"></path>{% else %}<path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"></path>{% endif %}</svg></a>
+    </div>
+  </section>
+  <section class="sidebar-section" id="sidebar-filter" aria-labelledby="filter-heading">
+    <div class="sidebar-section-head"><h2 id="filter-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2L4 5.5Z"></path></svg>Filter</h2></div>
+    <label class="select-field"><span class="sr-only">Genre</span><select id="game-genre" name="genre" {% if loading %}aria-busy="true"{% endif %}><option value="">All genres</option>{% if loading and query.genre %}<option value="{{ query.genre }}" selected>{{ query.genre }}</option>{% endif %}{% for genre in page.genres %}<option value="{{ genre }}" {% if query.genre == genre %}selected{% endif %}>{{ genre }}</option>{% endfor %}</select></label>
+    {% if query.genre or query.search %}<div class="source-footer"><a href="{{ clear_url }}">Clear search and filters</a></div>{% endif %}
+  </section>
+  <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
+</form>
+{% endblock %}
+{% block browse_results %}
+  <div data-game-results {% if loading %}data-game-load-url="{{ request.url.path }}{{ '?' ~ request.url.query if request.url.query else '' }}" aria-busy="true"{% endif %}>
+    {% if loading %}
+      <p class="sr-only" role="status" aria-live="polite" data-game-load-status>Loading Game Pass games…</p>
+      <section class="media-grid skeleton-grid" aria-hidden="true">
+        {% for unused in range(24) %}<div class="skeleton-card"><div class="poster skeleton-poster"></div><div class="card-copy"><h2><span class="skeleton-line"></span></h2><div class="card-meta"><span class="meta-year skeleton-line"></span><span class="meta-rating skeleton-line"></span></div></div></div>{% endfor %}
+      </section>
+      <noscript><p><a href="{{ full_url }}">Load games</a></p></noscript>
+    {% else %}{% include "_games_results.html" %}{% endif %}
+  </div>
+{% endblock %}
+{% block browse_dialogs %}{% include "_media_details.html" %}{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='games.js') }}?v={{ asset_version }}" defer></script>{% endblock %}

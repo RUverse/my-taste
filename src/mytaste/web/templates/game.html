@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}{{ game.title }} · {{ display.site_title }}{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+{% block layout %}{% with standalone=true %}{% include "_media_details.html" %}{% endwith %}{% endblock %}

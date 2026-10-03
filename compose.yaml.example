@@ -3,6 +3,7 @@ services:
     build: .
     environment:
       MYTASTE_TMDB_TOKEN: ${MYTASTE_TMDB_TOKEN:?Set MYTASTE_TMDB_TOKEN}
+      MYTASTE_GAMEPASS_CACHE_ENABLED: ${MYTASTE_GAMEPASS_CACHE_ENABLED:-false}
       MYTASTE_LANGUAGE: ${MYTASTE_LANGUAGE:-en-US}
     ports:
       - "8000:8000"

@@ -8,6 +8,8 @@ matching releases in a clean poster grid.
 
 - Region-aware subscription choices such as Netflix, Prime Video, and Apple TV+
 - Unified All, Movies, and Series browsing
+- Xbox Game Pass games by country, plan, and PC/console/cloud, with search, genre filters,
+  Store ratings, and game details
 - Collections: predefined views such as Popular, Latest, and genres, plus your own lists, starting
   with an empty Watchlist and My favourites
 - Sort any collection by popularity, release date, rating, or title (and date added for your own
@@ -136,6 +138,44 @@ search results, and people's credits are checked against the same facts, which M
 from TMDB once per title and keeps in its database; titles in your libraries are read ahead of
 time. Runtime uses episode length for series, and series without one on TMDB do not match.
 
+## Xbox Game Pass
+
+Open **Games**, then **Plan and country** to select Ultimate, Premium, Essential, or PC Game
+Pass and your platform. Games works without movie subscriptions; the country is shared with
+movie/TV browsing. Plan selection is manual and needs no Xbox login. The existing app still
+requires its TMDB token.
+
+Games uses the same sidebar, collection bar, header search, and Appearance controls as movies
+and series. Browse All games, Popular, Recently added, Coming soon, and Leaving soon. The sidebar
+selects the plan, platform, genre, and sort direction; search and sorting apply across the whole
+selected collection before pagination. Store ratings are
+out of five; release dates refer to the Store product/edition. **Open in Xbox** opens the
+product on Microsoft's site. Trials, demos, add-ons, and free games with subscriber benefits are omitted when identified
+in Store metadata.
+
+Game details use the same full-screen layout as movie details, with the cover, artwork backdrop,
+genre chips, and main action in the same places. Developer/publisher and Store scores replace
+movie-specific metadata. Use the neighboring covers or arrow keys to browse games, and the
+back control or Escape to return to the collection. Direct game links use that layout as well.
+
+Game covers show the Xbox logo for Game Pass in the bottom-left service position. The bottom-right
+type badge uses a monitor for Windows PC, a joystick for console, and a cloud for Cloud games.
+Hover for the badge names; the sidebar's Appearance controls hide Type and Sources independently.
+
+Game Pass caching is **disabled by default**; browsing stays available and each request fetches
+live catalog data. The Games tab and controls appear immediately; live results load into the
+grid afterward. Full metadata hydration can involve dozens of requests for a large catalog.
+Without JavaScript, Games automatically opens a fully rendered page instead.
+For deployment, enable the optional persistent cache with
+`MYTASTE_GAMEPASS_CACHE_ENABLED=true`; see [cache configuration](docs/deployment.md#game-pass-caching).
+Microsoft's public website feeds are isolated behind an adapter because they have no confirmed
+supported third-party API contract. An outage shows a Games error without affecting other categories.
+
+Game saving and `.taste` import/export are planned follow-ups. Stable collection IDs and
+provider snapshot adapters prepare for the draft's mixed-media model; see the
+[implementation plan](docs/game-pass-implementation.md) and
+[portable collections design](docs/taste-collections.md).
+
 ## Storage libraries
 
 The sidebar's **Services** section lists what you have enabled: streaming subscriptions and local
@@ -220,3 +260,6 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 Movie, TV, and image metadata is supplied by [TMDB](https://www.themoviedb.org/). Streaming
 availability is powered by [JustWatch](https://www.justwatch.com/).
+
+Game metadata and availability is supplied by [Xbox and Microsoft Store](https://www.xbox.com/xbox-game-pass/games).
+MyTaste is not affiliated with Microsoft.

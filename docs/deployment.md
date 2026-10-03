@@ -77,6 +77,52 @@ Segments and extracted subtitles are written to `MYTASTE_CACHE_DIR` (by default
 needs a backup. Each file is inspected with ffprobe once, in the background after a scan, and the
 result is stored in the database.
 
+## Game Pass caching
+
+Games browsing is available by default. Only the Game Pass catalog cache is disabled. To enable
+it later, add these settings to the service environment and restart the single worker:
+
+```bash
+MYTASTE_GAMEPASS_CACHE_ENABLED=true
+MYTASTE_GAMEPASS_CATALOG_TTL_SECONDS=7200
+MYTASTE_GAMEPASS_METADATA_TTL_SECONDS=86400
+MYTASTE_GAMEPASS_STALE_TTL_SECONDS=86400
+```
+
+The Compose example exposes the enabled flag, defaulting to `false`. Set it to `true` in your
+deployment environment and recreate the container with `docker compose up -d`. To override
+TTLs, also add those variables to Compose's `environment` block. TTLs must be finite and
+positive; the stale TTL can be zero to require fresh data.
+
+The cache is lazy: opening Games loads the first context; startup and `/healthz` make no
+Microsoft requests. SQLite is stored at `MYTASTE_CACHE_DIR/gamepass/catalog.sqlite3`, or
+`$XDG_CACHE_HOME/mytaste/gamepass/catalog.sqlite3` (normally `~/.cache/mytaste/...`). The Docker
+image uses `/data/cache`, already on the `mytaste-data` volume. Use writable persistent storage
+for cache reuse across restarts. Metadata and membership keys separate regions and languages;
+membership also separates plans, platforms, and collections. The cache holds at most 4,096 entries.
+
+Fresh data is reused for its TTL. Expired data within the additional stale TTL is returned with
+an earlier-catalog notice while a background task refreshes it. Failed refreshes retain the
+previous snapshot; beyond the stale limit, Games displays an upstream error. The notice's time
+is the oldest snapshot used, including metadata. Identical refresh batches are shared within
+one worker. Refresh tasks are canceled on shutdown. Corrupt or unwritable cache storage falls
+back to live requests and logs a warning; stale outage fallback is then unavailable.
+
+With the enabled flag `false`, Game Pass performs no cache reads/writes, creates no catalog
+cache database, and schedules no background refresh. Existing cache files are ignored. Plan
+and platform preferences and stable collection identities remain in the application database.
+TMDB and playback caches are independent of this switch.
+
+To clear the disposable Game Pass cache, stop the process, remove only
+`MYTASTE_CACHE_DIR/gamepass/catalog.sqlite3`, and restart. It needs no backup. Do not delete the
+application database or future imported collection assets. Catalog removal never deletes saved
+movie/TV collections. See the [portable collections design](taste-collections.md) for the later
+shared saved-item and import/export migration.
+
+Outbound HTTPS goes to `catalog.gamepass.com` and `displaycatalog.mp.microsoft.com`; covers and
+screenshots use Microsoft's image CDN URLs in browsers. Browsing needs no Xbox account or extra
+API key. Microsoft can change its website feeds; catalog errors affect Games rather than health.
+
 ## Network exposure
 
 Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. The app does

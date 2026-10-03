@@ -169,6 +169,7 @@ class Collection:
     default_sort: SortKey = "added"
     position: int = 0
     item_count: int = 0
+    portable_id: str = ""
 
     @property
     def key(self) -> str:
@@ -191,6 +192,10 @@ class CollectionItem:
     genre_ids: tuple[int, ...] = ()
     genres: tuple[str, ...] = ()
     sequence: int = 0
+
+    @property
+    def portable_id(self) -> str:
+        return f"{self.media_type}-tmdb-{self.tmdb_id}"
 
     @property
     def key(self) -> tuple[MediaType, int]:
