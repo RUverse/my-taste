@@ -34,7 +34,14 @@
         {% else %}
           <div class="poster-placeholder" aria-hidden="true"><span>{{ item.title[0] }}</span></div>
         {% endif %}
-        <span class="type-badge">{{ item.media_label }}</span>
+        <span class="type-badge" title="{{ item.media_label }}">
+          {% if item.media_type == 'movie' %}
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 10h16v8.5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5V10Z"></path><path d="m4 10-.5-2.6a1 1 0 0 1 .8-1.2l13.4-2.4a1 1 0 0 1 1.2.8l.4 2.3L4 10Z"></path><path d="m8.6 5.4 2.2 3M13.4 4.5l2.2 3"></path></svg>
+          {% else %}
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"></rect><path d="m8 3 4 4 4-4"></path></svg>
+          {% endif %}
+          <span class="sr-only">{{ item.media_label }}</span>
+        </span>
         {% if play_state and play_state.watched %}
           <span class="watched-badge" title="Watched"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg><span class="sr-only">Watched</span></span>
         {% elif play_state and play_state.resumable %}
@@ -57,7 +64,7 @@
       {% if item.genres %}<p class="meta-genres">{{ item.genres|join(' · ') }}</p>{% endif %}
       {% if item.library_summary %}<p class="meta-library">{{ item.library_summary }}</p>{% endif %}
       {% if item.id > 0 %}
-        <p class="meta-people" data-people-url="/api/items/{{ item.media_type }}/{{ item.id }}/people" aria-live="polite"><span>Loading credits…</span></p>
+        <p class="meta-people" data-people-url="/api/items/{{ item.media_type }}/{{ item.id }}/people" aria-live="polite"><span class="skeleton-line"><span class="sr-only">Loading credits…</span></span></p>
       {% else %}
         <p class="meta-people meta-unmatched">Not matched on TMDB yet</p>
       {% endif %}

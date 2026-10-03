@@ -1,6 +1,41 @@
 (() => {
   "use strict";
 
+  // Skeleton cards stand in for titles while the next page or the next batch loads. They reuse a
+  // card's own parts, so they are just as tall and follow the same display options.
+  const skeletonCards = (count) =>
+    Array.from({ length: count }, () => {
+      const card = document.createElement("div");
+      card.className = "skeleton-card";
+      card.innerHTML = `<div class="poster skeleton-poster"></div>
+        <div class="card-copy">
+          <h2><span class="skeleton-line"></span></h2>
+          <div class="card-meta"><span class="meta-year skeleton-line"></span><span class="meta-rating skeleton-line"></span></div>
+          <p class="meta-genres"><span class="skeleton-line"></span></p>
+          <p class="meta-people"><span class="skeleton-line"></span></p>
+        </div>`;
+      return card;
+    });
+  const columnsOf = (grid) => getComputedStyle(grid).gridTemplateColumns.split(" ").length;
+
+  const browseContent = document.querySelector(".browse-content");
+  const markNavigating = () => {
+    document.body.classList.add("is-navigating");
+    if (!browseContent || browseContent.querySelector(":scope > .skeleton-grid")) return;
+    const grid = document.createElement("div");
+    grid.className = "media-grid skeleton-grid";
+    grid.setAttribute("aria-hidden", "true");
+    browseContent.prepend(grid);
+    grid.append(...skeletonCards(columnsOf(grid) * 3));
+    browseContent.setAttribute("aria-busy", "true");
+    window.scrollTo(0, 0);
+  };
+  window.addEventListener("pageshow", () => {
+    document.body.classList.remove("is-navigating");
+    browseContent?.querySelector(":scope > .skeleton-grid")?.remove();
+    browseContent?.removeAttribute("aria-busy");
+  });
+
   const searchForm = document.querySelector(".search-form");
   const searchToggle = document.querySelector(".search-toggle");
   const searchInput = document.querySelector(".search-input");
@@ -24,6 +59,109 @@
         searchToggle.focus();
       }
     });
+
+    // Live search: a pause in typing loads the results, so Enter is optional. The next page puts
+    // the cursor back in the box and picks up anything typed while it loaded. Clearing the box
+    // returns to the page the search started from.
+    const liveSearchKey = "mytaste.live-search";
+    const searchOriginKey = "mytaste.search-origin";
+    const remember = (key, value) => {
+      try {
+        if (value === null) sessionStorage.removeItem(key);
+        else sessionStorage.setItem(key, value);
+      } catch {
+        // Without storage, results still load; only the cursor and the way back are lost.
+      }
+    };
+    const recall = (key) => {
+      try {
+        return sessionStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    };
+    const pageSearch = searchInput.defaultValue.trim();
+    const media = searchForm.querySelector('input[name="media"]')?.value ?? "all";
+    const searchUrl = (text) => {
+      const target = new URL(text ? "/" : recall(searchOriginKey) || "/", window.location.origin);
+      if (text) target.searchParams.set("q", text);
+      if (media === "all") target.searchParams.delete("media");
+      else target.searchParams.set("media", media);
+      return target.pathname + target.search;
+    };
+    const rememberOrigin = () => {
+      if (!pageSearch) remember(searchOriginKey, window.location.pathname + window.location.search);
+    };
+
+    let searchTimer;
+    let searchNavigating = false;
+    const runSearch = () => {
+      const text = searchInput.value.trim();
+      // A single letter matches too much to be worth a page load; Enter still searches for it.
+      if (text === pageSearch || text.length === 1) return;
+      searchNavigating = true;
+      markNavigating();
+      if (!text && history.state?.searchFromOrigin) {
+        history.back();
+      } else if (pageSearch) {
+        // Refining a search replaces it in the history, so Back leaves the search in one step.
+        window.location.replace(searchUrl(text));
+      } else {
+        rememberOrigin();
+        window.location.assign(searchUrl(text));
+      }
+    };
+    const scheduleSearch = () => {
+      window.clearTimeout(searchTimer);
+      searchTimer = window.setTimeout(runSearch, 400);
+    };
+    searchInput.addEventListener("input", (event) => {
+      if (!event.isComposing) scheduleSearch();
+    });
+    searchInput.addEventListener("compositionend", scheduleSearch);
+    searchForm.addEventListener("submit", () => {
+      window.clearTimeout(searchTimer);
+      rememberOrigin();
+    });
+    window.addEventListener("pagehide", () => {
+      if (!searchNavigating) return;
+      // Whether Back from the results is the page the search started on, so clearing can go there.
+      const fromOrigin = !pageSearch || Boolean(history.state?.searchFromOrigin);
+      remember(liveSearchKey, JSON.stringify({ typed: searchInput.value, fromOrigin }));
+    });
+
+    const resumeTyping = () => {
+      let carried = null;
+      try {
+        carried = JSON.parse(recall(liveSearchKey));
+      } catch {
+        carried = null;
+      }
+      remember(liveSearchKey, null);
+      if (typeof carried?.typed !== "string") return;
+      const { fromOrigin } = carried;
+      // Keys pressed here before this script ran follow the text carried over from the last page.
+      const early = searchInput.value.startsWith(searchInput.defaultValue)
+        ? searchInput.value.slice(searchInput.defaultValue.length)
+        : "";
+      const typed = carried.typed + early;
+      if (pageSearch && fromOrigin) history.replaceState({ ...history.state, searchFromOrigin: true }, "");
+      searchForm.classList.add("is-open");
+      searchToggle.setAttribute("aria-expanded", "true");
+      if (typed.trim() !== pageSearch) scheduleSearch();
+      searchInput.value = typed;
+      searchInput.focus();
+      searchInput.setSelectionRange(typed.length, typed.length);
+    };
+    window.addEventListener("pageshow", (event) => {
+      searchNavigating = false;
+      // Back restores the page as it was left, with the search that was typed into it.
+      if (event.persisted) {
+        searchInput.value = searchInput.defaultValue;
+        resumeTyping();
+      }
+    });
+    resumeTyping();
   }
 
   // Popovers: a button with data-popover-button shows the element named by aria-controls.
@@ -389,8 +527,6 @@
     openCollectionEditor({ collection, onSaved: () => window.location.reload() });
   });
 
-  const markNavigating = () => document.body.classList.add("is-navigating");
-  window.addEventListener("pageshow", () => document.body.classList.remove("is-navigating"));
   document.querySelectorAll(".browse-sidebar a, .active-filters a, .collection-bar a").forEach((link) => {
     link.addEventListener("click", (event) => {
       if (!event.metaKey && !event.ctrlKey && !event.shiftKey && event.button === 0) {
@@ -1711,6 +1847,10 @@
       loading = true;
       retry.hidden = true;
       status.textContent = "Loading more…";
+      // A grid shows two rows of skeleton cards; grouped rows keep the text.
+      const placeholders = results.matches(".media-grid") ? skeletonCards(columnsOf(results) * 2) : [];
+      results.append(...placeholders);
+      status.classList.toggle("sr-only", placeholders.length > 0);
       let loaded = false;
       try {
         const response = await fetch(nextPage, { headers: { "X-MyTaste-Fragment": "results" } });
@@ -1725,6 +1865,7 @@
         const added = Array.from(batch.content.children).filter(
           (element) => !element.dataset.detailUrl || !shown.has(element.dataset.detailUrl),
         );
+        placeholders.forEach((card) => card.remove());
         results.append(...added);
         enhanceCards(
           added.flatMap((element) =>
@@ -1739,6 +1880,8 @@
         retry.hidden = false;
       } finally {
         loading = false;
+        placeholders.forEach((card) => card.remove());
+        status.classList.remove("sr-only");
       }
       if (!nextPage) {
         observer.disconnect();

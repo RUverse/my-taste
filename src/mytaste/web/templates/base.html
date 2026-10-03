@@ -27,7 +27,7 @@
         <div class="popover-anchor brand-menu">
           <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
             <span class="brand-name" data-site-title>{{ display.site_title }}</span>
-            <svg class="brand-chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"></path></svg>
+            <span class="brand-logo" aria-hidden="true"></span>
           </button>
           <div class="popover brand-popover" id="brand-popover" hidden>
             <div data-brand-actions>
@@ -55,6 +55,16 @@
             </button>
             <label class="sr-only" for="catalog-search">Search movies and TV shows</label>
             <input id="catalog-search" class="search-input" type="search" name="q" value="{{ search_query }}" placeholder="Search titles" autocomplete="off">
+            <script>
+              // After a live search loads this page, keys pressed while the rest of it loads land in the box.
+              try {
+                if (sessionStorage.getItem("mytaste.live-search")) {
+                  const box = document.getElementById("catalog-search");
+                  box.focus();
+                  box.setSelectionRange(box.value.length, box.value.length);
+                }
+              } catch {}
+            </script>
           </form>
 
           <nav class="media-switch" aria-label="Media type">

@@ -519,8 +519,11 @@
         </svg>
       </button>
       <div class="media-detail-shell">
-        <button class="media-detail-close" type="button" data-close-media-details aria-label="Close media details">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
+        {# Closing returns to the collection (or search) the title was opened from. #}
+        {% set back_label = 'Search results' if query.search else heading %}
+        <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
         </button>
         <div class="media-detail-layout">
           <aside class="media-detail-identity">

@@ -1049,6 +1049,16 @@ def test_user_collections_list_saved_titles_on_the_users_services(tmp_path: Path
     assert "None of these titles are on your services" in after.text
 
 
+def test_media_switch_keeps_the_search(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        searched = client.get("/?q=dune&media=movie")
+
+    assert 'href="/?q=dune"' in searched.text
+    assert 'href="/?q=dune&amp;media=tv"' in searched.text
+    assert 'class="search-form is-open"' in searched.text
+
+
 def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
     catalog = FakeCatalog()
     with make_client(tmp_path, catalog=catalog) as client:

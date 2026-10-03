@@ -26,7 +26,7 @@
   --category-muted: #a6a6a6;
   --tool-text: #d7d7d7;
   --on-accent: #111;
-  --poster-background: #b7b7ba;
+  --poster-background: #151515;
   --poster-border: transparent;
   --poster-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
   --poster-hover-border: transparent;
@@ -59,6 +59,8 @@
   --provider-placeholder: #272727;
   --footer-text: #696969;
   --footer-link: #929292;
+  --skeleton-base: #141414;
+  --skeleton-highlight: #232323;
   --header-height: 72px;
   --toolbar-height: 54px;
   --sidebar-width: 268px;
@@ -152,15 +154,13 @@ select:focus-visible {
 .brand[aria-expanded="true"] { background: var(--surface-raised); }
 .brand-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.brand-chevron {
-  width: 16px;
-  height: 16px;
+.brand-logo {
+  width: 3em;
+  height: 1.03em;
   flex: none;
-  fill: none;
-  stroke: var(--muted);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  background: var(--accent);
+  -webkit-mask: url("taste-logo.svg") center / contain no-repeat;
+  mask: url("taste-logo.svg") center / contain no-repeat;
 }
 
 .brand-popover { right: auto; left: 0; width: 250px; }
@@ -361,6 +361,7 @@ body[data-card-size="compact"] .media-grid {
   overflow: hidden;
   aspect-ratio: 2 / 3;
   background: var(--poster-background);
+  background-clip: padding-box;
   border: 1px solid var(--poster-border);
   border-radius: 11px;
   box-shadow: var(--poster-shadow);
@@ -392,21 +393,34 @@ body[data-card-size="compact"] .media-grid {
   background: var(--poster-placeholder);
 }
 
+/* Movie or series, as an icon tile matching the service logos beside it. */
 .type-badge {
   position: absolute;
   right: 7px;
   bottom: 7px;
-  padding: 4px 6px;
-  font-size: 0.61rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
   color: var(--badge-text);
   background: var(--badge-background);
   border: 1px solid var(--badge-border);
-  border-radius: 5px;
+  border-radius: 6px;
   backdrop-filter: blur(7px);
 }
+
+.type-badge svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+body[data-card-size="compact"] .type-badge { width: 20px; height: 20px; border-radius: 5px; }
+body[data-card-size="compact"] .type-badge svg { width: 12px; height: 12px; }
 
 /* Watch progress on posters and episode stills. */
 .card-progress {
@@ -489,6 +503,7 @@ body[data-card-size="compact"] .media-grid {
   overflow: hidden;
   aspect-ratio: 2 / 3;
   background: var(--poster-background);
+  background-clip: padding-box;
   border: 1px solid var(--poster-border);
   border-radius: 10px;
   box-shadow: var(--poster-shadow);
@@ -773,26 +788,42 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   margin: 0 auto;
 }
 
+/* Back to the collection: a chevron and its name, top left, in line with the cover (the
+   layout is centered once it reaches 1500px). */
 .media-detail-close {
   position: fixed;
   top: clamp(14px, 2vw, 30px);
-  right: clamp(14px, 2vw, 30px);
+  left: calc(var(--detail-padding-x) + max(0px, (100vw - 2 * var(--detail-padding-x) - 1500px) / 2));
   z-index: 5;
-  display: grid;
-  width: 44px;
+  display: flex;
+  max-width: min(320px, calc(100% - 96px));
   height: 44px;
-  padding: 0;
-  place-items: center;
+  padding: 0 18px 0 10px;
+  align-items: center;
+  gap: 4px;
   color: var(--detail-glass-text);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
   background: var(--detail-glass);
-  border: 1px solid var(--detail-glass-border);
-  border-radius: 50%;
+  border: 0;
+  border-radius: 999px;
   backdrop-filter: blur(12px);
   cursor: pointer;
 }
 
 .media-detail-close:hover { background: var(--detail-glass-hover); }
-.media-detail-close svg { width: 21px; fill: none; stroke: currentcolor; stroke-width: 1.8; }
+.media-detail-close span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.media-detail-close svg {
+  width: 21px;
+  flex: none;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
 
 .media-detail-layout {
   display: grid;
@@ -906,7 +937,7 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   position: absolute;
   z-index: 3;
   top: clamp(14px, 2vw, 30px);
-  right: calc(clamp(14px, 2vw, 30px) + 54px);
+  right: clamp(14px, 2vw, 30px);
   display: grid;
   width: 44px;
   height: 44px;
@@ -2498,7 +2529,48 @@ main.browse-content {
   transition: opacity 150ms ease;
 }
 
-body.is-navigating .browse-content { opacity: 0.45; pointer-events: none; }
+body.is-navigating .browse-content { pointer-events: none; }
+body.is-navigating .browse-content > :not(.skeleton-grid) { display: none; }
+
+/* Skeletons: card-shaped placeholders while a page, a batch, or a card's credits load. */
+.skeleton-card { min-width: 0; }
+
+.skeleton-poster,
+.skeleton-line {
+  background: linear-gradient(
+      100deg,
+      transparent 30%,
+      var(--skeleton-highlight) 50%,
+      transparent 70%
+    )
+    var(--skeleton-base);
+  background-size: 250% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+/* Bars sit inside the card's text lines without changing their height. */
+.skeleton-line {
+  display: inline-block;
+  width: 54%;
+  height: 0.8em;
+  vertical-align: middle;
+  border-radius: 4px;
+}
+
+.card-copy h2 .skeleton-line { width: 78%; }
+.meta-people .skeleton-line { width: 62%; }
+.meta-year.skeleton-line { width: 2.6em; }
+.meta-rating.skeleton-line { width: 2.4em; }
+
+@keyframes skeleton-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-poster,
+  .skeleton-line { animation: none; }
+}
 
 .active-filters {
   display: flex;
@@ -2591,7 +2663,7 @@ footer a { color: var(--footer-link); }
   bottom: 7px;
   left: 7px;
   display: flex;
-  max-width: calc(100% - 80px);
+  max-width: calc(100% - 46px);
   gap: 4px;
   overflow: hidden;
 }
@@ -3558,6 +3630,8 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
     --poster-hover-shadow: 0 18px 42px rgba(22, 22, 25, 0.2);
     --poster-placeholder-text: rgba(0, 0, 0, 0.27);
     --poster-placeholder: linear-gradient(145deg, #e7e7ea, #d3d3d8);
+    --skeleton-base: #ececef;
+    --skeleton-highlight: #f8f8fa;
     --rating-text: #45454a;
     --card-detail-text: #696970;
     --alert-text: #8b3215;
@@ -3722,8 +3796,8 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
     -webkit-mask-image: var(--hero-fade-bottom);
     mask-image: var(--hero-fade-bottom);
   }
-  .media-detail-close { top: 10px; right: 12px; width: 40px; height: 40px; }
-  .media-detail-sound { top: 10px; right: 62px; width: 40px; height: 40px; }
+  .media-detail-close { top: 10px; height: 40px; padding: 0 14px 0 8px; }
+  .media-detail-sound { top: 10px; right: 12px; width: 40px; height: 40px; }
   .media-detail-layout { display: block; }
   .media-detail-head { min-height: 0; }
   .media-detail-identity {
