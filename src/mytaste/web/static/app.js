@@ -127,6 +127,13 @@
       if (!event.isComposing) scheduleSearch();
     });
     searchInput.addEventListener("compositionend", scheduleSearch);
+    // Clearing the box works like deleting the text, without waiting for the typing pause.
+    searchForm.querySelector(".search-clear")?.addEventListener("click", () => {
+      searchInput.value = "";
+      searchInput.focus();
+      window.clearTimeout(searchTimer);
+      runSearch();
+    });
     searchForm.addEventListener("submit", () => {
       window.clearTimeout(searchTimer);
       rememberOrigin();

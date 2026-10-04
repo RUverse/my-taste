@@ -256,7 +256,35 @@ select:focus-visible {
 
 .search-input::placeholder { color: var(--placeholder-text); }
 .search-input:focus-visible { outline: 0; }
-.search-input::-webkit-search-cancel-button { filter: var(--search-cancel-filter); }
+/* The box's own clear button replaces the browser's, and shows only while there is text. */
+.search-input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+
+.search-clear {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  margin-right: 5px;
+  padding: 0;
+  flex: 0 0 30px;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-clear:hover { color: var(--text); background: var(--surface-raised); }
+.search-input:placeholder-shown ~ .search-clear { display: none; }
+
+.search-clear svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 2.2;
+}
 
 .media-switch {
   display: inline-flex;

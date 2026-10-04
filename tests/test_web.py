@@ -1122,6 +1122,7 @@ def test_media_switch_keeps_the_search(tmp_path: Path) -> None:
     assert 'href="/?q=dune"' in searched.text
     assert 'href="/?q=dune&amp;media=tv"' in searched.text
     assert 'class="search-form is-open"' in searched.text
+    assert 'class="search-clear" type="button" aria-label="Clear search"' in searched.text
 
 
 def test_collection_links_redirects_and_sorts(tmp_path: Path) -> None:
