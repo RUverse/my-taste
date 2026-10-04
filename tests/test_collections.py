@@ -131,11 +131,16 @@ def test_titles_are_saved_once_and_removed_with_their_collection(tmp_path: Path)
     assert stored[0].genres == ("Drama",)
     assert repository.get(watchlist.id).item_count == 2  # type: ignore[union-attr]
     assert repository.memberships("movie", 1) == {watchlist.id, favourites.id}
+    assert repository.saved_memberships() == {
+        ("movie", 1): {watchlist.id, favourites.id},
+        ("tv", 10): {watchlist.id},
+    }
 
     assert repository.remove_item(watchlist.id, "movie", 1) is True
     assert repository.remove_item(watchlist.id, "movie", 1) is False
     repository.delete(watchlist.id)
     assert repository.memberships("movie", 1) == {favourites.id}
+    assert repository.saved_memberships() == {("movie", 1): {favourites.id}}
     with sqlite3.connect(tmp_path / "mytaste.db") as connection:
         count = connection.execute("SELECT COUNT(*) FROM collection_items").fetchone()[0]
     assert count == 1, "deleting a collection deletes its titles"
@@ -323,6 +328,22 @@ def test_saving_a_title_stores_its_details_and_where_it_streams(tmp_path: Path) 
         asyncio.run(service.add_item(999, "movie", 2))
     with pytest.raises(TMDBError):
         asyncio.run(service.add_item(watchlist, "movie", 500))
+
+
+def test_saved_titles_carry_their_collections_icons_in_order(tmp_path: Path) -> None:
+    repository = make_repository(tmp_path)
+    service = CollectionService(repository, FakeCatalog(), FakeLibrary())
+    watchlist, favourites = (collection.id for collection in repository.list())
+    plain = repository.create("Plain").id
+    other = repository.create("Other").id
+    for collection_id in (other, favourites, plain, watchlist):
+        repository.add_item(collection_id, item("movie", 1, "First"))
+    repository.add_item(plain, item("tv", 10, "Show"))
+
+    assert service.saved_icons() == {
+        ("movie", 1): ("bookmark", "heart", ""),
+        ("tv", 10): ("",),
+    }, "collections without an icon share one empty entry"
 
 
 def test_stale_availability_is_refreshed_in_the_background(tmp_path: Path) -> None:

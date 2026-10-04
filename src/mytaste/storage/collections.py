@@ -232,6 +232,18 @@ class CollectionRepository:
             ).fetchall()
         return frozenset(int(row[0]) for row in rows)
 
+    def saved_memberships(self) -> dict[tuple[str, int], frozenset[int]]:
+        """Map every saved ``(media_type, tmdb_id)`` to the ids of the collections holding it."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT media_type, tmdb_id, collection_id FROM collection_items"
+            ).fetchall()
+        saved: dict[tuple[str, int], set[int]] = {}
+        for media_type, tmdb_id, collection_id in rows:
+            saved.setdefault((str(media_type), int(tmdb_id)), set()).add(int(collection_id))
+        return {key: frozenset(ids) for key, ids in saved.items()}
+
     # Availability -----------------------------------------------------------------------
 
     def availability(

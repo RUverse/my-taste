@@ -83,6 +83,19 @@ class CollectionService:
     def memberships(self, media_type: MediaType, tmdb_id: int) -> frozenset[int]:
         return self.repository.memberships(media_type, tmdb_id)
 
+    def saved_icons(self) -> dict[tuple[str, int], tuple[str, ...]]:
+        """Map every saved title to the icons of its collections, in collection order.
+
+        Collections without an icon share one empty entry, which cards draw as a check.
+        """
+
+        order = self.repository.list()
+        saved = self.repository.saved_memberships()
+        return {
+            key: tuple(dict.fromkeys(item.icon for item in order if item.id in ids))
+            for key, ids in saved.items()
+        }
+
     async def add_item(
         self, collection_id: int, media_type: MediaType, tmdb_id: int, *, region: str = ""
     ) -> bool:

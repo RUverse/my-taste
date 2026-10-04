@@ -570,6 +570,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "notice": notice,
             "libraries": libraries,
             "library_keys": library.matched_keys() if libraries else frozenset(),
+            "saved_icons": collections.saved_icons(),
             "library_scanning": library_scanning,
             "streaming_selected": bool(query.provider_ids),
             "source_options": source_options,

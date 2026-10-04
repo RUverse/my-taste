@@ -1006,6 +1006,8 @@ def test_user_collections_list_saved_titles_on_the_users_services(tmp_path: Path
         memberships = client.get("/api/items/movie/12/collections")
         removed = client.delete("/api/collections/1/items/movie/12")
         after = client.get("/collections/1")
+        client.delete("/api/collections/1/items/tv/13")
+        home = client.get("/")
 
     assert empty.status_code == 200
     assert "Nothing in Watchlist yet" in empty.text
@@ -1047,6 +1049,15 @@ def test_user_collections_list_saved_titles_on_the_users_services(tmp_path: Path
     ]
     assert removed.json() == {"saved": False, "removed": True}
     assert "None of these titles are on your services" in after.text
+    assert 'class="card-save is-saved"' in listed.text
+    assert (
+        '<span class="saved-icons" data-saved-icons><svg class="collection-icon" aria-hidden="true"'
+        ' viewBox="0 0 24 24"><path d="M6.5 4.5h11' in listed.text
+    ), "saved cards show the Watchlist's bookmark"
+    assert 'id="card-save-popover"' in listed.text
+    assert '<span data-icon="heart"><svg class="collection-icon"' in listed.text, "menus copy icons"
+    assert 'class="card-save" type="button" data-card-save' in home.text
+    assert "card-save is-saved" not in home.text
 
 
 def test_media_switch_keeps_the_search(tmp_path: Path) -> None:
