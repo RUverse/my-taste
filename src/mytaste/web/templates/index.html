@@ -515,6 +515,17 @@
         {% block browse_dialogs scoped %}
     {% include "_media_details.html" %}
 
+    <div class="popover save-popover card-save-popover" id="card-save-popover" hidden>
+      <p class="popover-title" id="card-save-popover-title">Save to</p>
+      <div class="save-list" role="group" aria-labelledby="card-save-popover-title" data-save-list></div>
+      <p class="form-error" data-save-error role="alert" hidden></p>
+      <button class="popover-separated" type="button" data-save-new aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
+    </div>
+    {# Save menus are built in the browser and copy each collection's icon from here. #}
+    <template id="collection-icon-set">
+      {% for name in collection_icons %}<span data-icon="{{ name }}">{{ collection_icon(name) }}</span>{% endfor %}
+    </template>
+
     <dialog class="collection-editor" id="collection-editor" aria-labelledby="collection-editor-title">
       <form class="collection-editor-form" data-collection-form novalidate>
         <header class="collection-editor-head">

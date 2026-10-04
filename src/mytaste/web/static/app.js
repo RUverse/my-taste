@@ -626,6 +626,10 @@
       filterForm.requestSubmit();
     };
     const render = () => {
+      // Re-rendering replaces the buttons, so the focused one hands focus to its replacement.
+      const focused = Array.from(list.children).indexOf(document.activeElement);
+      // Names stay aligned when only some collections have an icon.
+      const anyIcon = menu.collections.some((collection) => collection.icon);
       list.replaceChildren(
         ...results.map((result, index) => {
           const option = document.createElement("li");
@@ -1327,97 +1331,217 @@
     });
   };
 
-  // Save: add the open title to collections, or take it out of them.
-  const saveButton = detailDialog?.querySelector("[data-detail-save]");
-  const saveList = detailDialog?.querySelector("[data-save-list]");
-  const saveError = detailDialog?.querySelector("[data-save-error]");
+  // Save menus list the collections with a checkbox each, to add the title or take it out.
   const viewedCollectionId = Number(document.querySelector("[data-collection-id]")?.dataset.collectionId) || null;
-  let saveTitle = null;
-  let saveCollections = [];
   let viewedCollectionChanged = false;
+  const savedTitleOf = (card) => card.dataset.detailUrl.replace(/^\/api\/items\//, "").replace(/\/details$/, "");
 
-  const renderSave = () => {
-    if (!saveButton || !saveList) return;
-    const saved = saveCollections.filter((collection) => collection.saved);
-    saveButton.classList.toggle("is-saved", saved.length > 0);
-    saveButton.querySelector("[data-detail-save-label]").textContent = saved.length ? "Saved" : "Save";
-    saveButton.setAttribute(
-      "aria-label",
-      saved.length ? `Saved in ${saved.map((collection) => collection.name).join(", ")}` : "Save to a collection",
-    );
-    saveList.replaceChildren(
-      ...saveCollections.map((collection) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "save-choice";
-        button.setAttribute("aria-pressed", String(collection.saved));
-        button.innerHTML = '<span class="save-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg></span>';
-        const name = document.createElement("span");
-        name.textContent = collection.name;
-        button.append(name);
-        button.addEventListener("click", () => toggleSaved(collection));
-        return button;
-      }),
+  const iconSet = document.querySelector("#collection-icon-set")?.content;
+  const collectionIcon = (name) => {
+    const icon = name && iconSet?.querySelector(`[data-icon="${CSS.escape(name)}"] svg`);
+    if (icon) return icon.cloneNode(true);
+    const blank = document.createElement("span");
+    blank.className = "collection-icon";
+    return blank;
+  };
+
+  // Once saved, a + turns into the icons of the collections holding the title.
+  const savedCheck = '<svg class="collection-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg>';
+  const renderSavedIcons = (target, collections) => {
+    const icons = [...new Set(collections.filter((collection) => collection.saved).map((collection) => collection.icon || ""))];
+    target.replaceChildren(
+      ...icons.map((icon) => (icon ? collectionIcon(icon) : document.createRange().createContextualFragment(savedCheck))),
     );
   };
 
-  const toggleSaved = async (collection) => {
-    const title = saveTitle;
-    const saved = !collection.saved;
-    collection.saved = saved;
-    saveError.hidden = true;
-    renderSave();
-    try {
-      const response = await fetch(`/api/collections/${collection.id}/items/${title}`, {
-        method: saved ? "PUT" : "DELETE",
-        headers: { Accept: "application/json" },
-      });
-      if (!response.ok) throw new Error();
-      if (collection.id === viewedCollectionId) viewedCollectionChanged = true;
-    } catch {
-      collection.saved = !saved;
-      if (title === saveTitle) {
-        saveError.textContent = `Could not update “${collection.name}”. Try again.`;
-        saveError.hidden = false;
-        renderSave();
-      }
-    }
-  };
-
-  const loadSave = async (card) => {
-    if (!saveButton) return;
-    closePopover(saveButton);
-    saveError.hidden = true;
-    saveTitle = card.dataset.detailUrl.replace(/^\/api\/items\//, "").replace(/\/details$/, "");
-    saveCollections = [];
-    renderSave();
-    const title = saveTitle;
-    try {
-      const response = await fetch(`/api/items/${title}/collections`, { headers: { Accept: "application/json" } });
-      const payload = await response.json();
-      if (title === saveTitle) {
-        saveCollections = payload.collections;
-        renderSave();
-      }
-    } catch {
-      // The menu stays empty; saving can be retried after reopening the title.
-    }
-  };
-
-  detailDialog?.querySelector("[data-save-new]")?.addEventListener("click", () => {
-    closePopover(saveButton);
-    const title = saveTitle;
-    openCollectionEditor({
-      onSaved: async (collection) => {
-        const entry = { ...collection, saved: false };
-        saveCollections.push(entry);
-        if (title === saveTitle) await toggleSaved(entry);
-      },
+  // The + on every card of the title (a title can sit in several rows) changes with it.
+  const markCardsSaved = (title, collections) => {
+    const saved = collections.some((collection) => collection.saved);
+    document.querySelectorAll(`.media-card[data-detail-url="/api/items/${title}/details"]`).forEach((card) => {
+      const button = card.querySelector("[data-card-save]");
+      if (!button) return;
+      button.classList.toggle("is-saved", saved);
+      button.setAttribute("aria-label", `${saved ? "Saved" : "Save"} ${card.dataset.title} to collections`);
+      button.title = saved ? "In your collections" : "Add to a collection";
+      renderSavedIcons(button.querySelector("[data-saved-icons]"), collections);
     });
-  });
+  };
+
+  const createSaveMenu = (root, { onRender, beforeNew } = {}) => {
+    const list = root.querySelector("[data-save-list]");
+    const error = root.querySelector("[data-save-error]");
+    const menu = { title: null, collections: [] };
+
+    const render = () => {
+      // Re-rendering replaces the buttons, so the focused one hands focus to its replacement.
+      const focused = Array.from(list.children).indexOf(document.activeElement);
+      // Names stay aligned when only some collections have an icon.
+      const anyIcon = menu.collections.some((collection) => collection.icon);
+      list.replaceChildren(
+        ...menu.collections.map((collection) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "save-choice";
+          button.setAttribute("aria-pressed", String(collection.saved));
+          button.innerHTML = '<span class="save-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m5.5 12.5 4.2 4.2 8.8-9.4"></path></svg></span>';
+          if (anyIcon) button.append(collectionIcon(collection.icon));
+          const name = document.createElement("span");
+          name.textContent = collection.name;
+          button.append(name);
+          button.addEventListener("click", () => toggle(collection));
+          return button;
+        }),
+      );
+      if (focused >= 0) list.children[focused]?.focus();
+      if (menu.collections.length) markCardsSaved(menu.title, menu.collections);
+      onRender?.(menu.collections);
+    };
+
+    const toggle = async (collection) => {
+      const title = menu.title;
+      const saved = !collection.saved;
+      collection.saved = saved;
+      error.hidden = true;
+      render();
+      try {
+        const response = await fetch(`/api/collections/${collection.id}/items/${title}`, {
+          method: saved ? "PUT" : "DELETE",
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error();
+        if (collection.id === viewedCollectionId) viewedCollectionChanged = true;
+      } catch {
+        collection.saved = !saved;
+        if (title === menu.title) {
+          error.textContent = `Could not update “${collection.name}”. Try again.`;
+          error.hidden = false;
+          render();
+        }
+      }
+    };
+
+    menu.load = async (title) => {
+      error.hidden = true;
+      menu.title = title;
+      menu.collections = [];
+      render();
+      try {
+        const response = await fetch(`/api/items/${title}/collections`, { headers: { Accept: "application/json" } });
+        const payload = await response.json();
+        if (title === menu.title) {
+          menu.collections = payload.collections;
+          render();
+        }
+      } catch {
+        // The menu stays empty; saving can be retried after reopening it.
+      }
+    };
+
+    root.querySelector("[data-save-new]")?.addEventListener("click", () => {
+      beforeNew?.();
+      const title = menu.title;
+      openCollectionEditor({
+        onSaved: async (collection) => {
+          const entry = { ...collection, saved: false };
+          menu.collections.push(entry);
+          if (title === menu.title) await toggle(entry);
+        },
+      });
+    });
+    return menu;
+  };
+
+  // Save in title details.
+  const saveButton = detailDialog?.querySelector("[data-detail-save]");
+  const detailSaveMenu =
+    saveButton &&
+    createSaveMenu(detailDialog.querySelector("#save-popover"), {
+      onRender: (collections) => {
+        const saved = collections.filter((collection) => collection.saved);
+        saveButton.classList.toggle("is-saved", saved.length > 0);
+        renderSavedIcons(saveButton.querySelector("[data-saved-icons]"), collections);
+        saveButton.querySelector("[data-detail-save-label]").textContent = saved.length ? "Saved" : "Save";
+        saveButton.setAttribute(
+          "aria-label",
+          saved.length ? `Saved in ${saved.map((collection) => collection.name).join(", ")}` : "Save to a collection",
+        );
+      },
+      beforeNew: () => closePopover(saveButton),
+    });
+
+  const loadSave = (card) => {
+    if (!detailSaveMenu) return;
+    closePopover(saveButton);
+    detailSaveMenu.load(savedTitleOf(card));
+  };
+
   detailDialog?.addEventListener("close", () => {
     if (viewedCollectionChanged) window.location.reload();
   });
+
+  // The + on a card opens one shared Save menu beside it.
+  const cardSave = document.querySelector("#card-save-popover");
+  let cardSaveButton = null;
+
+  const placeCardSave = () => {
+    if (!cardSaveButton) return;
+    const anchor = cardSaveButton.getBoundingClientRect();
+    const width = cardSave.offsetWidth;
+    const height = cardSave.offsetHeight;
+    const left = Math.min(Math.max(8, anchor.right - width), window.innerWidth - width - 8);
+    const below = anchor.bottom + 6;
+    const top = below + height > window.innerHeight - 8 && anchor.top - 6 - height > 8 ? anchor.top - 6 - height : below;
+    cardSave.style.left = `${left}px`;
+    cardSave.style.top = `${Math.max(8, top)}px`;
+  };
+
+  const closeCardSave = ({ restoreFocus = false, reload = true } = {}) => {
+    if (!cardSaveButton) return;
+    const button = cardSaveButton;
+    cardSaveButton = null;
+    cardSave.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (restoreFocus) button.focus();
+    if (reload && viewedCollectionChanged) window.location.reload();
+  };
+
+  const cardSaveMenu =
+    cardSave &&
+    createSaveMenu(cardSave, {
+      onRender: placeCardSave,
+      beforeNew: () => closeCardSave({ reload: false }),
+    });
+
+  if (cardSaveMenu) {
+    document.addEventListener("click", (event) => {
+      const button = event.target.closest?.("[data-card-save]");
+      if (button) {
+        const opening = button !== cardSaveButton;
+        closeCardSave();
+        if (!opening) return;
+        cardSaveButton = button;
+        button.setAttribute("aria-expanded", "true");
+        cardSave.hidden = false;
+        cardSaveMenu.load(savedTitleOf(button.closest(".media-card"))).then(() => {
+          if (cardSaveButton === button) cardSave.querySelector("button")?.focus();
+        });
+      } else if (cardSaveButton && !event.composedPath().includes(cardSave)) {
+        closeCardSave();
+      }
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && cardSaveButton) {
+        event.preventDefault();
+        closeCardSave({ restoreFocus: true });
+      }
+    });
+    cardSave.addEventListener("focusout", (event) => {
+      const next = event.relatedTarget;
+      if (next && next !== cardSaveButton && !cardSave.contains(next)) closeCardSave();
+    });
+    document.addEventListener("scroll", placeCardSave, { capture: true, passive: true });
+    window.addEventListener("resize", placeCardSave);
+  }
 
   const openMediaDetails = (card) => {
     if (!detailDialog || detailDialog.open) {
