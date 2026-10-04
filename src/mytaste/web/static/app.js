@@ -706,6 +706,33 @@
     input.addEventListener("blur", close);
   });
 
+  // Every details view (titles, games, the game page) scrolls itself and repeats its title beside
+  // the back button once the heading has scrolled up under the bar.
+  document.querySelectorAll(".media-details").forEach((details) => {
+    const heading = details.querySelector("[data-detail-title]");
+    const barTitle = details.querySelector("[data-detail-bar-title]");
+    const bar = details.querySelector(".media-detail-topbar");
+    if (!heading || !barTitle || !bar) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const headingBottom = heading.getBoundingClientRect().bottom;
+      const scrolledPast = details.scrollTop > 0 && headingBottom <= bar.getBoundingClientRect().bottom;
+      details.classList.toggle("is-title-scrolled", scrolledPast);
+    };
+    const scheduleUpdate = () => {
+      frame ||= requestAnimationFrame(update);
+    };
+    const syncTitle = () => {
+      barTitle.textContent = heading.textContent.trim();
+      scheduleUpdate();
+    };
+    syncTitle();
+    new MutationObserver(syncTitle).observe(heading, { childList: true, characterData: true, subtree: true });
+    details.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+  });
+
   const detailDialog = document.querySelector("#media-details");
   const detailPoster = detailDialog?.querySelector("[data-detail-poster]");
   const detailTitle = detailDialog?.querySelector("[data-detail-title]");

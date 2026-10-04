@@ -848,14 +848,27 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
 
 /* Back to the collection: a chevron and its name, top left, in line with the cover (the
    layout is centered once it reaches 1500px). */
-.media-detail-close {
+/* The bar stops short of the trailer's sound button on the right. */
+.media-detail-topbar {
   position: fixed;
   top: clamp(14px, 2vw, 30px);
+  right: calc(clamp(14px, 2vw, 30px) + 56px);
   left: calc(var(--detail-padding-x) + max(0px, (100vw - 2 * var(--detail-padding-x) - 1500px) / 2));
   z-index: 10;
   display: flex;
-  max-width: min(320px, calc(100% - 96px));
   height: 44px;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.media-detail-close {
+  display: flex;
+  min-width: 0;
+  max-width: 320px;
+  height: 100%;
+  flex: 0 1 auto;
+  pointer-events: auto;
   padding: 0 18px 0 10px;
   align-items: center;
   gap: 4px;
@@ -882,6 +895,37 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+/* The title, repeated once the page's own heading has scrolled under the bar. */
+.media-detail-bar-title {
+  position: absolute;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 18px;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--detail-glass-text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 44px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  background: var(--detail-glass);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+  transform: translateX(-8px);
+}
+
+.media-details.is-title-scrolled .media-detail-bar-title:not(:empty) {
+  position: static;
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .media-detail-layout {
@@ -1522,6 +1566,7 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   .episode-play,
   .watch-alternative,
   .detail-neighbor img,
+  .media-details.is-title-scrolled .media-detail-bar-title,
   .media-detail-cast .media-detail-cast-chevron { transition: none; }
   .detail-neighbor:hover img { transform: none; }
   .episode-card[href]:hover .episode-still img { transform: none; }
@@ -3864,7 +3909,9 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
     -webkit-mask-image: var(--hero-fade-bottom);
     mask-image: var(--hero-fade-bottom);
   }
-  .media-detail-close { top: 10px; height: 40px; padding: 0 14px 0 8px; }
+  .media-detail-topbar { top: 10px; right: 64px; height: 40px; gap: 6px; }
+  .media-detail-close { padding: 0 14px 0 8px; }
+  .media-detail-bar-title { padding: 0 14px; line-height: 40px; }
   .media-detail-sound { top: 10px; right: 12px; width: 40px; height: 40px; }
   .media-detail-layout { display: block; }
   .media-detail-head { min-height: 0; }
