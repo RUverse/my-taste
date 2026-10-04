@@ -394,14 +394,27 @@ class CatalogService:
 
         return load
 
-    async def _search(
+    async def search_everywhere(
         self,
         region: str,
         query: BrowseQuery,
-        local: LocalSource | None,
+        *,
         refine: Refine | None = None,
         exclude: frozenset[TitleKey] = frozenset(),
     ) -> CatalogPage:
+        """One page of search results from any service, or none, ignoring the user's services.
+
+        For a search the user's services carry nothing for; the query's filters still apply.
+        """
+
+        candidates = await self._search_candidates(region, query)
+        items = tuple(item for item in candidates.items if _identity(item) not in exclude)
+        if refine is not None and query.filters.active:
+            allowed = await refine(items)
+            items = tuple(item for item in items if _identity(item) in allowed)
+        return await self._add_genre_names(CatalogPage(items=items, total_results=len(items)))
+
+    async def _search_candidates(self, region: str, query: BrowseQuery) -> CatalogPage:
         media_types = () if query.filters.local_only else _media_types(query.media_type)
         pages = await asyncio.gather(
             *(
@@ -418,7 +431,17 @@ class CatalogService:
                 for media_type in media_types
             )
         )
-        candidates = _merge_pages(pages, query, latest=False)
+        return _merge_pages(pages, query, latest=False)
+
+    async def _search(
+        self,
+        region: str,
+        query: BrowseQuery,
+        local: LocalSource | None,
+        refine: Refine | None = None,
+        exclude: frozenset[TitleKey] = frozenset(),
+    ) -> CatalogPage:
+        candidates = await self._search_candidates(region, query)
         checks = await asyncio.gather(
             *(
                 self._is_on_selected_service(region, item, query.provider_ids)

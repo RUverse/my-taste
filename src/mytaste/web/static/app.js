@@ -1835,9 +1835,17 @@
     providerTimer = undefined;
     const batch = Array.from(providerQueue);
     providerQueue.clear();
-    const keys = Array.from(new Set(batch.map((strip) => strip.dataset.providersKey)));
+    // Search results from other services list every service that carries them.
+    const keysFor = (scope) =>
+      Array.from(
+        new Set(
+          batch
+            .filter((strip) => (strip.dataset.providersScope || "providers") === scope)
+            .map((strip) => strip.dataset.providersKey),
+        ),
+      );
     try {
-      const params = new URLSearchParams({ items: keys.join(",") });
+      const params = new URLSearchParams({ items: keysFor("providers").join(","), any: keysFor("any").join(",") });
       const response = await fetch(`/api/items/providers?${params}`, {
         headers: { Accept: "application/json" },
       });
@@ -1846,7 +1854,7 @@
       }
       const payload = await response.json();
       batch.forEach((strip) => {
-        const providers = payload.providers?.[strip.dataset.providersKey];
+        const providers = payload[strip.dataset.providersScope || "providers"]?.[strip.dataset.providersKey];
         if (providers) {
           renderProviders(strip, providers);
           strip.dataset.loaded = "true";

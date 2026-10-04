@@ -302,6 +302,27 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 else:
                     error = str(exc)
 
+        # A search the chosen sources have nothing for still shows what it finds elsewhere.
+        other_items: tuple[CatalogItem, ...] = ()
+        if (
+            query.search
+            and query.page == 1
+            and not page.items
+            and not error
+            and preferences.region
+            and not filters.local_only
+        ):
+            try:
+                elsewhere = await catalog.search_everywhere(
+                    preferences.region,
+                    query,
+                    refine=refine,
+                    exclude=exclude if filters.active else frozenset(),
+                )
+                other_items = elsewhere.items
+            except TMDBError:
+                pass
+
         groups: tuple[TitleGroup, ...] = ()
         row_pages = 1
         if group and page.items:
@@ -500,6 +521,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             ),
             "collection_availability": availability,
             "page": page,
+            "other_items": other_items,
             "heading": heading,
             "description": description,
             "icon": icon,
@@ -545,7 +567,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "next_url": (url(replace(query, page=row_page + 1)) if row_page < row_pages else None)
             if group
             else url(replace(query, page=query.page + 1))
-            if query.page < page.total_pages
+            if query.page < page.total_pages and not other_items
             else None,
             "pagination_label": f"Rows page {row_page} of {row_pages}"
             if group
@@ -993,12 +1015,17 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/api/items/providers", response_class=JSONResponse)
     async def item_providers(request: Request) -> JSONResponse:
-        """Map ``media:id`` keys to the user's enabled services that carry each title."""
+        """Map ``media:id`` keys to the user's enabled services that carry each title.
+
+        Titles listed in ``any`` (search results from other services) map to every subscription
+        service that carries them instead, under ``any`` in the response.
+        """
 
         preferences: Preferences = request.app.state.preferences.get()
         keys = _item_keys(request.query_params.get("items", ""))
-        if not preferences.configured or not keys:
-            return JSONResponse({"providers": {}})
+        any_keys = _item_keys(request.query_params.get("any", ""))
+        if not preferences.configured or not (keys or any_keys):
+            return JSONResponse({"providers": {}, "any": {}})
         catalog = request.app.state.catalog
         try:
             providers: tuple[Provider, ...] = await catalog.providers(preferences.region)
@@ -1006,25 +1033,29 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": str(exc)}, status_code=502)
         enabled_ids = set(preferences.provider_ids)
         enabled = tuple(provider for provider in providers if provider.id in enabled_ids)
+        requested = (
+            *(("providers", key, enabled) for key in keys),
+            *(("any", key, providers) for key in any_keys),
+        )
         results = await asyncio.gather(
             *(
                 catalog.available_provider_ids(preferences.region, media_type, item_id)
-                for media_type, item_id in keys
+                for _, (media_type, item_id), _ in requested
             ),
             return_exceptions=True,
         )
-        payload: dict[str, list[dict[str, object]]] = {}
-        for (media_type, item_id), result in zip(keys, results, strict=True):
+        payload: dict[str, dict[str, list[dict[str, object]]]] = {"providers": {}, "any": {}}
+        for (scope, (media_type, item_id), choices), result in zip(requested, results, strict=True):
             if isinstance(result, TMDBError):
                 continue
             if isinstance(result, BaseException):
                 raise result
-            payload[f"{media_type}:{item_id}"] = [
+            payload[scope][f"{media_type}:{item_id}"] = [
                 {"id": provider.id, "name": provider.name, "logo_url": provider.logo_url}
-                for provider in enabled
+                for provider in choices
                 if provider.id in result
             ]
-        return JSONResponse({"providers": payload})
+        return JSONResponse(payload)
 
     @router.get("/api/items/{media_type}/{item_id}/people", response_class=JSONResponse)
     async def item_people(media_type: str, item_id: int, request: Request) -> JSONResponse:

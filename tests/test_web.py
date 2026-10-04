@@ -34,6 +34,7 @@ class FakeCatalog:
         self.browse_queries: list[BrowseQuery] = []
         self.browse_options: list[dict[str, object]] = []
         self.fail_browse = False
+        self.everywhere_queries: list[BrowseQuery] = []
 
     async def genre_choices(self) -> tuple[GenreChoice, ...]:
         return genre_choices(
@@ -106,6 +107,8 @@ class FakeCatalog:
         self.browse_options.append({"refine": refine, "exclude": exclude})
         if self.fail_browse:
             raise TMDBError("TMDB is down")
+        if query.search == "elsewhere":
+            return CatalogPage(items=(), total_pages=3)
         local_items = (await local(query, 20)).items if local is not None else ()
         return CatalogPage(
             items=(
@@ -132,6 +135,26 @@ class FakeCatalog:
             ),
             total_results=2 + len(local_items),
         )
+
+    async def search_everywhere(
+        self,
+        region: str,
+        query: BrowseQuery,
+        *,
+        refine: Refine | None = None,
+        exclude: frozenset[tuple[str, int]] = frozenset(),
+    ) -> CatalogPage:
+        assert region == "DE"
+        self.everywhere_queries.append(query)
+        item = CatalogItem(
+            id=77,
+            media_type="tv",
+            title="Somewhere Else",
+            release_date="2024-01-02",
+            overview="On another service.",
+            rating=7.7,
+        )
+        return CatalogPage(items=(item,), total_results=1)
 
     async def people(self, media_type: str, item_id: int) -> tuple[str, tuple[str, ...]]:
         return ("Director", ("A Director",))
@@ -562,9 +585,40 @@ def test_service_icons_are_an_opt_in_card_option(tmp_path: Path) -> None:
                     "logo_url": "https://image.tmdb.org/t/p/w92/disney.jpg",
                 }
             ],
-        }
+        },
+        "any": {},
     }, "only enabled services, in priority order; failed lookups are skipped"
-    assert empty.json() == {"providers": {}}
+    assert empty.json() == {"providers": {}, "any": {}}
+
+
+def test_a_search_without_matches_shows_results_from_other_services(tmp_path: Path) -> None:
+    catalog = FakeCatalog()
+    with make_client(tmp_path, catalog=catalog) as client:
+        client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
+        client.post("/api/preferences/display", json={"show_providers": True})
+        missing = client.get("/?q=elsewhere")
+        found = client.get("/?q=dune")
+        carriers = client.get("/api/items/providers", params={"items": "tv:13", "any": "tv:13"})
+
+    assert "No match found" in missing.text
+    assert "From other services:" in missing.text
+    assert "Somewhere Else" in missing.text
+    assert 'data-providers-key="tv:77" data-providers-scope="any"' in missing.text
+    assert "data-next-page" not in missing.text, "other services' results are a single page"
+    assert [query.search for query in catalog.everywhere_queries] == ["elsewhere"]
+    assert "From other services:" not in found.text
+    assert carriers.json() == {
+        "providers": {"tv:13": []},
+        "any": {
+            "tv:13": [
+                {
+                    "id": 337,
+                    "name": "Disney Plus",
+                    "logo_url": "https://image.tmdb.org/t/p/w92/disney.jpg",
+                }
+            ]
+        },
+    }, "titles from elsewhere list every service, not only the enabled ones"
 
 
 def test_local_titles_show_a_folder_in_the_source_strip(tmp_path: Path) -> None:
@@ -579,7 +633,7 @@ def test_local_titles_show_a_folder_in_the_source_strip(tmp_path: Path) -> None:
     assert home.text.count('<span class="source-local">') == 2
     assert "library-badge" not in home.text
     assert '<p class="sr-only" data-providers-text>In your local library</p>' in home.text
-    assert providers.json() == {"providers": {}}
+    assert providers.json() == {"providers": {}, "any": {}}
 
 
 def test_sidebar_filters_show_presets_and_removable_chips(tmp_path: Path) -> None:

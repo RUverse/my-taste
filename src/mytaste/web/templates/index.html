@@ -477,6 +477,17 @@
       <section class="media-grid" aria-label="{{ heading }}" data-results>
         {% for item in page.items %}{{ media_card(item, loop.index <= 7) }}{% endfor %}
       </section>
+    {% elif other_items %}
+      <div class="empty-state empty-state-compact" role="status">
+        <h2>No match found</h2>
+        <p>None of your sources have anything for “{{ query.search }}”.</p>
+      </div>
+      <section class="other-results" aria-labelledby="other-results-heading">
+        <h2 id="other-results-heading">From other services:</h2>
+        <div class="media-grid">
+          {% for item in other_items %}{{ media_card(item, loop.index <= 7, elsewhere=true) }}{% endfor %}
+        </div>
+      </section>
     {% elif not error %}
       <div class="empty-state">
         {% if collection and collection_availability and not collection_availability[1] %}

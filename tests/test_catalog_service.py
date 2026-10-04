@@ -160,6 +160,16 @@ def test_search_keeps_only_titles_on_selected_services() -> None:
     assert [item.id for item in page.items] == [1]
 
 
+def test_search_everywhere_ignores_the_selected_services() -> None:
+    service = CatalogService(FakeTMDBClient())
+    query = BrowseQuery(media_type="all", search="title", provider_ids=(8,))
+
+    page = asyncio.run(service.search_everywhere("DE", query))
+
+    assert sorted(item.id for item in page.items) == [1, 2]
+    assert all(item.genres == ("Drama",) for item in page.items)
+
+
 def test_available_provider_ids_are_cached() -> None:
     client = FakeTMDBClient()
     calls: list[int] = []
