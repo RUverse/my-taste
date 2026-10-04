@@ -90,9 +90,14 @@
   const overview = dialog.querySelector("[data-detail-overview]");
   const shots = dialog.querySelector("[data-game-screenshots]");
   const neighbors = Array.from(dialog.querySelectorAll("[data-detail-neighbor]"));
+  // The cover flies between the card and the dialog exactly as in movie details (app.js).
+  const motion = window.MyTaste?.posterMotion(dialog, poster, neighbors);
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   let origin;
+  let activeCard;
   let controller;
   let revision = 0;
+  let motionRevision = 0;
   let closing = false;
   const httpsURL = (value) => {
     try {
@@ -137,10 +142,20 @@
     button.replaceChildren(coverFrom(card));
     button.setAttribute("aria-label", `${direction < 0 ? "Previous" : "Next"} game: ${card.querySelector("h2").textContent}`);
   });
-  const openGame = async (link) => {
+  const openGame = async (link, { direction = 0 } = {}) => {
     if (closing) return;
     const card = link.closest(".game-card");
     if (!card) return;
+    const stepping = dialog.open && direction !== 0;
+    const arriving = stepping ? neighbors.find((button) => Number(button.dataset.detailNeighbor) === direction) : null;
+    // Measured before anything changes: where the cover flies from.
+    const fromRect = (arriving || card.querySelector(".poster")).getBoundingClientRect();
+    const leavingRect = poster.getBoundingClientRect();
+    activeCard?.classList.remove("is-detail-source");
+    activeCard = card;
+    card.classList.add("is-detail-source");
+    // Keep the card in view behind the dialog so closing can fly the cover back to it.
+    if (stepping) card.scrollIntoView({ block: "nearest", behavior: "instant" });
     origin = link;
     controller?.abort();
     controller = new AbortController();
@@ -172,12 +187,18 @@
     shots.replaceChildren();
     dialog.querySelector("[data-detail-content]").hidden = false;
     renderNeighbors();
+    if (!dialog.open) {
+      dialog.classList.remove("is-closing", "is-visible", "is-poster-fading");
+      dialog.showModal();
+    }
     dialog.scrollTop = 0;
-    if (!dialog.open) dialog.showModal();
     document.body.classList.add("media-details-open");
-    requestAnimationFrame(() => {
-      if (dialog.open && current === revision) dialog.classList.add("is-visible");
-    });
+    const flightRevision = ++motionRevision;
+    // fly measures layout, so the hidden starting styles are applied before is-visible.
+    const flight = motion?.fly(fromRect);
+    dialog.classList.add("is-visible");
+    motion?.settle(flight, () => flightRevision === motionRevision);
+    if (stepping) motion?.step(direction, arriving, leavingRect);
     try {
       const response = await fetch(`/api/games/${encodeURIComponent(link.dataset.gameOpen)}/details`, {signal: controller.signal, cache: "no-store"});
       const game = await response.json();
@@ -205,9 +226,11 @@
       publisher.textContent = game.publisher ? `Published by ${game.publisher}` : "";
       publisher.hidden = !game.publisher;
       overview.textContent = game.overview || "No description is available.";
-      if (httpsURL(game.poster_url)) {
+      // Keep the card's cover while it flies; only a missing or different cover is replaced.
+      const cover = httpsURL(game.poster_url);
+      if (cover && poster.querySelector("img")?.src !== cover) {
         const image = document.createElement("img");
-        image.src = httpsURL(game.poster_url);
+        image.src = cover;
         image.alt = "";
         poster.replaceChildren(image);
       }
@@ -257,8 +280,9 @@
     openGame(link);
   });
   neighbors.forEach((button) => button.addEventListener("click", () => {
-    const card = neighboringCard(Number(button.dataset.detailNeighbor));
-    if (card) openGame(card.querySelector("[data-game-open]"));
+    const direction = Number(button.dataset.detailNeighbor);
+    const card = neighboringCard(direction);
+    if (card) openGame(card.querySelector("[data-game-open]"), { direction });
   }));
   dialog.addEventListener("keydown", (event) => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.target.closest("input, textarea, select, [contenteditable=true]")) return;
@@ -269,14 +293,32 @@
       button.click();
     }
   });
-  const closeGame = () => {
+  // The cover flies back to its card when the card is on screen, and fades out otherwise.
+  const closeGame = async () => {
     if (closing || !dialog.open) return;
     closing = true;
     ++revision;
     controller?.abort();
+    const flightRevision = ++motionRevision;
+    const destinationRect = activeCard?.querySelector(".poster")?.getBoundingClientRect();
+    const destinationVisible =
+      destinationRect && destinationRect.bottom > 0 && destinationRect.top < window.innerHeight;
     dialog.classList.add("is-closing");
     dialog.classList.remove("is-visible");
-    window.setTimeout(() => dialog.close(), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 340);
+    const flight = destinationVisible ? motion?.fly(destinationRect, { reverse: true }) : null;
+    if (flight) {
+      try {
+        await flight.finished;
+      } catch {
+        // Superseded by another flight.
+      }
+    } else {
+      dialog.classList.add("is-poster-fading");
+      await new Promise((resolve) => window.setTimeout(resolve, reducedMotion.matches ? 0 : 340));
+    }
+    if (flightRevision !== motionRevision) return;
+    dialog.close();
+    flight?.cancel();
   };
   unlink?.addEventListener("click", async () => {
     unlink.disabled = true;
@@ -296,7 +338,9 @@
     controller?.abort();
     backdrop.onload = null;
     closing = false;
-    dialog.classList.remove("is-visible", "is-closing");
+    dialog.classList.remove("is-visible", "is-closing", "is-poster-fading");
+    activeCard?.classList.remove("is-detail-source");
+    activeCard = null;
     document.body.classList.remove("media-details-open");
     origin?.focus();
     window.MyTaste?.reloadIfCollectionChanged();

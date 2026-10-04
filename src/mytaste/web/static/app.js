@@ -841,54 +841,100 @@
     detailCreditNames.textContent = names;
   };
 
-  // The shadows follow the OS theme, so they are read from the stylesheet when a flight starts.
-  const posterShadows = () => {
-    const style = getComputedStyle(detailDialog);
-    return {
-      card: style.getPropertyValue("--poster-shadow").trim(),
-      detail: style.getPropertyValue("--detail-poster-shadow").trim(),
+  // FLIP a dialog's own poster between its resting place and a card's poster, so the cover
+  // reads as one object moving rather than a copy cross-fading with the original. Movie and game
+  // details share it (games.js).
+  const posterMotion = (dialog, poster, neighbors) => {
+    // The shadows follow the OS theme, so they are read from the stylesheet when a flight starts.
+    const posterShadows = () => {
+      const style = getComputedStyle(dialog);
+      return {
+        card: style.getPropertyValue("--poster-shadow").trim(),
+        detail: style.getPropertyValue("--detail-poster-shadow").trim(),
+      };
     };
-  };
 
-  // FLIP the dialog's own poster between its resting place and a card's poster, so the cover
-  // reads as one object moving rather than a copy cross-fading with the original.
-  const flyPoster = (cardRect, { reverse = false } = {}) => {
-    detailPoster.getAnimations().forEach((animation) => animation.cancel());
-    const restRect = detailPoster.getBoundingClientRect();
-    if (!cardRect?.width || !restRect.width || reducedMotion.matches || !("animate" in Element.prototype)) {
-      return null;
-    }
-    const scaleX = cardRect.width / restRect.width;
-    const scaleY = cardRect.height / restRect.height;
-    const shadows = posterShadows();
-    const atCard = {
-      transform: `translate(${cardRect.left - restRect.left}px, ${cardRect.top - restRect.top}px) scale(${scaleX}, ${scaleY})`,
-      borderRadius: `${11 / scaleX}px / ${11 / scaleY}px`,
-      boxShadow: shadows.card,
-    };
-    const atRest = {
-      transform: "translate(0px, 0px) scale(1, 1)",
-      borderRadius: "12px / 12px",
-      boxShadow: shadows.detail,
-    };
-    return detailPoster.animate(reverse ? [atRest, atCard] : [atCard, atRest], {
-      duration: reverse ? 420 : 560,
-      easing: reverse ? "cubic-bezier(0.32, 0, 0.18, 1)" : "cubic-bezier(0.16, 1, 0.3, 1)",
-      fill: "both",
-    });
-  };
-
-  const settleFlight = (flight, motionRevision) => {
-    flight?.finished
-      .then(() => {
-        if (motionRevision === posterMotionRevision) {
-          flight.cancel();
-        }
-      })
-      .catch(() => {
-        // A close that starts mid-flight cancels this animation.
+    const fly = (cardRect, { reverse = false } = {}) => {
+      poster.getAnimations().forEach((animation) => animation.cancel());
+      const restRect = poster.getBoundingClientRect();
+      if (!cardRect?.width || !restRect.width || reducedMotion.matches || !("animate" in Element.prototype)) {
+        return null;
+      }
+      const scaleX = cardRect.width / restRect.width;
+      const scaleY = cardRect.height / restRect.height;
+      const shadows = posterShadows();
+      const atCard = {
+        transform: `translate(${cardRect.left - restRect.left}px, ${cardRect.top - restRect.top}px) scale(${scaleX}, ${scaleY})`,
+        borderRadius: `${11 / scaleX}px / ${11 / scaleY}px`,
+        boxShadow: shadows.card,
+      };
+      const atRest = {
+        transform: "translate(0px, 0px) scale(1, 1)",
+        borderRadius: "12px / 12px",
+        boxShadow: shadows.detail,
+      };
+      return poster.animate(reverse ? [atRest, atCard] : [atCard, atRest], {
+        duration: reverse ? 420 : 560,
+        easing: reverse ? "cubic-bezier(0.32, 0, 0.18, 1)" : "cubic-bezier(0.16, 1, 0.3, 1)",
+        fill: "both",
       });
+    };
+
+    // A finished flight hands the poster back to the stylesheet, unless a newer one took over.
+    const settle = (flight, isCurrent) => {
+      flight?.finished
+        .then(() => {
+          if (isCurrent()) {
+            flight.cancel();
+          }
+        })
+        .catch(() => {
+          // A close that starts mid-flight cancels this animation.
+        });
+    };
+
+    // Stepping to a neighbor: the cover being left slides out to the opposite edge, the next
+    // neighbor fades in, and the rest of the page re-enters from the side it came from.
+    const step = (direction, button, leavingRect) => {
+      if (reducedMotion.matches || !("animate" in Element.prototype)) {
+        return;
+      }
+      const opposite = neighbors.find((candidate) => Number(candidate.dataset.detailNeighbor) === -direction);
+      const oppositeRect = !opposite || opposite.hidden ? null : opposite.getBoundingClientRect();
+      if (oppositeRect?.width) {
+        opposite.animate(
+          [
+            {
+              transform: `translate(${leavingRect.left - oppositeRect.left}px, ${leavingRect.top - oppositeRect.top}px) scale(${leavingRect.width / oppositeRect.width}, ${leavingRect.height / oppositeRect.height})`,
+            },
+            { transform: "none" },
+          ],
+          { duration: 560, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
+        );
+      }
+      button.animate(
+        [{ opacity: 0, transform: `translateX(${direction * 40}px)` }, { opacity: 1, transform: "none" }],
+        { duration: 420, delay: 120, easing: "ease-out", fill: "backwards" },
+      );
+      dialog
+        .querySelectorAll(
+          ".media-detail-hero, .media-detail-identity > :not(.media-detail-poster), .media-detail-stage, .media-detail-episodes",
+        )
+        .forEach((element) => {
+          element.animate(
+            [{ opacity: 0, transform: `translateX(${direction * 28}px)` }, { opacity: 1, transform: "none" }],
+            { duration: 460, delay: 80, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "backwards" },
+          );
+        });
+    };
+
+    return { fly, settle, step };
   };
+
+  const detailMotion = detailDialog ? posterMotion(detailDialog, detailPoster, detailNeighbors) : null;
+  const flyPoster = (cardRect, options) => detailMotion?.fly(cardRect, options) ?? null;
+  const settleFlight = (flight, motionRevision) =>
+    detailMotion?.settle(flight, () => motionRevision === posterMotionRevision);
 
   const resetDetailContent = (card) => {
     detailPoster.replaceChildren(posterVisual(card));
@@ -1490,6 +1536,7 @@
   // The game details dialog (games.js) reuses the Save menu.
   window.MyTaste = Object.assign(window.MyTaste || {}, {
     createSaveMenu,
+    posterMotion,
     closePopover,
     renderSavedIcons,
     reloadIfCollectionChanged: () => {
@@ -1632,35 +1679,7 @@
     resetDetailContent(card);
     renderNeighbors();
     settleFlight(flyPoster(arrivingRect), motionRevision);
-    if (!reducedMotion.matches && "animate" in Element.prototype) {
-      const opposite = detailNeighbors.find((candidate) => Number(candidate.dataset.detailNeighbor) === -step);
-      const oppositeRect = opposite.hidden ? null : opposite.getBoundingClientRect();
-      if (oppositeRect?.width) {
-        opposite.animate(
-          [
-            {
-              transform: `translate(${leavingRect.left - oppositeRect.left}px, ${leavingRect.top - oppositeRect.top}px) scale(${leavingRect.width / oppositeRect.width}, ${leavingRect.height / oppositeRect.height})`,
-            },
-            { transform: "none" },
-          ],
-          { duration: 560, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
-        );
-      }
-      button.animate(
-        [{ opacity: 0, transform: `translateX(${step * 40}px)` }, { opacity: 1, transform: "none" }],
-        { duration: 420, delay: 120, easing: "ease-out", fill: "backwards" },
-      );
-      detailDialog
-        .querySelectorAll(
-          ".media-detail-hero, .media-detail-identity > :not(.media-detail-poster), .media-detail-stage, .media-detail-episodes",
-        )
-        .forEach((element) => {
-          element.animate(
-            [{ opacity: 0, transform: `translateX(${step * 28}px)` }, { opacity: 1, transform: "none" }],
-            { duration: 460, delay: 80, easing: "cubic-bezier(0.22, 1, 0.36, 1)", fill: "backwards" },
-          );
-        });
-    }
+    detailMotion.step(step, button, leavingRect);
     loadDetails(card);
     loadSave(card);
   };
