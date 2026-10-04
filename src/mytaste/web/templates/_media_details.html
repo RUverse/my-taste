@@ -30,24 +30,28 @@
         </svg>
       </button>
       {% endif %}
-      {# Closing returns to the collection (or search) the title was opened from. It sits outside
-         the shell so the episodes and neighbors, which stack above the shell, never cover it. #}
-      {% if standalone %}
-      <a class="media-detail-close" href="/collections/games" aria-label="Back to {{ back_label }}">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-        <span>{{ back_label }}</span>
-      </a>
-      {% elif game_details %}
-      <button class="media-detail-close" type="button" data-game-close aria-label="Back to {{ back_label }}">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-        <span>{{ back_label }}</span>
-      </button>
-      {% else %}
-      <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
-        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-        <span>{{ back_label }}</span>
-      </button>
-      {% endif %}
+      {# Closing returns to the collection (or search) the title was opened from. The bar sits
+         outside the shell so the episodes and neighbors, which stack above the shell, never cover
+         it; once the title scrolls under it, it repeats the title beside the button (app.js). #}
+      <div class="media-detail-topbar">
+        {% if standalone %}
+        <a class="media-detail-close" href="/collections/games" aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </a>
+        {% elif game_details %}
+        <button class="media-detail-close" type="button" data-game-close aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </button>
+        {% else %}
+        <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+          <span>{{ back_label }}</span>
+        </button>
+        {% endif %}
+        <p class="media-detail-bar-title" data-detail-bar-title aria-hidden="true"></p>
+      </div>
       <div class="media-detail-shell">
         <div class="media-detail-layout">
           <aside class="media-detail-identity">

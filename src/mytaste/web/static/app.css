@@ -256,7 +256,35 @@ select:focus-visible {
 
 .search-input::placeholder { color: var(--placeholder-text); }
 .search-input:focus-visible { outline: 0; }
-.search-input::-webkit-search-cancel-button { filter: var(--search-cancel-filter); }
+/* The box's own clear button replaces the browser's, and shows only while there is text. */
+.search-input::-webkit-search-cancel-button { display: none; -webkit-appearance: none; }
+
+.search-clear {
+  display: inline-grid;
+  width: 30px;
+  height: 30px;
+  margin-right: 5px;
+  padding: 0;
+  flex: 0 0 30px;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.search-clear:hover { color: var(--text); background: var(--surface-raised); }
+.search-input:placeholder-shown ~ .search-clear { display: none; }
+
+.search-clear svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-width: 2.2;
+}
 
 .media-switch {
   display: inline-flex;
@@ -848,14 +876,27 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
 
 /* Back to the collection: a chevron and its name, top left, in line with the cover (the
    layout is centered once it reaches 1500px). */
-.media-detail-close {
+/* The bar stops short of the trailer's sound button on the right. */
+.media-detail-topbar {
   position: fixed;
   top: clamp(14px, 2vw, 30px);
+  right: calc(clamp(14px, 2vw, 30px) + 56px);
   left: calc(var(--detail-padding-x) + max(0px, (100vw - 2 * var(--detail-padding-x) - 1500px) / 2));
   z-index: 10;
   display: flex;
-  max-width: min(320px, calc(100% - 96px));
   height: 44px;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.media-detail-close {
+  display: flex;
+  min-width: 0;
+  max-width: 320px;
+  height: 100%;
+  flex: 0 1 auto;
+  pointer-events: auto;
   padding: 0 18px 0 10px;
   align-items: center;
   gap: 4px;
@@ -882,6 +923,37 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2;
+}
+
+/* The title, repeated once the page's own heading has scrolled under the bar. */
+.media-detail-bar-title {
+  position: absolute;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 18px;
+  flex: 0 1 auto;
+  overflow: hidden;
+  color: var(--detail-glass-text);
+  font-size: 0.92rem;
+  font-weight: 700;
+  line-height: 44px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  visibility: hidden;
+  opacity: 0;
+  background: var(--detail-glass);
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+  transform: translateX(-8px);
+}
+
+.media-details.is-title-scrolled .media-detail-bar-title:not(:empty) {
+  position: static;
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .media-detail-layout {
@@ -1522,6 +1594,7 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   .episode-play,
   .watch-alternative,
   .detail-neighbor img,
+  .media-details.is-title-scrolled .media-detail-bar-title,
   .media-detail-cast .media-detail-cast-chevron { transition: none; }
   .detail-neighbor:hover img { transform: none; }
   .episode-card[href]:hover .episode-still img { transform: none; }
@@ -1552,6 +1625,16 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
 
 .empty-state h2 { margin: 0 0 7px; color: var(--text); }
 .empty-state p { margin: 0 0 20px; }
+.empty-state-compact { min-height: 0; padding: 28px; }
+.empty-state-compact p { margin-bottom: 0; }
+
+/* A search the user's sources found nothing for, answered from every service. */
+.other-results { margin-top: 34px; }
+.other-results h2 {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
+  font-weight: 800;
+}
 
 .pagination {
   display: flex;
@@ -3864,7 +3947,9 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
     -webkit-mask-image: var(--hero-fade-bottom);
     mask-image: var(--hero-fade-bottom);
   }
-  .media-detail-close { top: 10px; height: 40px; padding: 0 14px 0 8px; }
+  .media-detail-topbar { top: 10px; right: 64px; height: 40px; gap: 6px; }
+  .media-detail-close { padding: 0 14px 0 8px; }
+  .media-detail-bar-title { padding: 0 14px; line-height: 40px; }
   .media-detail-sound { top: 10px; right: 12px; width: 40px; height: 40px; }
   .media-detail-layout { display: block; }
   .media-detail-head { min-height: 0; }

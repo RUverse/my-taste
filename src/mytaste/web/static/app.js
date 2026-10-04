@@ -127,6 +127,13 @@
       if (!event.isComposing) scheduleSearch();
     });
     searchInput.addEventListener("compositionend", scheduleSearch);
+    // Clearing the box works like deleting the text, without waiting for the typing pause.
+    searchForm.querySelector(".search-clear")?.addEventListener("click", () => {
+      searchInput.value = "";
+      searchInput.focus();
+      window.clearTimeout(searchTimer);
+      runSearch();
+    });
     searchForm.addEventListener("submit", () => {
       window.clearTimeout(searchTimer);
       rememberOrigin();
@@ -704,6 +711,33 @@
       }
     });
     input.addEventListener("blur", close);
+  });
+
+  // Every details view (titles, games, the game page) scrolls itself and repeats its title beside
+  // the back button once the heading has scrolled up under the bar.
+  document.querySelectorAll(".media-details").forEach((details) => {
+    const heading = details.querySelector("[data-detail-title]");
+    const barTitle = details.querySelector("[data-detail-bar-title]");
+    const bar = details.querySelector(".media-detail-topbar");
+    if (!heading || !barTitle || !bar) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const headingBottom = heading.getBoundingClientRect().bottom;
+      const scrolledPast = details.scrollTop > 0 && headingBottom <= bar.getBoundingClientRect().bottom;
+      details.classList.toggle("is-title-scrolled", scrolledPast);
+    };
+    const scheduleUpdate = () => {
+      frame ||= requestAnimationFrame(update);
+    };
+    const syncTitle = () => {
+      barTitle.textContent = heading.textContent.trim();
+      scheduleUpdate();
+    };
+    syncTitle();
+    new MutationObserver(syncTitle).observe(heading, { childList: true, characterData: true, subtree: true });
+    details.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
   });
 
   const detailDialog = document.querySelector("#media-details");
@@ -1808,9 +1842,17 @@
     providerTimer = undefined;
     const batch = Array.from(providerQueue);
     providerQueue.clear();
-    const keys = Array.from(new Set(batch.map((strip) => strip.dataset.providersKey)));
+    // Search results from other services list every service that carries them.
+    const keysFor = (scope) =>
+      Array.from(
+        new Set(
+          batch
+            .filter((strip) => (strip.dataset.providersScope || "providers") === scope)
+            .map((strip) => strip.dataset.providersKey),
+        ),
+      );
     try {
-      const params = new URLSearchParams({ items: keys.join(",") });
+      const params = new URLSearchParams({ items: keysFor("providers").join(","), any: keysFor("any").join(",") });
       const response = await fetch(`/api/items/providers?${params}`, {
         headers: { Accept: "application/json" },
       });
@@ -1819,7 +1861,7 @@
       }
       const payload = await response.json();
       batch.forEach((strip) => {
-        const providers = payload.providers?.[strip.dataset.providersKey];
+        const providers = payload[strip.dataset.providersScope || "providers"]?.[strip.dataset.providersKey];
         if (providers) {
           renderProviders(strip, providers);
           strip.dataset.loaded = "true";

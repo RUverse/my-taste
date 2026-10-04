@@ -4,7 +4,8 @@
 {% set saved_check %}<svg class="collection-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg>{% endset %}
 {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
 
-{% macro media_card(item, eager=false) %}
+{# Titles found ``elsewhere`` show every service that carries them, not just the user's. #}
+{% macro media_card(item, eager=false, elsewhere=false) %}
   {% set in_library = item.in_library or (item.media_type, item.id) in library_keys %}
   {% set on_services = item.id > 0 and preferences.configured %}
   {% set can_save = item.id > 0 and item.media_type in ('movie', 'tv') %}
@@ -54,7 +55,7 @@
           <span class="card-progress" title="{{ (play_state.progress * 100)|round|int }}% watched"><span style="width: {{ (play_state.progress * 100)|round(1) }}%"></span></span>
         {% endif %}
         {% if on_services or in_library %}
-          <span class="provider-strip"{% if on_services %} data-providers-key="{{ item.media_type }}:{{ item.id }}"{% endif %}{% if in_library %} title="In your local library"{% endif %}>
+          <span class="provider-strip"{% if on_services %} data-providers-key="{{ item.media_type }}:{{ item.id }}"{% if elsewhere %} data-providers-scope="any"{% endif %}{% endif %}{% if in_library %} title="In your local library"{% endif %}>
             {% if in_library %}<span class="source-local"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg></span>{% endif %}
           </span>
         {% endif %}
