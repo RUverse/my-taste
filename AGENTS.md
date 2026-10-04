@@ -108,3 +108,10 @@ node --check src/mytaste/web/static/player.js
 
 Run `uv build` when packaging, templates, or static assets change. For UI work, inspect the real
 page at desktop and mobile widths and emulate both light and dark OS themes.
+
+## Local instructions
+
+Host-specific instructions, when present, live in the untracked `AGENTS.local.md` and are loaded
+here:
+
+@AGENTS.local.md
