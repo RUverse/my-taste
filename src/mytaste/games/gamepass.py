@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import asyncio
 import logging
-import math
 from datetime import date
 from typing import Any
 
 import httpx
 
-from mytaste.games.models import Game, GameQuery, product_id, web_url
+from mytaste.games.http import StoreError, StoreHTTP
+from mytaste.games.models import Game, GameQuery, game_key, product_id, web_url
 
 logger = logging.getLogger(__name__)
 
@@ -33,46 +32,19 @@ _LISTS = {
 }
 
 
-class GamePassError(Exception):
+class GamePassError(StoreError):
     """The upstream catalog could not be read completely or reliably."""
 
 
 class GamePassClient:
     def __init__(self, *, timeout: float = 10, client: httpx.AsyncClient | None = None) -> None:
-        self.http = client or httpx.AsyncClient(
-            timeout=timeout, headers={"User-Agent": "MyTaste Game Pass catalog"}
-        )
-        self._owns_http = client is None
-        self._limit = asyncio.Semaphore(4)
+        self.http = StoreHTTP("Xbox's catalog", GamePassError, timeout=timeout, client=client)
 
     async def close(self) -> None:
-        if self._owns_http:
-            await self.http.aclose()
+        await self.http.close()
 
     async def _get(self, url: str, params: dict[str, str]) -> Any:
-        for attempt in range(3):
-            try:
-                async with self._limit:
-                    response = await self.http.get(url, params=params)
-                if (response.status_code == 429 or response.status_code >= 500) and attempt < 2:
-                    try:
-                        delay = float(response.headers.get("Retry-After", 0.5 * (attempt + 1)))
-                    except ValueError:
-                        delay = 1
-                    if not math.isfinite(delay) or delay > 5:
-                        raise GamePassError("Xbox is busy. Try again shortly.")
-                    await asyncio.sleep(max(0, delay))
-                    continue
-                response.raise_for_status()
-                return response.json()
-            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-                if isinstance(exc, httpx.TransportError) and attempt < 2:
-                    await asyncio.sleep(0.5 * (attempt + 1))
-                    continue
-                raise GamePassError("Xbox's catalog is unavailable. Please try again.") from exc
-            except ValueError as exc:
-                raise GamePassError("Xbox returned an unreadable catalog response.") from exc
-        raise GamePassError("Xbox's catalog is unavailable.")
+        return await self.http.json("GET", url, params=params)
 
     async def ids(self, query: GameQuery, region: str, language: str, collection: str) -> list[str]:
         pc = query.platform == "pc"
@@ -171,8 +143,10 @@ def normalize_game(data: dict[str, Any]) -> Game | None:
             release = ""  # Microsoft uses distant dates for unannounced releases.
     except ValueError:
         release = ""
+    key = product_id(data["ProductId"])
     return Game(
-        id=product_id(data["ProductId"]),
+        id=game_key(xbox=key),
+        xbox_id=key,
         title=title.strip(),
         overview=str(
             localized.get("ProductDescription") or localized.get("ShortDescription") or ""

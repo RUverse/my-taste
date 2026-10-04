@@ -160,6 +160,10 @@ documentation when import ships. Stage and validate blobs before the database tr
 commit collection changes together, and clean up unreferenced staged files after failure.
 Imported attachments are not automatically registered as local playback libraries.
 
+Milestone 1 started with Steam support: saved movies, series, and games now share
+`saved_items` and ordered `collection_entries`. Preservation fields for imported JSON are
+still to come.
+
 ## Implementation milestones and verification
 
 1. Add portable identities, generic saved-item/entry persistence, preservation fields, and an

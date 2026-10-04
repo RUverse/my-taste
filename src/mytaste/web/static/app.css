@@ -500,6 +500,7 @@ body[data-card-size="compact"] .card-save.is-saved { width: auto; min-width: 24p
 body[data-card-size="compact"] .card-save svg { width: 14px; height: 14px; }
 body[data-card-size="compact"] .card-save .saved-icons svg { width: 13px; height: 13px; }
 
+
 @media (hover: hover) {
   .card-save:not(.is-saved, [aria-expanded="true"]) { opacity: 0; }
   .media-card:hover .card-save,
@@ -4035,3 +4036,79 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .game-settings form { margin-top: 24px; }
 .game-screenshots { display: flex; overflow-x: auto; gap: 12px; margin-top: 24px; padding-bottom: 12px; }
 .game-screenshots img { width: min(360px, 85%); flex: none; object-fit: contain; border-radius: 8px; }
+
+/* Game stores. The Steam and Xbox marks are filled glyphs on their brand colours. */
+.steam-logo,
+.gamepass-logo { fill: currentColor; stroke: none; }
+
+.poster .provider-strip svg.steam-logo { fill: currentColor; stroke: none; }
+
+.game-source-logo,
+.source-logo-steam,
+.source-logo-gamepass,
+.source-choice-icon-steam,
+.game-store-logo { color: #fff; }
+
+.game-source-steam,
+.source-logo-steam,
+.source-choice-icon-steam,
+.game-store-logo:has(.steam-logo) { background: #171d25; }
+
+.game-source-gamepass,
+.source-logo-gamepass,
+.game-store-logo:has(.gamepass-logo) { --badge-background: #107c10; background: #107c10; }
+
+.source-row-logo.game-source-logo svg,
+.source-logo-steam svg,
+.source-logo-gamepass svg,
+.source-choice-icon-steam svg { fill: currentColor; stroke: none; }
+
+.source-row-logo.game-source-logo svg { width: 16px; height: 16px; }
+.game-source-copy { display: grid; min-width: 0; margin-right: auto; }
+.game-source-list .source-row-detail {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-store-logo svg { width: 16px; height: 16px; }
+
+.meta-rating-logo {
+  width: 0.9em;
+  height: 0.9em;
+  margin-right: 1px;
+  vertical-align: -0.1em;
+  fill: currentColor;
+}
+
+.media-detail-access {
+  display: flex;
+  margin: 8px 0 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--detail-strong);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.media-detail-access:empty { display: none; }
+
+.media-detail-access span {
+  padding: 3px 9px;
+  background: var(--detail-pill-background);
+  border: 1px solid var(--detail-pill-border);
+  border-radius: 999px;
+}
+
+.source-note { margin-top: 4px; color: var(--muted); font-size: 0.74rem; line-height: 1.4; }
+
+.steam-connect { display: grid; gap: 16px; justify-items: start; }
+.steam-connect .add-lede { margin: 0; }
+.steam-signin { display: inline-block; border-radius: 4px; }
+.steam-signin img { display: block; }
+.steam-signin:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.steam-profile-form { display: grid; width: 100%; gap: 6px; font-size: 0.84rem; font-weight: 650; }
+.steam-profile-row { display: flex; gap: 8px; }
+.steam-profile-row input { flex: 1; min-width: 0; }

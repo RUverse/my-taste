@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from mytaste.collections.models import (
     smart_collection,
 )
 from mytaste.collections.service import CollectionService
+from mytaste.games.models import Game
 from mytaste.storage.collections import CollectionRepository
 
 
@@ -142,7 +144,7 @@ def test_titles_are_saved_once_and_removed_with_their_collection(tmp_path: Path)
     assert repository.memberships("movie", 1) == {favourites.id}
     assert repository.saved_memberships() == {("movie", 1): {favourites.id}}
     with sqlite3.connect(tmp_path / "mytaste.db") as connection:
-        count = connection.execute("SELECT COUNT(*) FROM collection_items").fetchone()[0]
+        count = connection.execute("SELECT COUNT(*) FROM collection_entries").fetchone()[0]
     assert count == 1, "deleting a collection deletes its titles"
 
 
@@ -391,3 +393,153 @@ def test_smart_collections_resolve_genres_per_media_type() -> None:
     assert smart_collection("popular").supports("tv") is True  # type: ignore[union-attr]
     assert len({c.slug for c in SMART_COLLECTIONS}) == len(SMART_COLLECTIONS)
     assert not any(c.slug.isdigit() for c in SMART_COLLECTIONS), "digits are user collections"
+
+
+# Games in collections ------------------------------------------------------------------------
+
+
+def _game(key: str, title: str, **values: object) -> Game:
+    store, value = key.split("-", 1)
+    ids = {"steam_appid": int(value)} if store == "steam" else {"xbox_id": value}
+    return Game(key, title, **ids, **values)  # type: ignore[arg-type]
+
+
+XBOX = "9NPDN9R45JX4"
+
+
+def test_games_are_saved_beside_titles_and_found_by_either_store(tmp_path: Path) -> None:
+    repository = make_repository(tmp_path)
+    watchlist, favourites = repository.list()
+    service = CollectionService(repository, FakeCatalog(), FakeLibrary())
+    saved_first = _game(f"xbox-{XBOX}", "Starfield", owned=True, playtime=60)
+    assert service.add_game(watchlist.id, saved_first) is True
+    assert service.add_game(watchlist.id, saved_first) is False
+    # Matched with Steam later, the game keeps its saved identity and learns its Steam ID.
+    matched = replace(_game("steam-1716740", "Starfield"), xbox_id=XBOX)
+    assert service.add_game(favourites.id, matched) is True
+    assert repository.game_memberships("steam-1716740") == {watchlist.id, favourites.id}
+    assert repository.game_memberships(f"xbox-{XBOX}") == {watchlist.id, favourites.id}
+    (game,) = repository.games(watchlist.id)
+    assert game.game.id == "steam-1716740" and game.game.xbox_id == XBOX
+    assert not game.game.owned and not game.game.playtime  # Access is not saved.
+    with sqlite3.connect(tmp_path / "mytaste.db") as connection:
+        portable = connection.execute("SELECT portable_id FROM saved_items").fetchone()[0]
+    assert portable == f"game-xbox-{XBOX}"
+    icons = service.saved_game_icons()
+    assert icons["steam-1716740"] == icons[f"xbox-{XBOX}"] == ("bookmark", "heart")
+    # Two listings saved separately before they were matched stay two saved games.
+    assert service.add_game(watchlist.id, _game("steam-1", "Other")) is True
+    assert not service.add_game(watchlist.id, replace(_game("steam-1", "Other"), xbox_id=XBOX))
+    assert repository.game_memberships("steam-1") == {watchlist.id}
+    assert repository.game_memberships(f"xbox-{XBOX}") == {watchlist.id, favourites.id}
+    assert service.remove_game(watchlist.id, f"xbox-{XBOX}") is True
+    assert repository.game_memberships(f"xbox-{XBOX}") == {favourites.id}
+    with pytest.raises(LookupError):
+        service.add_game(999, saved_first)
+    repository.add_item(watchlist.id, item("movie", 1, "Zodiac"))
+    assert repository.get(watchlist.id).item_count == 2  # One title and one game.
+
+
+def test_collection_pages_mix_saved_games_with_titles(tmp_path: Path) -> None:
+    service, _catalog, watchlist = make_service(tmp_path)
+    repository = service.repository
+    repository.add_game(
+        watchlist, _game("steam-10", "Alpha", release_date="2024-01-01"), "2026-10-06"
+    )
+    repository.add_game(watchlist, _game("steam-20", "Not mine"), "2026-09-30")
+    collection = service.get(watchlist)
+    assert collection is not None
+
+    async def access(games: list[Game]) -> tuple[list[Game], bool]:
+        return [replace(game, owned=game.steam_appid == 10) for game in games], True
+
+    def page(**query: object):
+        return asyncio.run(
+            service.browse(
+                collection,
+                BrowseQuery(**{"provider_ids": (8, 337), "library_ids": (1, 2), **query}),  # type: ignore[arg-type]
+                region="DE",
+                provider_ids=(8, 337),
+                library_ids=(1, 2),
+                page_size=20,
+                game_access=access,
+            )
+        )
+
+    result = page()
+    titles = [entry.title for entry in result.page.items]
+    assert titles[0] == "Alpha", "the game was added last"
+    assert "Not mine" not in titles, "games nobody can play are left out, like titles"
+    assert (result.available, result.total) == (6, 8)
+    assert result.page.items[0].game.owned
+    assert [entry.title for entry in page(sort="release").page.items][:2] == ["Alpha", "Series"]
+    assert all(entry.media_type != "game" for entry in page(media_type="movie").page.items)
+    narrowed = page(provider_ids=(8,))
+    assert all(entry.media_type != "game" for entry in narrowed.page.items)
+
+    async def unknown(games: list[Game]) -> tuple[list[Game], bool]:
+        return games, False
+
+    everything = asyncio.run(
+        service.browse(
+            collection,
+            BrowseQuery(provider_ids=(8, 337), library_ids=(1, 2)),
+            region="DE",
+            provider_ids=(8, 337),
+            library_ids=(1, 2),
+            page_size=20,
+            game_access=unknown,
+        )
+    )
+    shown = {entry.title for entry in everything.page.items}
+    assert {"Alpha", "Not mine"} <= shown, "without a game service every saved game shows"
+
+
+def test_saved_titles_move_to_shared_items_in_their_order(tmp_path: Path) -> None:
+    path = tmp_path / "mytaste.db"
+    with sqlite3.connect(path) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE collections (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '', icon TEXT NOT NULL DEFAULT '',
+                default_sort TEXT NOT NULL DEFAULT 'added', position INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL);
+            CREATE TABLE collection_items (collection_id INTEGER NOT NULL
+                REFERENCES collections(id) ON DELETE CASCADE,
+                media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv')),
+                tmdb_id INTEGER NOT NULL CHECK (tmdb_id > 0), added_at TEXT NOT NULL,
+                title TEXT NOT NULL, release_date TEXT NOT NULL DEFAULT '',
+                overview TEXT NOT NULL DEFAULT '', rating REAL NOT NULL DEFAULT 0,
+                popularity REAL NOT NULL DEFAULT 0, poster_path TEXT,
+                genre_ids TEXT NOT NULL DEFAULT ',', genres TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY (collection_id, media_type, tmdb_id));
+            INSERT INTO collections VALUES (7, 'Mine', '', '', 'added', 0, 'then');
+            INSERT INTO collections VALUES (8, 'Other', '', '', 'added', 1, 'then');
+            INSERT INTO collection_items (collection_id, media_type, tmdb_id, added_at, title)
+                VALUES (7, 'movie', 1, '2026-01-02', 'Old title'),
+                       (7, 'tv', 1, '2026-01-01', 'Series'),
+                       (7, 'movie', 2, '2026-01-02', 'Same time, later row'),
+                       (8, 'movie', 1, '2026-02-01', 'New title');
+            """
+        )
+    repository = CollectionRepository(path)
+    repository.initialize()
+    assert [(entry.media_type, entry.title) for entry in repository.items(7)] == [
+        ("tv", "Series"),
+        ("movie", "New title"),
+        ("movie", "Same time, later row"),
+    ], "order and dates are kept; a title shares its newest snapshot"
+    assert [entry.added_at for entry in repository.items(7)] == [
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-02",
+    ]
+    assert repository.memberships("movie", 1) == {7, 8}
+    assert [c.name for c in repository.list()] == ["Mine", "Other"], "no default lists"
+    repository.add_item(7, item("movie", 3, "Added after"))
+    repository.initialize()  # Later starts copy nothing again.
+    assert [entry.title for entry in repository.items(7)][-1] == "Added after"
+    assert len(repository.items(7)) == 4
+    with sqlite3.connect(path) as connection:
+        kept = connection.execute("SELECT COUNT(*) FROM collection_items").fetchone()[0]
+    assert kept == 4, "the old table is left as it was"

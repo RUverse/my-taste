@@ -11,6 +11,7 @@ from mytaste.catalog.models import (
     MediaType,
     SortKey,
 )
+from mytaste.games.models import Game
 
 HOME_COLLECTION = "popular"
 
@@ -214,3 +215,48 @@ class CollectionItem:
             genres=self.genres[:2],
             popularity=self.popularity,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class SavedGame:
+    """A game in a user collection, with the snapshot taken when it was last saved."""
+
+    game: Game
+    added_at: str
+    sequence: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class GameEntry:
+    """A saved game on a collection page, shaped like a ``CatalogItem`` so it sorts and groups
+    among movies and series. ``id`` 0 marks it as no TMDB title, so TMDB lookups skip it."""
+
+    game: Game
+    added_at: str = ""
+    sequence: int = 0
+    id: int = 0
+    media_type: str = "game"
+    popularity: float = 0.0
+    in_library: bool = False
+    local_file_id: None = None
+    library_summary: str = ""
+
+    @property
+    def title(self) -> str:
+        return self.game.title
+
+    @property
+    def release_date(self) -> str:
+        return self.game.release_date
+
+    @property
+    def rating(self) -> float:
+        return self.game.score or 0.0
+
+    @property
+    def genres(self) -> tuple[str, ...]:
+        return self.game.genres
+
+    @property
+    def year(self) -> str:
+        return self.game.year

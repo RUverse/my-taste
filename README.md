@@ -8,10 +8,11 @@ matching releases in a clean poster grid.
 
 - Region-aware subscription choices such as Netflix, Prime Video, and Apple TV+
 - Unified All, Movies, and Series browsing
-- Xbox Game Pass games by country, plan, and PC/console/cloud, with search, genre filters,
-  Store ratings, and game details
+- Games from Steam and Xbox Game Pass in one catalog: a game sold in both stores is one card
+  with both services, your Steam library (signed in through Steam) and Game Pass plan are marked
+  on every cover, and the whole Steam store stays browsable
 - Collections: predefined views such as Popular, Latest, and genres, plus your own lists, starting
-  with an empty Watchlist and My favourites
+  with an empty Watchlist and My favourites, which can mix movies, series, and games
 - Sort any collection by popularity, release date, rating, or title (and date added for your own
   lists and local folders)
 - Title search restricted to the configured streaming subscriptions and local folders
@@ -83,6 +84,9 @@ network.
 | `MYTASTE_FFMPEG` / `MYTASTE_FFPROBE` | `ffmpeg` / `ffprobe` | Programs used for playback |
 | `MYTASTE_MAX_TRANSCODES` | `1` | Conversions that may run at once; `0` turns conversion off |
 | `MYTASTE_HWACCEL` | `auto` | Hardware video decoding for conversions: `auto`, `drm`, or `none` |
+| `MYTASTE_STEAM_API_KEY` | unset | Steam Web API key, needed to list owned Steam games |
+| `MYTASTE_STEAM_ENABLED` | `true` | `false` hides Steam and keeps Games to Game Pass |
+| `MYTASTE_GAMEPASS_CACHE_ENABLED` | `false` | Keep game store data between requests (see [deployment](docs/deployment.md#game-pass-caching)) |
 
 ## Collections
 
@@ -138,43 +142,51 @@ search results, and people's credits are checked against the same facts, which M
 from TMDB once per title and keeps in its database; titles in your libraries are read ahead of
 time. Runtime uses episode length for series, and series without one on TMDB do not match.
 
-## Xbox Game Pass
+## Games
 
-Open **Games**, then **Plan and country** to select Ultimate, Premium, Essential, or PC Game
-Pass and your platform. Games works without movie subscriptions; the country is shared with
-movie/TV browsing. Plan selection is manual and needs no Xbox login. The existing app still
-requires its TMDB token.
+**Games** combines Steam and Xbox Game Pass. A game sold in both stores is listed once, with
+Steam's details and both stores' services; its details open **Open in Steam** with Xbox beside
+it. Covers show the Game Pass logo when your plan includes the game and the Steam logo when it is
+in your Steam library, with the hours you played below the title.
 
-Games uses the same sidebar, collection bar, header search, and Appearance controls as movies
-and series. Browse All games, Popular, Recently added, Coming soon, and Leaving soon. The sidebar
-selects the plan, platform, genre, and sort direction; search and sorting apply across the whole
-selected collection before pagination. Store ratings are
-out of five; release dates refer to the Store product/edition. **Open in Xbox** opens the
-product on Microsoft's site. Trials, demos, add-ons, and free games with subscriber benefits are omitted when identified
-in Store metadata.
+- **Game Pass:** open **Plan and country** to choose Ultimate, Premium, Essential, or PC Game Pass
+  and your platform. Plan selection is manual and needs no Xbox login; the country is shared
+  with movies and series.
+- **Steam:** on the **Services** page, add **Steam** and use **Sign in through Steam**, or paste
+  your profile link. MyTaste learns only your public Steam ID. Listing owned games needs the
+  server's Steam Web API key (`MYTASTE_STEAM_API_KEY`) and your profile's Game details set to
+  Public; Steam's store can be browsed without either.
 
-Game details use the same full-screen layout as movie details, with the cover, artwork backdrop,
-genre chips, and main action in the same places. Developer/publisher and Store scores replace
-movie-specific metadata. Use the neighboring covers or arrow keys to browse games, and the
-back control or Escape to return to the collection. Direct game links use that layout as well.
+Collections:
 
-Game covers show the Xbox logo for Game Pass in the bottom-left service position. The bottom-right
-type badge uses a monitor for Windows PC, a joystick for console, and a cloud for Cloud games.
-Hover for the badge names; the sidebar's Appearance controls hide Type and Sources independently.
+| Group | Collections | Order |
+| --- | --- | --- |
+| All games | The whole Steam store with Game Pass, including games only on Xbox | Newest release or title |
+| Yours | My games (Game Pass and your Steam library), Recently played, Most played | Last played, time played, title, release, or rating |
+| Steam | Most played, Top sellers, New and trending, Top rated, Coming soon | Steam's ranking |
+| Game Pass | Popular, Recently added, Coming soon, Leaving soon | Microsoft's order, or any sort |
 
-Game Pass caching is **disabled by default**; browsing stays available and each request fetches
-live catalog data. The Games tab and controls appear immediately; live results load into the
-grid afterward. Full metadata hydration can involve dozens of requests for a large catalog.
-Without JavaScript, Games automatically opens a fully rendered page instead.
-For deployment, enable the optional persistent cache with
-`MYTASTE_GAMEPASS_CACHE_ENABLED=true`; see [cache configuration](docs/deployment.md#game-pass-caching).
-Microsoft's public website feeds are isolated behind an adapter because they have no confirmed
-supported third-party API contract. An outage shows a Games error without affecting other categories.
+Steam's rankings cannot place games that are only on Xbox, so those appear in All games, the
+Game Pass collections, and My games. The sidebar's **Services** toggles Game Pass and Steam for
+All games and My games. One genre list serves both stores: Steam games get their genres from
+their store tags, so a genre filter gives the same answer for a game in every collection. Steam
+reviews show as a percentage and Microsoft Store ratings out of five.
 
-Game saving and `.taste` import/export are planned follow-ups. Stable collection IDs and
-provider snapshot adapters prepare for the draft's mixed-media model; see the
-[implementation plan](docs/game-pass-implementation.md) and
-[portable collections design](docs/taste-collections.md).
+A game on both stores is matched by its Steam and Microsoft Store IDs through
+[IsThereAnyDeal](https://isthereanydeal.com/), then [Wikidata](https://www.wikidata.org/), then by
+the same title and release year. Matches are kept for a week. If two listings are not the same
+game, **Not the same game?** in its details shows them separately for good.
+
+Games can be saved to your collections with the **+** on a cover or **Save** in its details,
+next to movies and series. A saved game keeps its details even if it leaves Game Pass; like
+titles, a collection lists the games you can play once you have set up Game Pass or Steam.
+
+Game Pass caching is **disabled by default**; it also keeps Steam's game details when enabled.
+See [cache configuration](docs/deployment.md#game-pass-caching) and [Steam](docs/deployment.md#steam).
+Microsoft's and Steam's store feeds are isolated behind adapters; an outage shows a Games error
+without affecting other categories. The design is in the
+[Game Pass](docs/game-pass-implementation.md) and [Steam](docs/steam-implementation.md) plans and
+the [portable collections design](docs/taste-collections.md).
 
 ## Storage libraries
 
@@ -261,5 +273,7 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 Movie, TV, and image metadata is supplied by [TMDB](https://www.themoviedb.org/). Streaming
 availability is powered by [JustWatch](https://www.justwatch.com/).
 
-Game metadata and availability is supplied by [Xbox and Microsoft Store](https://www.xbox.com/xbox-game-pass/games).
-MyTaste is not affiliated with Microsoft.
+Game metadata and availability is supplied by [Xbox and Microsoft Store](https://www.xbox.com/xbox-game-pass/games)
+and [Steam](https://store.steampowered.com/). [IsThereAnyDeal](https://isthereanydeal.com/) and
+[Wikidata](https://www.wikidata.org/) help match games sold in both stores. MyTaste is not
+affiliated with Microsoft or Valve.

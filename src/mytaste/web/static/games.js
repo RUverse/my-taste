@@ -63,6 +63,24 @@
   const poster = dialog.querySelector("[data-detail-poster]");
   const backdrop = dialog.querySelector("[data-detail-backdrop]");
   const store = dialog.querySelector("[data-game-store]");
+  const storeLabel = dialog.querySelector("[data-game-store-label]");
+  const storeLogo = dialog.querySelector("[data-game-store-logo]");
+  const alternative = dialog.querySelector("[data-game-alternative]");
+  const access = dialog.querySelector("[data-game-access]");
+  const unlink = dialog.querySelector("[data-game-unlink]");
+  const xboxLogo = alternative?.querySelector("svg")?.cloneNode(true);
+  const steamLogoMarkup = dialog.querySelector("template[data-steam-logo]")?.innerHTML || "";
+  const saveButton = dialog.querySelector("[data-detail-save]");
+  const saveMenu = saveButton && window.MyTaste?.createSaveMenu(dialog.querySelector("#game-save-popover"), {
+    onRender: (collections) => {
+      const saved = collections.filter((collection) => collection.saved);
+      saveButton.classList.toggle("is-saved", saved.length > 0);
+      window.MyTaste.renderSavedIcons(saveButton.querySelector("[data-saved-icons]"), collections);
+      saveButton.querySelector("[data-detail-save-label]").textContent = saved.length ? "Saved" : "Save";
+      saveButton.setAttribute("aria-label", saved.length ? `Saved in ${saved.map((collection) => collection.name).join(", ")}` : "Save to a collection");
+    },
+    beforeNew: () => window.MyTaste.closePopover(saveButton),
+  });
   const playGroup = dialog.querySelector("[data-play-group]");
   const genres = dialog.querySelector("[data-detail-genres]");
   const kind = dialog.querySelector("[data-detail-kind]");
@@ -130,8 +148,14 @@
     title.textContent = card.querySelector("h2").textContent;
     poster.replaceChildren(coverFrom(card));
     kind.textContent = [card.querySelector(".meta-year")?.textContent.replace("—", "").trim(), "Game"].filter(Boolean).join(" · ");
-    rating.textContent = card.querySelector(".meta-rating") ? `Store ${card.querySelector(".meta-rating").textContent.trim()}` : "";
+    rating.textContent = card.querySelector(".meta-rating")?.getAttribute("aria-label") || "";
     rating.removeAttribute("aria-label");
+    access.replaceChildren();
+    unlink.hidden = true;
+    if (saveMenu) {
+      window.MyTaste.closePopover(saveButton);
+      saveMenu.load(`game/${link.dataset.gameOpen}`);
+    }
     renderGenres((card.querySelector(".meta-genres")?.textContent || "").split("·"));
     setDeveloper(card.querySelector(".meta-people")?.textContent || "");
     status.textContent = "Loading details…";
@@ -143,6 +167,8 @@
     backdrop.classList.remove("has-image");
     playGroup.hidden = true;
     store.removeAttribute("href");
+    alternative.hidden = true;
+    alternative.removeAttribute("href");
     shots.replaceChildren();
     dialog.querySelector("[data-detail-content]").hidden = false;
     renderNeighbors();
@@ -158,9 +184,22 @@
       if (!response.ok) throw new Error(game.error || "Game details are unavailable.");
       if (current !== revision || !dialog.open) return;
       title.textContent = game.title;
-      kind.textContent = [game.release_date?.slice(0, 4), "Game"].filter(Boolean).join(" · ");
-      rating.textContent = game.rating !== null ? `Store ${Number(game.rating).toFixed(1)}/5 ★` : "";
-      rating.setAttribute("aria-label", game.rating !== null ? `Microsoft Store rating ${game.rating} out of 5` : "No Store rating");
+      kind.textContent = [game.coming_soon || game.release_date?.slice(0, 4), "Game"].filter(Boolean).join(" · ");
+      const scores = [];
+      if (game.steam_score !== null) scores.push(`Steam ${game.steam_score}% positive${game.steam_review_label ? ` · ${game.steam_review_label}` : ""}`);
+      if (game.rating !== null) scores.push(`Store ${Number(game.rating).toFixed(1)}/5 ★`);
+      rating.textContent = scores.join(" · ");
+      rating.setAttribute("aria-label", scores.length ? scores.join(", ").replace("/5 ★", " out of 5 stars") : "No ratings");
+      const owned = [];
+      if (game.game_pass) owned.push("In your Game Pass");
+      if (game.owned) owned.push(`In your Steam library${game.hours_played ? ` · ${game.hours_played} played` : ""}`);
+      access.replaceChildren(...owned.map((text) => {
+        const item = document.createElement("span");
+        item.textContent = text;
+        return item;
+      }));
+      unlink.hidden = !(game.steam_appid && game.xbox_id);
+      unlink.dataset.gameKey = game.id;
       renderGenres(game.genres || []);
       setDeveloper((game.developers || []).join(", "));
       publisher.textContent = game.publisher ? `Published by ${game.publisher}` : "";
@@ -179,10 +218,17 @@
         };
         backdrop.src = httpsURL(background);
       }
-      if (httpsURL(game.store_url)) {
-        store.href = httpsURL(game.store_url);
+      const steamURL = httpsURL(game.steam_url);
+      const xboxURL = httpsURL(game.xbox_url);
+      if (steamURL || xboxURL) {
+        store.href = steamURL || xboxURL;
+        storeLabel.textContent = steamURL ? "Open in Steam" : "Open in Xbox";
+        if (steamURL) storeLogo.innerHTML = steamLogoMarkup;
+        else if (xboxLogo) storeLogo.replaceChildren(xboxLogo.cloneNode(true));
         playGroup.hidden = false;
       }
+      alternative.hidden = !(steamURL && xboxURL);
+      if (steamURL && xboxURL) alternative.href = xboxURL;
       (game.screenshots || []).forEach((url, index) => {
         if (!httpsURL(url)) return;
         const image = document.createElement("img");
@@ -232,6 +278,17 @@
     dialog.classList.remove("is-visible");
     window.setTimeout(() => dialog.close(), window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 340);
   };
+  unlink?.addEventListener("click", async () => {
+    unlink.disabled = true;
+    try {
+      const response = await fetch(`/api/games/${encodeURIComponent(unlink.dataset.gameKey)}/unlink`, { method: "POST" });
+      if (!response.ok) throw new Error();
+      window.location.reload();
+    } catch {
+      status.textContent = "The games could not be separated. Try again.";
+      unlink.disabled = false;
+    }
+  });
   dialog.querySelector("[data-game-close]").addEventListener("click", closeGame);
   dialog.addEventListener("cancel", (event) => { event.preventDefault(); closeGame(); });
   dialog.addEventListener("close", () => {
@@ -242,5 +299,6 @@
     dialog.classList.remove("is-visible", "is-closing");
     document.body.classList.remove("media-details-open");
     origin?.focus();
+    window.MyTaste?.reloadIfCollectionChanged();
   });
 })();

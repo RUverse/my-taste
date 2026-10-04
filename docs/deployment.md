@@ -99,7 +99,8 @@ Microsoft requests. SQLite is stored at `MYTASTE_CACHE_DIR/gamepass/catalog.sqli
 `$XDG_CACHE_HOME/mytaste/gamepass/catalog.sqlite3` (normally `~/.cache/mytaste/...`). The Docker
 image uses `/data/cache`, already on the `mytaste-data` volume. Use writable persistent storage
 for cache reuse across restarts. Metadata and membership keys separate regions and languages;
-membership also separates plans, platforms, and collections. The cache holds at most 4,096 entries.
+membership also separates plans, platforms, and collections. The cache holds at most 16,384
+entries, including Steam's details of owned games and of Game Pass games sold on Steam.
 
 Fresh data is reused for its TTL. Expired data within the additional stale TTL is returned with
 an earlier-catalog notice while a background task refreshes it. Failed refreshes retain the
@@ -122,6 +123,43 @@ shared saved-item and import/export migration.
 Outbound HTTPS goes to `catalog.gamepass.com` and `displaycatalog.mp.microsoft.com`; covers and
 screenshots use Microsoft's image CDN URLs in browsers. Browsing needs no Xbox account or extra
 API key. Microsoft can change its website feeds; catalog errors affect Games rather than health.
+
+## Steam
+
+Steam's store is browsable without configuration. To list owned games, set a
+[Steam Web API key](https://steamcommunity.com/dev/apikey) in the service environment:
+
+```bash
+MYTASTE_STEAM_API_KEY=your-key
+```
+
+The key belongs to the person running the server (Steam issues keys only to accounts that have
+spent at least $5) and reads the owned games of any public profile, so people using the
+instance only connect their profile. It stays on the server: it is never stored in the
+database, shown in the UI, or sent to browsers. `MYTASTE_STEAM_ENABLED=false` turns Steam off.
+
+**Sign in through Steam** uses Steam's OpenID: the browser goes to Steam and back to
+`/games/steam/callback`, and the server confirms the reply with Steam before saving the account's
+ID. Steam only redirects the browser, so the server needs no public address; it must build its
+callback from the address the browser used. Uvicorn trusts `X-Forwarded-Proto` from
+`127.0.0.1`, which covers Tailscale Serve and proxies on the same host. Behind a proxy on
+another address, set `FORWARDED_ALLOW_IPS` to it (for Docker, the proxy's container network).
+
+The connected account and its owned-games list (refreshed every six hours, or from
+**Services › Refresh**) are kept in the application database, as are the Steam ↔ Xbox matches
+(`game_links`, rechecked weekly). With the Game Pass cache enabled, Steam's game details share it.
+
+Outbound HTTPS goes to `api.steampowered.com`, `steamcommunity.com` (sign-in and profile
+names), `api.isthereanydeal.com`, and `query.wikidata.org`; covers and screenshots load from
+Steam's image CDN in browsers. A Steam outage affects Games only.
+
+### Saved games and the database
+
+The first start of a version with Steam moves saved movies and series into shared saved items
+and ordered collection entries, which can also hold games. The move runs once, in one
+transaction, and keeps every collection's order and dates. The previous `collection_items`
+table is left as it was and is no longer used. Back up the database before upgrading, as before
+any release.
 
 ## Network exposure
 

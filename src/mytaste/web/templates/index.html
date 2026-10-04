@@ -525,67 +525,12 @@
         {% endblock %}
         {% block browse_dialogs scoped %}
     {% include "_media_details.html" %}
+    {% if has_games %}{% with game_details=true %}{% include "_media_details.html" %}{% endwith %}{% endif %}
 
-    <div class="popover save-popover card-save-popover" id="card-save-popover" hidden>
-      <p class="popover-title" id="card-save-popover-title">Save to</p>
-      <div class="save-list" role="group" aria-labelledby="card-save-popover-title" data-save-list></div>
-      <p class="form-error" data-save-error role="alert" hidden></p>
-      <button class="popover-separated" type="button" data-save-new aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
-    </div>
-    {# Save menus are built in the browser and copy each collection's icon from here. #}
-    <template id="collection-icon-set">
-      {% for name in collection_icons %}<span data-icon="{{ name }}">{{ collection_icon(name) }}</span>{% endfor %}
-    </template>
-
-    <dialog class="collection-editor" id="collection-editor" aria-labelledby="collection-editor-title">
-      <form class="collection-editor-form" data-collection-form novalidate>
-        <header class="collection-editor-head">
-          <h2 id="collection-editor-title" data-editor-title>New collection</h2>
-          <button class="icon-button" type="button" data-editor-close aria-label="Close">
-            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></svg>
-          </button>
-        </header>
-        <div class="collection-editor-body">
-          <div class="editor-field">
-            <label for="collection-name">Name</label>
-            <input id="collection-name" name="name" type="text" maxlength="60" autocomplete="off" required>
-          </div>
-          <fieldset class="editor-field icon-picker">
-            <legend>Icon <span class="field-optional">Optional</span></legend>
-            <label title="No icon">
-              <input type="radio" name="icon" value="" checked>
-              <span><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 18 12-12"></path></svg><span class="sr-only">No icon</span></span>
-            </label>
-            {% for name in collection_icons %}
-              <label title="{{ name|capitalize }}">
-                <input type="radio" name="icon" value="{{ name }}">
-                <span>{{ collection_icon(name) }}<span class="sr-only">{{ name|capitalize }}</span></span>
-              </label>
-            {% endfor %}
-          </fieldset>
-          <div class="editor-field">
-            <label for="collection-description">Description <span class="field-optional">Optional</span></label>
-            <textarea id="collection-description" name="description" maxlength="200" rows="2"></textarea>
-          </div>
-          <div class="editor-field">
-            <label for="collection-sort">Show titles by</label>
-            <select id="collection-sort" name="default_sort">
-              {% for value, label in collection_sort_options %}
-                <option value="{{ value }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <p class="form-error" data-editor-error role="alert" hidden></p>
-        </div>
-        <footer class="collection-editor-foot">
-          <button class="button button-danger" type="button" data-editor-delete hidden>Delete</button>
-          <button class="button button-secondary" type="button" data-editor-close>Cancel</button>
-          <button class="button button-primary" type="submit" data-editor-submit>Create</button>
-        </footer>
-      </form>
-    </dialog>
+    {% include "_collection_dialogs.html" %}
         {% endblock %}
       </main>
     </div>
   </div>
 {% endblock %}
+{% block scripts %}{% if has_games %}<script src="{{ request.url_for('static', path='games.js') }}?v={{ asset_version }}" defer></script>{% endif %}{% endblock %}

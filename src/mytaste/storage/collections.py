@@ -5,12 +5,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from mytaste.catalog.models import SORT_KEYS, MediaType
-from mytaste.collections.models import ICONS, Collection, CollectionItem
+from mytaste.collections.models import ICONS, Collection, CollectionItem, SavedGame
+from mytaste.games.models import Game, game_key, parse_game_key
 
 _MAX_NAME_LENGTH = 60
 _MAX_DESCRIPTION_LENGTH = 200
@@ -34,9 +36,10 @@ class CollectionRepository:
     def initialize(self) -> None:
         self.database_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with self._connect() as connection:
-            existed = connection.execute(
-                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collections'"
-            ).fetchone()
+            tables = {
+                str(row[0])
+                for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            }
             connection.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS collections (
@@ -48,24 +51,6 @@ class CollectionRepository:
                     position INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
-                CREATE TABLE IF NOT EXISTS collection_items (
-                    collection_id INTEGER NOT NULL
-                        REFERENCES collections(id) ON DELETE CASCADE,
-                    media_type TEXT NOT NULL CHECK (media_type IN ('movie', 'tv')),
-                    tmdb_id INTEGER NOT NULL CHECK (tmdb_id > 0),
-                    added_at TEXT NOT NULL,
-                    title TEXT NOT NULL,
-                    release_date TEXT NOT NULL DEFAULT '',
-                    overview TEXT NOT NULL DEFAULT '',
-                    rating REAL NOT NULL DEFAULT 0,
-                    popularity REAL NOT NULL DEFAULT 0,
-                    poster_path TEXT,
-                    genre_ids TEXT NOT NULL DEFAULT ',',
-                    genres TEXT NOT NULL DEFAULT '[]',
-                    PRIMARY KEY (collection_id, media_type, tmdb_id)
-                );
-                CREATE INDEX IF NOT EXISTS collection_items_title
-                    ON collection_items (media_type, tmdb_id);
                 CREATE TABLE IF NOT EXISTS title_availability (
                     region TEXT NOT NULL,
                     media_type TEXT NOT NULL,
@@ -76,7 +61,9 @@ class CollectionRepository:
                 );
                 """
             )
-            if existed is None:
+        self._migrate_saved_items("saved_items" not in tables and "collection_items" in tables)
+        with self._connect() as connection:
+            if "collections" not in tables:
                 now = utc_now()
                 connection.executemany(
                     """
@@ -102,6 +89,67 @@ class CollectionRepository:
                 "CREATE UNIQUE INDEX IF NOT EXISTS collections_portable_id "
                 "ON collections(portable_id)"
             )
+
+    def _migrate_saved_items(self, copy_titles: bool) -> None:
+        """Create the shared saved items and ordered collection entries.
+
+        Saved movies and series used to live in ``collection_items``, one snapshot per
+        collection, which could hold neither games nor an explicit order. The first start with
+        the new tables copies them over in one transaction, keeping each collection's order and
+        dates; each title keeps its most recently saved snapshot. ``collection_items`` is left
+        untouched and unused, so the copy loses nothing.
+        """
+
+        connection = sqlite3.connect(self.database_path, timeout=5, isolation_level=None)
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("BEGIN IMMEDIATE")
+            exists = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'saved_items'"
+            ).fetchone()
+            for statement in _SAVED_ITEMS_SCHEMA:
+                connection.execute(statement)
+            if copy_titles and not exists:
+                connection.execute(
+                    """
+                    INSERT INTO saved_items (
+                        portable_id, kind, tmdb_id, title, release_date, overview, rating,
+                        popularity, poster_path, genre_ids, genres
+                    )
+                    SELECT media_type || '-tmdb-' || tmdb_id, media_type, tmdb_id, title,
+                           release_date, overview, rating, popularity, poster_path, genre_ids,
+                           genres
+                    FROM (
+                        SELECT *, ROW_NUMBER() OVER (
+                            PARTITION BY media_type, tmdb_id ORDER BY added_at DESC, rowid DESC
+                        ) AS newest
+                        FROM collection_items
+                        WHERE collection_id IN (SELECT id FROM collections)
+                    )
+                    WHERE newest = 1
+                    """
+                )
+                connection.execute(
+                    """
+                    INSERT INTO collection_entries (collection_id, item_id, position, added_at)
+                    SELECT old.collection_id, saved.id,
+                           ROW_NUMBER() OVER (
+                               PARTITION BY old.collection_id ORDER BY old.added_at, old.rowid
+                           ),
+                           old.added_at
+                    FROM collection_items AS old
+                    JOIN collections ON collections.id = old.collection_id
+                    JOIN saved_items AS saved
+                      ON saved.kind = old.media_type AND saved.tmdb_id = old.tmdb_id
+                    """
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
 
     # Collections ------------------------------------------------------------------------
 
@@ -168,17 +216,30 @@ class CollectionRepository:
             cursor = connection.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
         return cursor.rowcount > 0
 
-    # Titles -----------------------------------------------------------------------------
+    # Titles and games -------------------------------------------------------------------
 
     def items(self, collection_id: int) -> tuple[CollectionItem, ...]:
-        """Return a collection's titles in the order they were added."""
+        """Return a collection's movies and series in the order they were added."""
 
         with self._connect() as connection:
             rows = connection.execute(
-                f"{_ITEM_SELECT} WHERE collection_id = ? ORDER BY added_at, rowid",
+                f"{_ITEM_SELECT} WHERE e.collection_id = ? AND s.kind IN ('movie', 'tv') "
+                "ORDER BY e.position",
                 (collection_id,),
             ).fetchall()
         return tuple(_item_from_row(row) for row in rows)
+
+    def games(self, collection_id: int) -> tuple[SavedGame, ...]:
+        """Return a collection's games, in the order they were added."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT s.snapshot, s.steam_appid, s.xbox_id, e.added_at, e.position, "
+                "s.portable_id FROM collection_entries e JOIN saved_items s ON s.id = e.item_id "
+                "WHERE e.collection_id = ? AND s.kind = 'game' ORDER BY e.position",
+                (collection_id,),
+            ).fetchall()
+        return tuple(_saved_game(row) for row in rows)
 
     def add_item(self, collection_id: int, item: CollectionItem) -> bool:
         """Save a title in a collection; ``False`` when it was already there."""
@@ -186,39 +247,110 @@ class CollectionRepository:
         if item.media_type not in _MEDIA_TYPES or item.tmdb_id <= 0:
             raise ValueError("Only titles matched on TMDB can be saved")
         with self._connect() as connection:
-            cursor = connection.execute(
-                """
-                INSERT INTO collection_items (
-                    collection_id, media_type, tmdb_id, added_at, title, release_date,
-                    overview, rating, popularity, poster_path, genre_ids, genres
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT DO NOTHING
-                """,
-                (
-                    collection_id,
-                    item.media_type,
-                    item.tmdb_id,
-                    item.added_at or utc_now(),
-                    item.title,
-                    item.release_date,
-                    item.overview,
-                    item.rating,
-                    item.popularity,
-                    item.poster_path,
-                    _encode_ids(item.genre_ids),
-                    json.dumps(list(item.genres)),
-                ),
+            values = (
+                item.title,
+                item.release_date,
+                item.overview,
+                item.rating,
+                item.popularity,
+                item.poster_path,
+                _encode_ids(item.genre_ids),
+                json.dumps(list(item.genres)),
             )
-        return cursor.rowcount > 0
+            row = connection.execute(
+                "SELECT id FROM saved_items WHERE kind = ? AND tmdb_id = ?",
+                (item.media_type, item.tmdb_id),
+            ).fetchone()
+            if row is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO saved_items (
+                        portable_id, kind, tmdb_id, title, release_date, overview, rating,
+                        popularity, poster_path, genre_ids, genres
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (item.portable_id, item.media_type, item.tmdb_id, *values),
+                )
+                item_id = int(cursor.lastrowid or 0)
+            else:
+                item_id = int(row[0])
+                connection.execute(
+                    """
+                    UPDATE saved_items SET title = ?, release_date = ?, overview = ?, rating = ?,
+                        popularity = ?, poster_path = ?, genre_ids = ?, genres = ?
+                    WHERE id = ?
+                    """,
+                    (*values, item_id),
+                )
+            return _add_entry(connection, collection_id, item_id, item.added_at or utc_now())
+
+    def add_game(self, collection_id: int, game: Game, added_at: str = "") -> bool:
+        """Save a game in a collection with a snapshot of its details; ``False`` if already
+        there. A game saved before its Steam or Xbox listing was known keeps its saved ID."""
+
+        with self._connect() as connection:
+            item_id = _find_game(connection, game.steam_appid, game.xbox_id)
+            snapshot = json.dumps(game.payload())
+            summary = (game.title, game.release_date, game.overview, game.score or 0.0)
+            if item_id is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO saved_items (
+                        portable_id, kind, steam_appid, xbox_id, title, release_date, overview,
+                        rating, snapshot
+                    ) VALUES (?, 'game', ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        game.portable_id,
+                        game.steam_appid or None,
+                        game.xbox_id or None,
+                        *summary,
+                        snapshot,
+                    ),
+                )
+                item_id = int(cursor.lastrowid or 0)
+            else:
+                # Learn the other store's ID, unless another saved game already has it (both
+                # listings were saved separately before they were matched).
+                steam = game.steam_appid or None
+                xbox = game.xbox_id or None
+                if steam and _find_game(connection, steam, "") not in (None, item_id):
+                    steam = None
+                if xbox and _find_game(connection, 0, xbox) not in (None, item_id):
+                    xbox = None
+                connection.execute(
+                    """
+                    UPDATE saved_items SET steam_appid = COALESCE(steam_appid, ?),
+                        xbox_id = COALESCE(xbox_id, ?), title = ?, release_date = ?,
+                        overview = ?, rating = ?, snapshot = ?
+                    WHERE id = ?
+                    """,
+                    (steam, xbox, *summary, snapshot, item_id),
+                )
+            return _add_entry(connection, collection_id, item_id, added_at or utc_now())
 
     def remove_item(self, collection_id: int, media_type: MediaType, tmdb_id: int) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
                 """
-                DELETE FROM collection_items
-                WHERE collection_id = ? AND media_type = ? AND tmdb_id = ?
+                DELETE FROM collection_entries
+                WHERE collection_id = ? AND item_id IN (
+                    SELECT id FROM saved_items WHERE kind = ? AND tmdb_id = ?
+                )
                 """,
                 (collection_id, media_type, tmdb_id),
+            )
+        return cursor.rowcount > 0
+
+    def remove_game(self, collection_id: int, key: str) -> bool:
+        steam, xbox = _game_ids(key)
+        with self._connect() as connection:
+            item_id = _find_game(connection, steam, xbox)
+            if item_id is None:
+                return False
+            cursor = connection.execute(
+                "DELETE FROM collection_entries WHERE collection_id = ? AND item_id = ?",
+                (collection_id, item_id),
             )
         return cursor.rowcount > 0
 
@@ -227,8 +359,20 @@ class CollectionRepository:
 
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT collection_id FROM collection_items WHERE media_type = ? AND tmdb_id = ?",
+                "SELECT e.collection_id FROM collection_entries e "
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = ? AND s.tmdb_id = ?",
                 (media_type, tmdb_id),
+            ).fetchall()
+        return frozenset(int(row[0]) for row in rows)
+
+    def game_memberships(self, key: str) -> frozenset[int]:
+        steam, xbox = _game_ids(key)
+        with self._connect() as connection:
+            item_id = _find_game(connection, steam, xbox)
+            if item_id is None:
+                return frozenset()
+            rows = connection.execute(
+                "SELECT collection_id FROM collection_entries WHERE item_id = ?", (item_id,)
             ).fetchall()
         return frozenset(int(row[0]) for row in rows)
 
@@ -237,11 +381,27 @@ class CollectionRepository:
 
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT media_type, tmdb_id, collection_id FROM collection_items"
+                "SELECT s.kind, s.tmdb_id, e.collection_id FROM collection_entries e "
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind IN ('movie', 'tv')"
             ).fetchall()
         saved: dict[tuple[str, int], set[int]] = {}
         for media_type, tmdb_id, collection_id in rows:
             saved.setdefault((str(media_type), int(tmdb_id)), set()).add(int(collection_id))
+        return {key: frozenset(ids) for key, ids in saved.items()}
+
+    def saved_game_memberships(self) -> dict[str, frozenset[int]]:
+        """Map every key a saved game is known by (Steam and Xbox) to its collections."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT s.steam_appid, s.xbox_id, e.collection_id FROM collection_entries e "
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = 'game'"
+            ).fetchall()
+        saved: dict[str, set[int]] = {}
+        for steam, xbox, collection_id in rows:
+            for key in (f"steam-{steam}" if steam else "", f"xbox-{xbox}" if xbox else ""):
+                if key:
+                    saved.setdefault(key, set()).add(int(collection_id))
         return {key: frozenset(ids) for key, ids in saved.items()}
 
     # Availability -----------------------------------------------------------------------
@@ -303,16 +463,107 @@ class CollectionRepository:
 
 _COLLECTION_SELECT = """
     SELECT c.id, c.name, c.description, c.icon, c.default_sort, c.position, c.created_at,
-           (SELECT COUNT(*) FROM collection_items i WHERE i.collection_id = c.id),
+           (SELECT COUNT(*) FROM collection_entries e WHERE e.collection_id = c.id),
            c.portable_id
     FROM collections c
 """
 
 _ITEM_SELECT = """
-    SELECT media_type, tmdb_id, added_at, title, release_date, overview, rating, popularity,
-           poster_path, genre_ids, genres, rowid
-    FROM collection_items
+    SELECT s.kind, s.tmdb_id, e.added_at, s.title, s.release_date, s.overview, s.rating,
+           s.popularity, s.poster_path, s.genre_ids, s.genres, e.position
+    FROM collection_entries e JOIN saved_items s ON s.id = e.item_id
 """
+
+# A saved item is one movie, series, or game, shared by every collection holding it; an entry
+# is its place in one collection. Movies and series are identified by TMDB, games by their
+# Steam app or Xbox product (either can be found later).
+_SAVED_ITEMS_SCHEMA = (
+    """
+    CREATE TABLE IF NOT EXISTS saved_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        portable_id TEXT NOT NULL UNIQUE,
+        kind TEXT NOT NULL CHECK (kind IN ('movie', 'tv', 'game')),
+        tmdb_id INTEGER CHECK (tmdb_id > 0),
+        steam_appid INTEGER CHECK (steam_appid > 0),
+        xbox_id TEXT,
+        title TEXT NOT NULL,
+        release_date TEXT NOT NULL DEFAULT '',
+        overview TEXT NOT NULL DEFAULT '',
+        rating REAL NOT NULL DEFAULT 0,
+        popularity REAL NOT NULL DEFAULT 0,
+        poster_path TEXT,
+        genre_ids TEXT NOT NULL DEFAULT ',',
+        genres TEXT NOT NULL DEFAULT '[]',
+        snapshot TEXT NOT NULL DEFAULT '{}',
+        CHECK ((kind = 'game') = (tmdb_id IS NULL)),
+        CHECK (kind != 'game' OR steam_appid IS NOT NULL OR xbox_id IS NOT NULL)
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_tmdb ON saved_items (kind, tmdb_id) "
+    "WHERE tmdb_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_steam ON saved_items (steam_appid) "
+    "WHERE steam_appid IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_xbox ON saved_items (xbox_id) "
+    "WHERE xbox_id IS NOT NULL",
+    """
+    CREATE TABLE IF NOT EXISTS collection_entries (
+        collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+        item_id INTEGER NOT NULL REFERENCES saved_items(id) ON DELETE CASCADE,
+        position INTEGER NOT NULL,
+        added_at TEXT NOT NULL,
+        PRIMARY KEY (collection_id, item_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS collection_entries_item ON collection_entries (item_id)",
+)
+
+
+def _add_entry(
+    connection: sqlite3.Connection, collection_id: int, item_id: int, added_at: str
+) -> bool:
+    found = connection.execute("SELECT 1 FROM collections WHERE id = ?", (collection_id,))
+    if found.fetchone() is None:
+        raise LookupError("Unknown collection")
+    cursor = connection.execute(
+        """
+        INSERT INTO collection_entries (collection_id, item_id, position, added_at)
+        SELECT ?, ?, COALESCE(MAX(position), 0) + 1, ? FROM collection_entries
+        WHERE collection_id = ?
+        ON CONFLICT DO NOTHING
+        """,
+        (collection_id, item_id, added_at, collection_id),
+    )
+    return cursor.rowcount > 0
+
+
+def _find_game(connection: sqlite3.Connection, steam: int, xbox: str) -> int | None:
+    row = connection.execute(
+        "SELECT id FROM saved_items WHERE kind = 'game' AND "
+        "(steam_appid = ? OR xbox_id = ?) ORDER BY steam_appid = ? DESC LIMIT 1",
+        (steam or None, xbox or None, steam or None),
+    ).fetchone()
+    return int(row[0]) if row else None
+
+
+def _game_ids(key: str) -> tuple[int, str]:
+    store, value = parse_game_key(key)
+    return (int(value), "") if store == "steam" else (0, value)
+
+
+def _saved_game(row: sqlite3.Row | tuple[object, ...]) -> SavedGame:
+    try:
+        game = Game.from_payload(json.loads(str(row[0])))
+    except (TypeError, ValueError):
+        game = Game(str(row[5]).removeprefix("game-"), "Saved game")
+    steam, xbox = int(row[1] or 0), str(row[2] or "")
+    # Keys found since the snapshot was taken still apply.
+    game = replace(
+        game,
+        steam_appid=game.steam_appid or steam,
+        xbox_id=game.xbox_id or xbox,
+        id=game_key(steam=game.steam_appid or steam, xbox=game.xbox_id or xbox),
+    )
+    return SavedGame(game=game, added_at=str(row[3]), sequence=int(row[4]))
 
 
 def _validated(name: str, description: str, icon: str, default_sort: str) -> tuple[str, ...]:

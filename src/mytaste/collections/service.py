@@ -3,8 +3,8 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Awaitable, Callable, Sequence
 from collections.abc import Collection as Container
-from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -17,12 +17,15 @@ from mytaste.catalog.models import (
 )
 from mytaste.catalog.service import Refine
 from mytaste.catalog.tmdb import TMDBError
-from mytaste.collections.models import Collection, CollectionItem
+from mytaste.collections.models import Collection, CollectionItem, GameEntry
+from mytaste.games.models import Game
 from mytaste.storage.collections import CollectionRepository, utc_now
 
 logger = logging.getLogger(__name__)
 
 TitleKey = tuple[str, int]
+# Marks which saved games the user can play and says whether they set up any game service.
+GameAccess = Callable[[list[Game]], Awaitable[tuple[list[Game], bool]]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +99,33 @@ class CollectionService:
             for key, ids in saved.items()
         }
 
+    def game_memberships(self, key: str) -> frozenset[int]:
+        return self.repository.game_memberships(key)
+
+    def saved_game_icons(self) -> dict[str, tuple[str, ...]]:
+        """Like :meth:`saved_icons`, keyed by every Steam and Xbox key of a saved game."""
+
+        order = self.repository.list()
+        return {
+            key: tuple(dict.fromkeys(item.icon for item in order if item.id in ids))
+            for key, ids in self.repository.saved_game_memberships().items()
+        }
+
+    def add_game(self, collection_id: int, game: Game) -> bool:
+        """Save a game with a snapshot of its details; ``False`` if it was already saved.
+
+        Access (Game Pass, owned, play time) describes the user, not the game, so it is
+        checked again when the collection is browsed rather than saved.
+        """
+
+        if self.repository.get(collection_id) is None:
+            raise LookupError("Unknown collection")
+        snapshot = replace(game, game_pass=False, owned=False, playtime=0, last_played=0)
+        return self.repository.add_game(collection_id, snapshot)
+
+    def remove_game(self, collection_id: int, key: str) -> bool:
+        return self.repository.remove_game(collection_id, key)
+
     async def add_item(
         self, collection_id: int, media_type: MediaType, tmdb_id: int, *, region: str = ""
     ) -> bool:
@@ -140,11 +170,16 @@ class CollectionService:
         library_ids: Sequence[int],
         page_size: int | None = None,
         refine: Refine | None = None,
+        game_access: GameAccess | None = None,
     ) -> CollectionPage:
         """Browse a collection, limited to the user's ``provider_ids`` and ``library_ids``.
 
         The query's own source selection, filters, and sort then apply on top; ``refine``
         applies the filters that need more than the saved snapshot of a title.
+
+        Saved games join the titles when all media types are shown. ``game_access`` marks the
+        ones on Game Pass or owned on Steam and says whether the user set up either; once they
+        have, only games they can play are listed, like titles on their services.
         """
 
         items = [
@@ -189,19 +224,55 @@ class CollectionService:
             allowed = await refine([item.to_catalog_item() for item in shown])
             shown = [item for item in shown if item.key in allowed]
 
+        games: list[GameEntry] = []
+        all_games = 0
+        playable_games = 0
+        if query.media_type == "all":
+            saved_games = self.repository.games(collection.id)
+            all_games = len(saved_games)
+            if saved_games:
+                marked, configured = (
+                    await game_access([entry.game for entry in saved_games])
+                    if game_access is not None
+                    else ([entry.game for entry in saved_games], False)
+                )
+                entries = [
+                    GameEntry(game, entry.added_at, entry.sequence)
+                    for game, entry in zip(marked, saved_games, strict=True)
+                    if not configured or game.game_pass or game.owned
+                ]
+                playable_games = len(entries)
+                # TMDB's filters (genres, people…) never match a game, and narrowing the
+                # streaming services or libraries shows only what those carry.
+                narrowed = set(query.provider_ids) != set(provider_ids) or set(
+                    query.library_ids
+                ) != set(library_ids)
+                if not query.filters.active and not narrowed:
+                    games = [entry for entry in entries if _matches_filters(entry, query)]
+
         sort, descending = query.sort_for(collection.default_sort)
+        listed: list[Any] = []
         if sort == "added":
-            shown.sort(key=lambda item: (item.added_at, item.sequence), reverse=descending)
-            titles = [item.to_catalog_item() for item in shown]
+            ordered = sorted(
+                [
+                    *((item.added_at, item.sequence, item.to_catalog_item()) for item in shown),
+                    *((entry.added_at, entry.sequence, entry) for entry in games),
+                ],
+                key=lambda row: (row[0], row[1]),
+                reverse=descending,
+            )
+            listed = [row[2] for row in ordered]
         else:
-            titles = sorted(
-                (item.to_catalog_item() for item in shown),
+            listed = sorted(
+                [*(item.to_catalog_item() for item in shown), *games],
                 key=catalog_sort_key(sort, descending),
                 reverse=descending,
             )
         titles = [
-            replace(title, in_library=True) if (title.media_type, title.id) in local else title
-            for title in titles
+            replace(title, in_library=True)
+            if not isinstance(title, GameEntry) and (title.media_type, title.id) in local
+            else title
+            for title in listed
         ]
         size = page_size or self.page_size
         total_pages = max((len(titles) + size - 1) // size, 1)
@@ -214,8 +285,8 @@ class CollectionService:
                 total_pages=total_pages,
                 total_results=len(titles),
             ),
-            available=len(accessible),
-            total=len(items),
+            available=len(accessible) + playable_games,
+            total=len(items) + all_games,
         )
 
     # Availability -----------------------------------------------------------------------
@@ -262,7 +333,7 @@ class CollectionService:
             logger.exception("Refreshing where saved titles stream failed")
 
 
-def _matches_filters(item: CollectionItem, query: BrowseQuery) -> bool:
+def _matches_filters(item: CollectionItem | GameEntry, query: BrowseQuery) -> bool:
     year = int(item.release_date[:4]) if item.release_date[:4].isdigit() else None
     if query.year_from is not None and (year is None or year < query.year_from):
         return False

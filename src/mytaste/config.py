@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 _HWACCEL_MODES = frozenset({"auto", "none", "drm"})
@@ -61,6 +61,8 @@ class AppSettings:
     gamepass_catalog_ttl: float = 7200
     gamepass_metadata_ttl: float = 86_400
     gamepass_stale_ttl: float = 86_400
+    steam_enabled: bool = True
+    steam_api_key: str | None = field(default=None, repr=False)
 
     def require_tmdb_token(self) -> str:
         token = (self.tmdb_token or "").strip()
@@ -121,6 +123,8 @@ def load_app_settings() -> AppSettings:
         gamepass_stale_ttl=_parse_duration(
             "MYTASTE_GAMEPASS_STALE_TTL_SECONDS", 86_400, allow_zero=True
         ),
+        steam_enabled=_parse_boolean("MYTASTE_STEAM_ENABLED", True),
+        steam_api_key=(os.environ.get("MYTASTE_STEAM_API_KEY") or "").strip() or None,
     )
 
 

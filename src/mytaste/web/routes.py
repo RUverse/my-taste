@@ -4,7 +4,7 @@ import asyncio
 import math
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any, TypeVar, cast
 from urllib.parse import urlencode
 
@@ -31,6 +31,9 @@ from mytaste.catalog.models import (
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
 from mytaste.collections.models import HOME_COLLECTION, ICONS, Collection, smart_collection
+from mytaste.collections.service import GameAccess
+from mytaste.games.http import StoreError
+from mytaste.games.models import PLANS, PLATFORMS, Game, GameQuery, SteamAccount
 from mytaste.library.models import Library, LibraryStatus
 from mytaste.storage.preferences import DisplayPreferences, Preferences
 from mytaste.web.filter_options import (
@@ -61,7 +64,7 @@ _LEGACY_CATEGORIES: dict[str, tuple[str, str | None]] = {
     "recent": (HOME_COLLECTION, "added"),
     "alphabetical": (HOME_COLLECTION, "title"),
 }
-_ADD_STEPS = frozenset({"choose", "streaming", "local"})
+_ADD_STEPS = frozenset({"choose", "streaming", "local", "steam"})
 _NO_SELECTION = "none"
 _SEARCH_CATEGORY = BrowseCategory(HOME_COLLECTION, "Popular")
 _DISPLAY_FLAGS = (
@@ -261,6 +264,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     library_ids=all_library_ids,
                     page_size=GROUP_TITLE_LIMIT if group else None,
                     refine=refine,
+                    game_access=_game_access(request, preferences.region),
                 ),
             )
             page = result.page
@@ -513,12 +517,8 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "current_link": current_link,
             "return_to": url(replace(query, page=row_page) if group else query),
             "collection": manual,
-            "collection_payload": _collection_payload(manual) if manual else None,
-            "collection_icons": ICONS,
-            "collection_sort_options": tuple(
-                (value, _SORT_LABELS[value])
-                for value in ("added", "popularity", "release", "rating", "title")
-            ),
+            "collection_payload": collection_payload(manual) if manual else None,
+            **collection_editor_context(),
             "collection_availability": availability,
             "page": page,
             "other_items": other_items,
@@ -593,6 +593,13 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "libraries": libraries,
             "library_keys": library.matched_keys() if libraries else frozenset(),
             "saved_icons": collections.saved_icons(),
+            "saved_game_icons": collections.saved_game_icons()
+            if hasattr(collections, "saved_game_icons")
+            else {},
+            "has_games": any(
+                getattr(item, "media_type", "") == "game"
+                for item in (*page.items, *(item for row in groups for item in row.items))
+            ),
             "library_scanning": library_scanning,
             "streaming_selected": bool(query.provider_ids),
             "source_options": source_options,
@@ -656,7 +663,23 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         library_rows = tuple(
             _library_payload(item, library.status(item.id)) for item in library.libraries()
         )
+        games = request.app.state.games
+        game_preferences = request.app.state.game_preferences
+        steam_account = _steam_account(games)
+        game_pass = game_preferences.get() if game_preferences.configured() else None
         return {
+            "steam_available": bool(getattr(games, "steam_available", False)),
+            "steam_key": bool(getattr(games, "owned_games_available", False)),
+            "steam_account": steam_account,
+            "steam_status": _steam_status(steam_account) if steam_account else "",
+            "steam_error": request.query_params.get("steam_error", "")[:300],
+            "steam_message": {
+                "connected": "Steam is connected.",
+                "refreshed": "Your Steam games are up to date.",
+            }.get(request.query_params.get("steam", ""), ""),
+            "game_pass": game_pass,
+            "game_plans": PLANS,
+            "game_platforms": PLATFORMS,
             "region": region,
             "region_name": next((item.name for item in regions if item.code == region), region),
             "regions": regions,
@@ -666,7 +689,9 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             ),
             "selected_ids": selected_ids or set(),
             "header_providers": enabled_providers,
-            "has_sources": bool(preferences.provider_ids or library_rows),
+            "has_sources": bool(
+                preferences.provider_ids or library_rows or steam_account or game_pass
+            ),
             "library_rows": library_rows,
             "library_form": library_form or _empty_library_form(),
             "library_roots": tuple(str(root) for root in getattr(library, "roots", ())),
@@ -894,7 +919,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     @router.get("/api/collections", response_class=JSONResponse)
     async def list_collections(request: Request) -> JSONResponse:
         collections = request.app.state.collections.collections()
-        return JSONResponse({"collections": [_collection_payload(item) for item in collections]})
+        return JSONResponse({"collections": [collection_payload(item) for item in collections]})
 
     @router.post("/api/collections", response_class=JSONResponse)
     async def create_collection(request: Request) -> JSONResponse:
@@ -904,7 +929,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             created = request.app.state.collections.create(name, **attributes)
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=422)
-        return JSONResponse({"collection": _collection_payload(created)}, status_code=201)
+        return JSONResponse({"collection": collection_payload(created)}, status_code=201)
 
     @router.patch("/api/collections/{collection_id}", response_class=JSONResponse)
     async def update_collection(collection_id: int, request: Request) -> JSONResponse:
@@ -927,7 +952,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": str(exc)}, status_code=422)
         if updated is None:
             return JSONResponse({"error": "Unknown collection"}, status_code=404)
-        return JSONResponse({"collection": _collection_payload(updated)})
+        return JSONResponse({"collection": collection_payload(updated)})
 
     @router.delete("/api/collections/{collection_id}", response_class=JSONResponse)
     async def delete_collection(collection_id: int, request: Request) -> JSONResponse:
@@ -944,7 +969,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         return JSONResponse(
             {
                 "collections": [
-                    {**_collection_payload(item), "saved": item.id in saved}
+                    {**collection_payload(item), "saved": item.id in saved}
                     for item in service.collections()
                 ]
             }
@@ -1260,7 +1285,19 @@ async def _credits(
     return dict(result for result in results if result is not None)
 
 
-def _collection_payload(collection: Collection) -> dict[str, object]:
+def collection_editor_context() -> dict[str, object]:
+    """What the new-collection editor shown beside Save menus needs."""
+
+    return {
+        "collection_icons": ICONS,
+        "collection_sort_options": tuple(
+            (value, _SORT_LABELS[value])
+            for value in ("added", "popularity", "release", "rating", "title")
+        ),
+    }
+
+
+def collection_payload(collection: Collection) -> dict[str, object]:
     return {
         "id": collection.id,
         "name": collection.name,
@@ -1288,6 +1325,46 @@ async def _collection_attributes(request: Request, *, required: bool) -> dict[st
     if required and "name" not in attributes:
         raise ValueError("Give the collection a name")
     return attributes
+
+
+def _steam_account(games: Any) -> SteamAccount | None:
+    account = getattr(games, "account", None)
+    return account() if callable(account) else None
+
+
+def _steam_status(account: SteamAccount) -> str:
+    if account.owned_status == "private":
+        return "Game details are private"
+    if account.owned_checked_at is None:
+        return "Owned games not loaded yet"
+    checked = datetime.fromtimestamp(account.owned_checked_at, UTC).isoformat(timespec="seconds")
+    return f"{_count(len(account.owned), 'game')} · checked {_relative_time(checked)}"
+
+
+def _game_access(request: Request, region: str) -> GameAccess:
+    """Mark saved games the user can play with their Game Pass plan or Steam library."""
+
+    async def access(games: list[Game]) -> tuple[list[Game], bool]:
+        service = request.app.state.games
+        defaults = request.app.state.game_preferences
+        account = getattr(service, "account", None)
+        configured = defaults.configured() or (callable(account) and account() is not None)
+        mark = getattr(service, "access", None)
+        if not callable(mark) or not region:
+            return games, False
+        preferred = defaults.get()
+        try:
+            marked = await mark(
+                games,
+                region,
+                request.app.state.settings.language,
+                GameQuery(plan=preferred.plan, platform=preferred.platform),
+            )
+        except StoreError:
+            return games, False  # Unknown access shows every saved game.
+        return marked, configured
+
+    return access
 
 
 def _card_state_keys(page: CatalogPage) -> list[str]:

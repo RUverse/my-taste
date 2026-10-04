@@ -28,6 +28,10 @@ def anyio_backend():
 A, B, C = "9NPDN9R45JX4", "9N0000000002", "9N0000000003"
 
 
+def xbox(key, title, **values):
+    return Game(f"xbox-{key}", title, xbox_id=key, **values)
+
+
 def product(key=A):
     return {
         "ProductId": key,
@@ -160,9 +164,9 @@ class Source:
             "cloud": [B],
         }
         self.games = {
-            A: Game(A, "Zulu", release_date="2024-01-01", genres=("Action",), rating=4),
-            B: Game(B, "Alpha", release_date="2026-01-01", genres=("RPG",), rating=4.5),
-            C: Game(C, "Future", genres=("RPG",)),
+            A: xbox(A, "Zulu", release_date="2024-01-01", genres=("Action",), rating=4),
+            B: xbox(B, "Alpha", release_date="2026-01-01", genres=("RPG",), rating=4.5),
+            C: xbox(C, "Future", genres=("RPG",)),
         }
 
     async def ids(self, query, region, language, collection):
@@ -183,11 +187,11 @@ async def test_global_filter_sort_pagination_and_live_mode(tmp_path):
     service = GamesService(source, GamePassCache(tmp_path / "cache.db"), page_size=1)
     query = GameQuery(sort="title")
     page = await service.browse("DE", "en-US", query)
-    assert page.items[0].id == B and page.total == 2 and page.pages == 2
+    assert page.items[0].xbox_id == B and page.total == 2 and page.pages == 2
     page = await service.browse("DE", "en-US", replace(query, page=2))
-    assert page.items[0].id == A
+    assert page.items[0].xbox_id == A
     page = await service.browse("DE", "en-US", replace(query, search="ALPHA", genre="RPG"))
-    assert page.total == 1 and page.items[0].id == B
+    assert page.total == 1 and page.items[0].xbox_id == B
     assert sum(call[0] == "metadata" for call in source.calls) == 3
     assert not (tmp_path / "cache.db").exists()
     await service.close()
@@ -206,8 +210,8 @@ async def test_global_filter_sort_pagination_and_live_mode(tmp_path):
 async def test_reverse_order_applies_before_pagination(tmp_path, sort, order, first, second):
     service = GamesService(Source(), GamePassCache(tmp_path / "cache.db"), page_size=1)
     query = GameQuery(sort=sort, order=order)
-    assert (await service.browse("DE", "en-US", query)).items[0].id == first
-    assert (await service.browse("DE", "en-US", replace(query, page=2))).items[0].id == second
+    assert (await service.browse("DE", "en-US", query)).items[0].xbox_id == first
+    assert (await service.browse("DE", "en-US", replace(query, page=2))).items[0].xbox_id == second
     await service.close()
 
 
@@ -215,11 +219,11 @@ async def test_reverse_order_applies_before_pagination(tmp_path, sort, order, fi
 async def test_plan_cloud_and_coming_membership(tmp_path):
     service = GamesService(Source(), GamePassCache(tmp_path / "cache.db"))
     popular = await service.browse("DE", "en-US", GameQuery(collection="popular"))
-    assert [game.id for game in popular.items] == [B, A]
+    assert [game.xbox_id for game in popular.items] == [B, A]
     cloud = await service.browse("DE", "en-US", GameQuery(platform="cloud"))
-    assert [game.id for game in cloud.items] == [B]
+    assert [game.xbox_id for game in cloud.items] == [B]
     coming = await service.browse("DE", "en-US", GameQuery(collection="coming"))
-    assert [game.id for game in coming.items] == [C]  # Not yet in current membership.
+    assert [game.xbox_id for game in coming.items] == [C]  # Not yet in current membership.
     with pytest.raises(ValueError):
         await service.browse("DE", "en-US", GameQuery(plan="pc", platform="cloud"))
 
@@ -388,10 +392,10 @@ class WebGames:
             raise GamePassError("Xbox outage")
         return GamePage((normalize_game(product()),), 25, 2, ("Action",), 100)
 
-    async def details(self, key, region, language):
+    async def details(self, key, region, language, **context):
         if self.fail:
             raise GamePassError("Xbox outage")
-        return normalize_game(product(key))
+        return normalize_game(product(key.removeprefix("xbox-")))
 
 
 def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_path):
@@ -428,7 +432,8 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
         assert 'class="media-details" id="game-dialog"' in game_page.text
         assert 'class="media-detail-identity"' in game_page.text
         assert 'class="media-detail-actions"' in game_page.text
-        assert "data-detail-save" not in game_page.text
+        assert 'aria-controls="game-save-popover"' in game_page.text  # Games can be saved.
+        assert 'id="card-save-popover"' in game_page.text
         assert not catalog.browse_queries
         for media in ("movie", "tv"):
             response = client.get(f"/?media={media}")

@@ -30,8 +30,8 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   filters with a default sort), user collection models, and the collection icon set.
 - `src/mytaste/collections/service.py` — user collections: saving titles with a TMDB snapshot,
   availability on the user's services (stored per region, refreshed after a day), and browsing.
-- `src/mytaste/storage/collections.py` — SQLite persistence for user collections, their titles,
-  and title availability.
+- `src/mytaste/storage/collections.py` — SQLite persistence for user collections: shared saved
+  items (movies, series, games), ordered collection entries, and title availability.
 - `src/mytaste/storage/preferences.py` — SQLite persistence for subscriptions and display options.
 - `src/mytaste/storage/library.py` — SQLite persistence for storage libraries, their matched
   items, and local browse queries.
@@ -44,11 +44,20 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   remux, or transcode from browser capabilities), `sessions.py` (ffmpeg HLS sessions, seeking,
   throttling), `fmp4.py`, and `service.py` (watch targets, progress, Continue watching).
 - `src/mytaste/storage/playback.py` — SQLite persistence for probe results and watch progress.
+- `src/mytaste/games/` — Games: `models.py` (one `Game` per game, keyed `steam-<appid>` or
+  `xbox-<product id>`, collections, the shared genre list), `gamepass.py` and `steam.py` (store
+  clients; Steam sign-in and owned games), `matching.py` (Xbox ↔ Steam through IsThereAnyDeal,
+  Wikidata, then title and year), `service.py` (`GamesService`: Game Pass lists, Steam rankings,
+  owned games, merging both stores, ordering), and `http.py` (shared retries).
+- `src/mytaste/storage/games.py`, `steam.py`, `game_links.py`, `gamepass_cache.py` — Game Pass
+  preferences, the connected Steam account, Xbox ↔ Steam matches, and the optional store cache.
 - `src/mytaste/web/app.py` — FastAPI factory, dependency wiring, templates, and static assets.
 - `src/mytaste/web/routes.py` — page/API routes, query parsing, and template context construction.
 - `src/mytaste/web/filter_options.py` — filter URL parameters and the sidebar's filter controls.
 - `src/mytaste/web/playback.py` — `/watch/...` player pages and the streaming, subtitle, and
   progress APIs.
+- `src/mytaste/web/games.py` — `/collections/games/...`, game details, Steam sign-in, and saving
+  games to collections.
 - `src/mytaste/web/templates/` — server-rendered Jinja pages; `_icons.html` draws collection icons.
 - `src/mytaste/web/static/` — CSS and vanilla JavaScript with no frontend build step; the only
   third-party file is the vendored hls.js light build in `static/vendor/` (Apache-2.0).
@@ -84,7 +93,12 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   and useful empty/error states.
 - SQLite schema initialization must remain safe for existing databases. Add an explicit migration
   path when changing an existing table; do not assume `CREATE TABLE IF NOT EXISTS` alters it.
-- Never print or commit `.env`, TMDB tokens, or the SQLite database.
+- Games keep each store's facts on its own scale (Steam's review percentage, the Microsoft
+  Store's five stars) and describe the user's access (`game_pass`, `owned`) separately from the
+  game. Steam's rankings only page through Steam games; collections that include games only on
+  Xbox must sort by something every store can compute. Never merge games by title alone
+  outside `matching.py`.
+- Never print or commit `.env`, TMDB tokens, the Steam Web API key, or the SQLite database.
 
 ## Local workflow
 

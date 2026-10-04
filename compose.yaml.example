@@ -4,6 +4,8 @@ services:
     environment:
       MYTASTE_TMDB_TOKEN: ${MYTASTE_TMDB_TOKEN:?Set MYTASTE_TMDB_TOKEN}
       MYTASTE_GAMEPASS_CACHE_ENABLED: ${MYTASTE_GAMEPASS_CACHE_ENABLED:-false}
+      # Optional: lists owned Steam games for connected profiles.
+      MYTASTE_STEAM_API_KEY: ${MYTASTE_STEAM_API_KEY:-}
       MYTASTE_LANGUAGE: ${MYTASTE_LANGUAGE:-en-US}
     ports:
       - "8000:8000"

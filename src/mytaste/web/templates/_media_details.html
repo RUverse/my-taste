@@ -1,4 +1,5 @@
-{% set game_details = header_media == 'game' %}
+{% set game_details = game_details|default(header_media == 'game') %}
+{% from "_game_card.html" import steam_logo, gamepass_logo %}
 {% set standalone = standalone|default(false) %}
 {% set back_label = 'Search results' if query and query.search else heading|default('Games') %}
 {% set title_id = 'game-detail-title' if game_details else 'media-detail-title' %}
@@ -66,42 +67,58 @@
               <span data-detail-credit-names>{% if standalone %}{{ game.developers|join(', ') }}{% endif %}</span>
             </p>
             <p class="media-detail-scoreline">
-              <span class="media-detail-rating" data-detail-rating>{% if standalone and game.rating is not none %}Store {{ '%.1f'|format(game.rating) }}/5 ★{% endif %}</span>
+              {% if game_details %}
+              <span class="media-detail-rating" data-detail-rating>{% if standalone %}{% if game.steam_score is not none %}Steam {{ game.steam_score }}% positive{% if game.steam_review_label %} · {{ game.steam_review_label }}{% endif %}{% endif %}{% if game.steam_score is not none and game.rating is not none %} · {% endif %}{% if game.rating is not none %}Store {{ '%.1f'|format(game.rating) }}/5 ★{% endif %}{% endif %}</span>
+              {% else %}
+              <span class="media-detail-rating" data-detail-rating></span>
+              {% endif %}
             </p>
+            {% if game_details %}<p class="media-detail-access" data-game-access>{% if standalone %}{% if game.game_pass %}<span>In your Game Pass</span>{% endif %}{% if game.owned %}<span>In your Steam library{% if game.hours_played %} · {{ game.hours_played }} played{% endif %}</span>{% endif %}{% endif %}</p>{% endif %}
           </aside>
 
           <section class="media-detail-stage" aria-live="polite">
             <div class="media-detail-copy">
               <div class="media-detail-content" data-detail-content {% if not standalone %}hidden{% endif %}>
                 <div class="media-detail-head">
-                  {% if not game_details %}
+                  {% set save_id = 'game-save-popover' if game_details else 'save-popover' %}
+                  {% if not game_details or not standalone %}
                   <div class="media-detail-links">
                     <div class="popover-anchor detail-save">
-                      <button class="detail-link" type="button" data-detail-save data-popover-button aria-expanded="false" aria-controls="save-popover">
+                      <button class="detail-link" type="button" data-detail-save data-popover-button aria-expanded="false" aria-controls="{{ save_id }}">
                         <svg class="detail-save-icon detail-save-add" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"></path></svg>
                         <span class="saved-icons" data-saved-icons></span>
                         <span data-detail-save-label>Save</span>
                       </button>
-                      <div class="popover popover-start save-popover" id="save-popover" hidden>
-                        <p class="popover-title" id="save-popover-title">Save to</p>
-                        <div class="save-list" role="group" aria-labelledby="save-popover-title" data-save-list></div>
+                      <div class="popover popover-start save-popover" id="{{ save_id }}" hidden>
+                        <p class="popover-title" id="{{ save_id }}-title">Save to</p>
+                        <div class="save-list" role="group" aria-labelledby="{{ save_id }}-title" data-save-list></div>
                         <p class="form-error" data-save-error role="alert" hidden></p>
                         <button class="popover-separated" type="button" data-save-new aria-haspopup="dialog">{{ plus_icon }}New collection…</button>
                       </div>
                     </div>
+                    {% if game_details %}
+                    <button class="detail-link" type="button" data-game-unlink hidden title="Show the Steam and Xbox games separately">Not the same game?</button>
+                    {% else %}
                     <a class="detail-link" data-detail-trailer target="_blank" rel="noreferrer" hidden>
                       <svg class="detail-link-fill" aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
                       Trailer
                     </a>
+                    {% endif %}
                   </div>
                   {% endif %}
                   <div class="media-detail-actions">
                   {% if game_details %}
+                    {% set primary_steam = standalone and game.steam_url %}
                     <div class="play-group" data-play-group {% if not standalone %}hidden{% endif %}>
                       <a class="play-primary" data-game-store {% if standalone %}href="{{ game.store_url }}"{% endif %} target="_blank" rel="noopener noreferrer">
                         <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
-                        <span>Open in Xbox</span><span class="play-source" aria-hidden="true">X</span>
+                        <span data-game-store-label>{{ 'Open in Steam' if primary_steam else 'Open in Xbox' }}</span>
+                        <span class="play-source" aria-hidden="true"><span class="watch-provider-logo game-store-logo" data-game-store-logo>{% if primary_steam %}{{ steam_logo() }}{% else %}{{ gamepass_logo() }}{% endif %}</span></span>
                       </a>
+                      <template data-steam-logo>{{ steam_logo() }}</template>
+                      <div class="watch-alternatives">
+                        <a class="watch-alternative" data-game-alternative target="_blank" rel="noopener noreferrer" title="Open in Xbox" aria-label="Open in Xbox" {% if standalone and game.steam_url and game.xbox_url %}href="{{ game.xbox_url }}"{% else %}hidden{% endif %}><span class="watch-provider-logo game-store-logo">{{ gamepass_logo() }}</span></a>
+                      </div>
                     </div>
                   {% else %}
                     <div class="play-group" data-play-group hidden>

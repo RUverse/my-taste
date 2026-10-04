@@ -38,7 +38,7 @@ def group_titles(
 
     A title appears in every row it belongs to (a film by two directors, a title with two
     genres). Directors and genres with the most titles come first; decades run newest first;
-    movies come before series. Titles without a value go to a last row.
+    movies come before series and games. Titles without a value go to a last row.
     """
 
     if by not in GROUPINGS:
@@ -57,7 +57,7 @@ def group_titles(
     if by == "decade":
         order = sorted(buckets, key=lambda label: label, reverse=True)
     elif by == "type":
-        order = [label for label in ("Movies", "Series") if label in buckets]
+        order = [label for label in ("Movies", "Series", "Games") if label in buckets]
     else:
         order = sorted(buckets, key=lambda label: (-len(buckets[label]), first_seen[label]))
     groups = [TitleGroup(label, tuple(buckets[label])) for label in order]
@@ -75,4 +75,4 @@ def _labels(
         return item.genres
     if by == "decade":
         return (f"{int(item.year) // 10 * 10}s",) if item.year.isdigit() else ()
-    return ("Movies" if item.media_type == "movie" else "Series",)
+    return ({"movie": "Movies", "tv": "Series"}.get(item.media_type, "Games"),)

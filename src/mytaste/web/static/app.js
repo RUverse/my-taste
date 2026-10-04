@@ -1487,6 +1487,16 @@
     return menu;
   };
 
+  // The game details dialog (games.js) reuses the Save menu.
+  window.MyTaste = Object.assign(window.MyTaste || {}, {
+    createSaveMenu,
+    closePopover,
+    renderSavedIcons,
+    reloadIfCollectionChanged: () => {
+      if (viewedCollectionChanged) window.location.reload();
+    },
+  });
+
   // Save in title details.
   const saveButton = detailDialog?.querySelector("[data-detail-save]");
   const detailSaveMenu =

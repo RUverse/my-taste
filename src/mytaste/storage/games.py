@@ -33,6 +33,13 @@ class GamePreferenceRepository:
             ).fetchone()
         return GamePreferences(*row) if row else GamePreferences()
 
+    def configured(self) -> bool:
+        """Whether the user has chosen a Game Pass plan, rather than relying on the defaults."""
+
+        with sqlite3.connect(self.database_path) as connection:
+            row = connection.execute("SELECT 1 FROM game_preferences WHERE id=1").fetchone()
+        return row is not None
+
     def save(self, plan: str, platform: str) -> GamePreferences:
         GameQuery(plan=plan, platform=platform).validate()
         with sqlite3.connect(self.database_path) as connection:
