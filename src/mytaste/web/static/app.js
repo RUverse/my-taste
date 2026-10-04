@@ -1088,7 +1088,9 @@
         head.className = "season-row-head";
         const title = document.createElement("h4");
         title.id = `season-${season.season_number}-title`;
-        title.textContent = season.name;
+        // The first season also says how many there are ("Season 1 of 7"); custom names stay.
+        const counted = season === regular[0] && /^Season \d+$/.test(season.name);
+        title.textContent = counted ? `${season.name} of ${regular.length}` : season.name;
         row.setAttribute("aria-labelledby", title.id);
         const meta = document.createElement("span");
         const local = season.episodes.filter((episode) => episode.in_library).length;
