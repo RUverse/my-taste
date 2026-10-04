@@ -30,24 +30,25 @@
         </svg>
       </button>
       {% endif %}
+      {# Closing returns to the collection (or search) the title was opened from. It sits outside
+         the shell so the episodes and neighbors, which stack above the shell, never cover it. #}
+      {% if standalone %}
+      <a class="media-detail-close" href="/collections/games" aria-label="Back to {{ back_label }}">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+        <span>{{ back_label }}</span>
+      </a>
+      {% elif game_details %}
+      <button class="media-detail-close" type="button" data-game-close aria-label="Back to {{ back_label }}">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+        <span>{{ back_label }}</span>
+      </button>
+      {% else %}
+      <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
+        <span>{{ back_label }}</span>
+      </button>
+      {% endif %}
       <div class="media-detail-shell">
-        {# Closing returns to the collection (or search) the title was opened from. #}
-        {% if standalone %}
-        <a class="media-detail-close" href="/collections/games" aria-label="Back to {{ back_label }}">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-          <span>{{ back_label }}</span>
-        </a>
-        {% elif game_details %}
-        <button class="media-detail-close" type="button" data-game-close aria-label="Back to {{ back_label }}">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-          <span>{{ back_label }}</span>
-        </button>
-        {% else %}
-        <button class="media-detail-close" type="button" data-close-media-details aria-label="Back to {{ back_label }}">
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"></path></svg>
-          <span>{{ back_label }}</span>
-        </button>
-        {% endif %}
         <div class="media-detail-layout">
           <aside class="media-detail-identity">
             <div class="media-detail-poster" data-detail-poster aria-hidden="true">{% if standalone %}{% if game.poster_url %}<img src="{{ game.poster_url }}" alt="">{% else %}<div class="poster-placeholder"><span>{{ game.title[0] }}</span></div>{% endif %}{% endif %}</div>

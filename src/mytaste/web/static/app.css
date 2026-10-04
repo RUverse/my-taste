@@ -852,7 +852,7 @@ body[data-show-year="false"][data-show-rating="false"] .card-meta { display: non
   position: fixed;
   top: clamp(14px, 2vw, 30px);
   left: calc(var(--detail-padding-x) + max(0px, (100vw - 2 * var(--detail-padding-x) - 1500px) / 2));
-  z-index: 5;
+  z-index: 10;
   display: flex;
   max-width: min(320px, calc(100% - 96px));
   height: 44px;
