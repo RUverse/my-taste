@@ -34,6 +34,25 @@
       <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
     </button>
     {% endif %}
+    {% if not game_pass and not has_sources %}
+    <button class="source-choice" type="button" {{ action }}="gamepass">
+      <span class="source-choice-icon source-choice-icon-gamepass" aria-hidden="true">{{ gamepass_logo() }}</span>
+      <span class="source-choice-copy">
+        <strong>Xbox Game Pass</strong>
+        <small>See which games your plan includes</small>
+      </span>
+      <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
+    </button>
+    {% endif %}
+  {%- endmacro %}
+  {% macro next_field() -%}{% if return_to %}<input type="hidden" name="next" value="{{ return_to }}">{% endif %}{%- endmacro %}
+  {% macro game_pass_fields(prefix, choice, autosubmit=false) -%}
+    <label class="game-pass-field" for="{{ prefix }}-plan"><span>Subscription</span>
+      <span class="select-field"><select id="{{ prefix }}-plan" name="plan" {% if autosubmit %}data-autosubmit{% endif %}>{% for value, label in game_plans.items() %}<option value="{{ value }}" {% if choice.plan == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></span>
+    </label>
+    <label class="game-pass-field" for="{{ prefix }}-platform"><span>Play on</span>
+      <span class="select-field"><select id="{{ prefix }}-platform" name="platform" {% if autosubmit %}data-autosubmit{% endif %}>{% for value, label in game_platforms.items() %}<option value="{{ value }}" {% if choice.platform == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></span>
+    </label>
   {%- endmacro %}
   {% macro folder_row(index, folder, removable) -%}
     <li class="folder-row" data-folder-row{% if folder.path %} data-type-chosen{% endif %}>
@@ -65,7 +84,8 @@
       </div>
       <div class="services-header-actions">
         <form class="region-picker" method="post" action="/settings/region" data-region-form>
-          <label for="region">Streaming region</label>
+          {{ next_field() }}
+          <label for="region">Country</label>
           <span class="region-select">
             <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M3.5 12h17M12 3.5c2.3 2.4 3.4 5.2 3.4 8.5s-1.1 6.1-3.4 8.5c-2.3-2.4-3.4-5.2-3.4-8.5s1.1-6.1 3.4-8.5Z"></path></svg>
             <select id="region" name="region">
@@ -172,12 +192,14 @@
               {% if steam_account.profile_url %}<a class="icon-button source-action" href="{{ steam_account.profile_url }}" rel="noreferrer" aria-label="Open your Steam profile" title="Open profile"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M14 5h5v5M19 5l-8 8M17 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-10A1.5 1.5 0 0 1 4 18.5v-10A1.5 1.5 0 0 1 5.5 7H10"></path></svg></a>{% endif %}
               {% if steam_key %}
               <form method="post" action="/games/steam/refresh">
+                {{ next_field() }}
                 <button class="icon-button source-action" type="submit" aria-label="Refresh your Steam games" title="Refresh">
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9"></path><path d="M19.5 4v5h-5"></path></svg>
                 </button>
               </form>
               {% endif %}
               <form method="post" action="/games/steam/disconnect" data-confirm="Disconnect Steam? Your saved collections are kept.">
+                {{ next_field() }}
                 <button class="icon-button source-action" type="submit" aria-label="Disconnect Steam" title="Disconnect">
                   <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
                 </button>
@@ -185,20 +207,27 @@
             </div>
           </li>
         {% endif %}
-        {% if game_pass %}
-          <li class="source-card source-card-gamepass">
+        {# Games always list Game Pass, so its card is always here; the defaults apply until saved. #}
+          <li class="source-card source-card-gamepass" id="gamepass">
             <span class="source-logo source-logo-gamepass" aria-hidden="true">{{ gamepass_logo() }}</span>
             <div class="source-copy">
               <h2 class="source-name">Xbox Game Pass</h2>
-              <p class="source-kind">Games · {{ game_plans[game_pass.plan] }} · {{ game_platforms[game_pass.platform] }}</p>
+              <p class="source-kind">Games · {{ region_name }}{% if not game_pass %} · choose your plan{% endif %}</p>
+              <form class="game-pass-form" method="post" action="/settings/game-pass">
+                {{ next_field() }}
+                {{ game_pass_fields("game-pass", game_pass_form, autosubmit=game_pass) }}
+                {% if game_pass %}<noscript><button class="button button-secondary" type="submit">Save</button></noscript>{% else %}<button class="button button-secondary game-pass-save" type="submit">Save plan</button>{% endif %}
+              </form>
             </div>
-            <div class="source-actions">
-              <a class="icon-button source-action" href="/games/settings" aria-label="Change your Game Pass plan" title="Change plan">
-                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4.5 19.5h4l10-10a2.83 2.83 0 0 0-4-4l-10 10v4Z"></path><path d="m13 7 4 4"></path></svg>
-              </a>
-            </div>
+            {% if game_pass %}
+            <form class="source-actions" method="post" action="/settings/game-pass/remove" data-confirm="Forget your Game Pass plan? Game Pass games stay browsable; saved games just stop being marked as included.">
+              {{ next_field() }}
+              <button class="icon-button source-action" type="submit" aria-label="Forget your Game Pass plan" title="Forget plan">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg>
+              </button>
+            </form>
+            {% endif %}
           </li>
-        {% endif %}
         <li class="source-grid-add">
           <button class="source-add" type="button" data-open-add="choose" aria-haspopup="dialog">
             <span class="source-add-icon" aria-hidden="true">
@@ -288,10 +317,11 @@
           <div class="add-panel-body steam-connect">
             <p class="add-lede">Sign in through Steam to mark the games you own and show how long you've played them. MyTaste only learns your public Steam ID; Steam never shares your password.</p>
             {% if steam_error %}<div class="alert" role="alert">{{ steam_error }}</div>{% endif %}
-            <a class="steam-signin" href="/games/steam/connect">
+            <a class="steam-signin" href="/games/steam/connect{% if return_to %}?next={{ return_to|urlencode }}{% endif %}">
               <img src="https://community.akamai.steamstatic.com/public/images/signinthroughsteam/sits_01.png" alt="Sign in through Steam" width="180" height="35">
             </a>
             <form class="steam-profile-form" method="post" action="/games/steam/profile">
+              {{ next_field() }}
               <label for="steam-profile">Or paste your profile link</label>
               <div class="steam-profile-row">
                 <input id="steam-profile" name="profile" type="text" placeholder="steamcommunity.com/id/yourname" autocomplete="off" spellcheck="false" required>
@@ -300,6 +330,22 @@
             </form>
             <p class="field-note">Owned games are listed only when your Steam profile's Game details are public{% if not steam_key %}, and need a Steam Web API key on the server (MYTASTE_STEAM_API_KEY){% endif %}. Steam's store can be browsed either way.</p>
           </div>
+        </section>
+        {% endif %}
+
+        {% if not game_pass and not has_sources %}
+        <section class="add-panel" data-add-panel="gamepass" data-title="Add Xbox Game Pass" hidden>
+          <form class="add-form" method="post" action="/settings/game-pass">
+            {{ next_field() }}
+            <div class="add-panel-body game-pass-connect">
+              <p class="add-lede">Choose your subscription and where you play. Games your plan includes in {{ region_name }} get the Game Pass mark. No Xbox sign-in needed.</p>
+              {{ game_pass_fields("add-game-pass", game_pass_form) }}
+              <p class="field-note">PC Game Pass is for Windows PC. For console or cloud, choose an Xbox Game Pass plan.</p>
+            </div>
+            <footer class="add-form-footer">
+              <button class="button button-primary" type="submit">Add Game Pass</button>
+            </footer>
+          </form>
         </section>
         {% endif %}
 

@@ -35,6 +35,7 @@ from mytaste.collections.service import GameAccess
 from mytaste.games.http import StoreError
 from mytaste.games.models import PLANS, PLATFORMS, Game, GameQuery, SteamAccount
 from mytaste.library.models import Library, LibraryStatus
+from mytaste.storage.games import GamePreferences
 from mytaste.storage.preferences import DisplayPreferences, Preferences
 from mytaste.web.filter_options import (
     FILTER_GROUPS,
@@ -64,7 +65,7 @@ _LEGACY_CATEGORIES: dict[str, tuple[str, str | None]] = {
     "recent": (HOME_COLLECTION, "added"),
     "alphabetical": (HOME_COLLECTION, "title"),
 }
-_ADD_STEPS = frozenset({"choose", "streaming", "local", "steam"})
+_ADD_STEPS = frozenset({"choose", "streaming", "local", "steam", "gamepass"})
 _NO_SELECTION = "none"
 _SEARCH_CATEGORY = BrowseCategory(HOME_COLLECTION, "Popular")
 _DISPLAY_FLAGS = (
@@ -639,6 +640,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         streaming_error: str | None = None,
         library_error: str | None = None,
         library_form: dict[str, object] | None = None,
+        game_pass_form: GamePreferences | None = None,
         return_to: str | None = None,
     ) -> dict[str, object]:
         preferences: Preferences = request.app.state.preferences.get()
@@ -668,6 +670,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         steam_account = _steam_account(games)
         game_pass = game_preferences.get() if game_preferences.configured() else None
         return {
+            "game_pass_form": game_pass_form or game_preferences.get(),
             "steam_available": bool(getattr(games, "steam_available", False)),
             "steam_key": bool(getattr(games, "owned_games_available", False)),
             "steam_account": steam_account,
@@ -708,14 +711,14 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         context = await settings_context(
             request,
             add_step=request.query_params.get("add", ""),
-            return_to=_return_path(request.query_params.get("next")),
+            return_to=return_path(request.query_params.get("next")),
         )
         return render(request, "settings.html", context)
 
     @router.post("/settings/services", response_class=HTMLResponse)
     async def add_services(request: Request) -> Response:
         form = await request.form()
-        return_to = _return_path(form.get("next"))
+        return_to = return_path(form.get("next"))
         region = str(form.get("region") or "").strip().upper()
         selected_ids: set[int] = set()
         form_error: str | None = None
@@ -763,11 +766,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 preferences.region,
                 tuple(value for value in preferences.provider_ids if value != provider_id),
             )
-        return RedirectResponse(_return_path(form.get("next")) or "/settings", status_code=303)
+        return RedirectResponse(return_path(form.get("next")) or "/settings", status_code=303)
 
     @router.post("/settings/region", response_class=HTMLResponse)
     async def change_region(request: Request) -> Response:
         form = await request.form()
+        return_to = return_path(form.get("next"))
         region = str(form.get("region") or "").strip().upper()
         try:
             valid_ids = await _region_provider_ids(request, region)
@@ -777,17 +781,40 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     region,
                     tuple(value for value in preferences.provider_ids if value in valid_ids),
                 )
-                return RedirectResponse("/settings", status_code=303)
+                return RedirectResponse(_settings_url(return_to), status_code=303)
             page_error = "Choose a supported country or region."
         except (TMDBError, ValueError) as exc:
             page_error = str(exc)
-        context = await settings_context(request, page_error=page_error)
+        context = await settings_context(request, page_error=page_error, return_to=return_to)
         return render(request, "settings.html", context, status_code=422)
+
+    @router.post("/settings/game-pass", response_class=HTMLResponse)
+    async def save_game_pass(request: Request) -> Response:
+        form = await request.form()
+        return_to = return_path(form.get("next"))
+        plan, platform = str(form.get("plan") or ""), str(form.get("platform") or "")
+        try:
+            request.app.state.game_preferences.save(plan, platform)
+        except ValueError as exc:
+            context = await settings_context(
+                request,
+                page_error=str(exc),
+                game_pass_form=GamePreferences(plan, platform),
+                return_to=return_to,
+            )
+            return render(request, "settings.html", context, status_code=422)
+        return RedirectResponse(_settings_url(return_to, "gamepass"), status_code=303)
+
+    @router.post("/settings/game-pass/remove")
+    async def remove_game_pass(request: Request) -> Response:
+        form = await request.form()
+        request.app.state.game_preferences.clear()
+        return RedirectResponse(_settings_url(return_path(form.get("next"))), status_code=303)
 
     @router.post("/settings/libraries", response_class=HTMLResponse)
     async def add_library(request: Request) -> Response:
         form = await request.form()
-        return_to = _return_path(form.get("next"))
+        return_to = return_path(form.get("next"))
         name = str(form.get("name") or "").strip()
         rows = _folder_rows(form)
         try:
@@ -806,7 +833,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     @router.post("/settings/libraries/{library_id}/folders", response_class=HTMLResponse)
     async def add_library_folders(library_id: int, request: Request) -> Response:
         form = await request.form()
-        return_to = _return_path(form.get("next"))
+        return_to = return_path(form.get("next"))
         rows = _folder_rows(form)
         try:
             request.app.state.library.add_folders(library_id, _folder_pairs(rows))
@@ -854,7 +881,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     async def remove_library(library_id: int, request: Request) -> Response:
         form = await request.form()
         request.app.state.library.remove(library_id)
-        return RedirectResponse(_return_path(form.get("next")) or "/settings", status_code=303)
+        return RedirectResponse(return_path(form.get("next")) or "/settings", status_code=303)
 
     @router.get("/api/libraries/status", response_class=JSONResponse)
     async def library_status(request: Request) -> JSONResponse:
@@ -1231,7 +1258,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
     return router
 
 
-def _return_path(value: object) -> str | None:
+def _settings_url(return_to: str | None, anchor: str = "") -> str:
+    url = "/settings" + (f"?{urlencode({'next': return_to})}" if return_to else "")
+    return url + (f"#{anchor}" if anchor else "")
+
+
+def return_path(value: object) -> str | None:
     """Accept a path on this site to return to after a settings change, nothing else."""
 
     if not isinstance(value, str) or len(value) > 2000:

@@ -2579,7 +2579,10 @@
   if (regionForm && regionSelect) {
     const savedRegion = regionSelect.value;
     regionSelect.addEventListener("change", () => {
-      const enabled = document.querySelectorAll(".source-card:not(.source-card-local)").length;
+      // Only streaming services depend on the region; libraries and game stores stay.
+      const enabled = document.querySelectorAll(
+        ".source-card:not(.source-card-local, .source-card-steam, .source-card-gamepass)",
+      ).length;
       const name = regionSelect.selectedOptions[0]?.textContent.trim() || regionSelect.value;
       if (
         enabled &&
@@ -2591,4 +2594,30 @@
       regionForm.requestSubmit();
     });
   }
+
+  // Game Pass plan and platform: PC Game Pass is for Windows PC only. The card saves on change.
+  document.querySelectorAll("form").forEach((form) => {
+    const plan = form.querySelector('select[name="plan"]');
+    const platform = form.querySelector('select[name="platform"]');
+    if (!plan || !platform) {
+      return;
+    }
+    const sync = () => {
+      Array.from(platform.options).forEach((option) => {
+        option.disabled = plan.value === "pc" && option.value !== "pc";
+      });
+      if (platform.selectedOptions[0]?.disabled) {
+        platform.value = "pc";
+      }
+    };
+    sync();
+    [plan, platform].forEach((select) => {
+      select.addEventListener("change", () => {
+        sync();
+        if (select.hasAttribute("data-autosubmit")) {
+          form.requestSubmit();
+        }
+      });
+    });
+  });
 })();

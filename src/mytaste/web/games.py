@@ -21,7 +21,6 @@ from mytaste.games.models import (
     OWNED_COLLECTIONS,
     PLANS,
     PLATFORMS,
-    REGION,
     SORTS,
     SOURCES,
     STEAM_COLLECTIONS,
@@ -37,7 +36,7 @@ from mytaste.games.service import (
 )
 from mytaste.games.steam import SteamProfileError, openid_url
 from mytaste.storage.games import GamePreferences
-from mytaste.web.routes import collection_editor_context, collection_payload
+from mytaste.web.routes import collection_editor_context, collection_payload, return_path
 
 _STATE_COOKIE = "mytaste_steam_state"
 _NOTICES = {
@@ -84,7 +83,7 @@ def _context(request: Request) -> dict[str, Any]:
 
 def browse_url(query: GameQuery, *, steam: bool = True, connected: bool = True) -> str:
     path = "/collections/games" + (f"/{query.collection}" if query.collection != "all" else "")
-    params: list[tuple[str, Any]] = [("plan", query.plan), ("platform", query.platform)]
+    params: list[tuple[str, Any]] = []
     if steam and set(query.sources) != set(SOURCES):
         params.extend(("source", source) for source in query.sources or ("none",))
     default = default_sort(query, steam, connected)
@@ -97,7 +96,11 @@ def browse_url(query: GameQuery, *, steam: bool = True, connected: bool = True) 
     ):
         if value:
             params.append((name, value))
-    return path + "?" + urlencode(params)
+    return path + (f"?{urlencode(params)}" if params else "")
+
+
+def _with_param(url: str, name: str, value: str) -> str:
+    return url + ("&" if "?" in url else "?") + urlencode({name: value})
 
 
 def _parse_query(
@@ -107,8 +110,8 @@ def _parse_query(
     chosen = params.getlist("source")
     sources = tuple(source for source in SOURCES if source in chosen) if chosen else tuple(SOURCES)
     query = GameQuery(
-        plan=params.get("plan", defaults.plan),
-        platform=params.get("platform", defaults.platform),
+        plan=defaults.plan,
+        platform=defaults.platform,
         collection=key,
         search=params.get("q", "").strip(),
         genre=params.get("genre", ""),
@@ -266,7 +269,13 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
             {
                 **card_context,
                 "loading": loading,
-                "full_url": browse_url(query, steam=steam, connected=connected) + "&render=1",
+                "full_url": _with_param(
+                    browse_url(query, steam=steam, connected=connected), "render", "1"
+                ),
+                "manage_url": "/settings?"
+                + urlencode(
+                    {"next": browse_url(replace(query, page=1), steam=steam, connected=connected)}
+                ),
                 "search_query": query.search,
                 "region": preferences.region,
                 "error": error,
@@ -353,60 +362,34 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
             headers={"Cache-Control": "no-store"},
         )
 
-    @router.get("/games/settings", response_class=HTMLResponse)
-    async def settings(request: Request) -> HTMLResponse:
-        defaults = request.app.state.game_preferences.get()
-        context = {
-            **_context(request),
-            "defaults": defaults,
-            "region": request.app.state.preferences.get().region,
-            "error": "",
-        }
-        return templates.TemplateResponse(
-            request=request, name="game_settings.html", context=context
-        )
-
-    @router.post("/games/settings")
-    async def save_settings(request: Request) -> Response:
-        form = await request.form()
-        plan, platform = str(form.get("plan", "")), str(form.get("platform", ""))
-        region = str(form.get("region", "")).strip().upper()
-        try:
-            GameQuery(plan=plan, platform=platform).validate()
-            if not REGION.fullmatch(region):
-                raise ValueError("Enter a two-letter country code, such as DE or US")
-        except ValueError as exc:
-            context = {
-                **_context(request),
-                "defaults": GamePreferences(plan, platform),
-                "region": region,
-                "error": str(exc),
-            }
-            return templates.TemplateResponse(
-                request=request, name="game_settings.html", context=context, status_code=422
-            )
-        preferences = request.app.state.preferences
-        await asyncio.to_thread(preferences.save, region, preferences.get().provider_ids)
-        await asyncio.to_thread(request.app.state.game_preferences.save, plan, platform)
-        return RedirectResponse("/collections/games", status_code=303)
+    @router.get("/games/settings")
+    async def settings(request: Request) -> RedirectResponse:
+        # The plan moved to the Services page; keep old links working.
+        return RedirectResponse("/settings#gamepass", status_code=303)
 
     # Steam account ----------------------------------------------------------------------
 
-    def services_redirect(**params: str) -> RedirectResponse:
+    def services_redirect(next_path: object = None, **params: str) -> RedirectResponse:
+        params["next"] = return_path(next_path) or ""
         query = urlencode({key: value for key, value in params.items() if value})
         return RedirectResponse("/settings" + (f"?{query}" if query else "") + "#steam", 303)
 
     @router.get("/games/steam/connect")
     async def steam_connect(request: Request) -> Response:
         if not _steam(request):
-            return services_redirect(steam_error="Steam is not available on this server.")
+            return services_redirect(
+                request.query_params.get("next"),
+                steam_error="Steam is not available on this server.",
+            )
         state = secrets.token_urlsafe(24)
         callback = _callback_url(request)
         realm = f"{request.url.scheme}://{request.url.netloc}/"
         response = RedirectResponse(openid_url(f"{callback}?state={state}", realm), 303)
+        # The page to return to after Services rides along with the state.
+        next_path = return_path(request.query_params.get("next")) or ""
         response.set_cookie(
             _STATE_COOKIE,
-            state,
+            f"{state} {next_path}".strip(),
             max_age=600,
             path="/games/steam",
             httponly=True,
@@ -417,7 +400,7 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
 
     @router.get("/games/steam/callback", name="steam_callback")
     async def steam_callback(request: Request) -> Response:
-        state = request.cookies.get(_STATE_COOKIE, "")
+        state, _, next_path = request.cookies.get(_STATE_COOKIE, "").partition(" ")
         params = dict(request.query_params)
         try:
             if not state or not secrets.compare_digest(state, params.get("state", "")):
@@ -427,11 +410,9 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
                 params, f"{_callback_url(request)}?state={state}"
             )
             await games.connect(steam_id)
-            response = services_redirect(steam="connected")
-        except SteamProfileError as exc:
-            response = services_redirect(steam_error=str(exc))
-        except StoreError as exc:
-            response = services_redirect(steam_error=str(exc))
+            response = services_redirect(next_path, steam="connected")
+        except (SteamProfileError, StoreError) as exc:
+            response = services_redirect(next_path, steam_error=str(exc))
         response.delete_cookie(_STATE_COOKIE, path="/games/steam")
         return response
 
@@ -441,21 +422,23 @@ def create_games_router(templates: Jinja2Templates) -> APIRouter:
         try:
             await request.app.state.games.connect_profile(str(form.get("profile", "")))
         except (SteamProfileError, StoreError) as exc:
-            return services_redirect(steam_error=str(exc), add="steam")
-        return services_redirect(steam="connected")
+            return services_redirect(form.get("next"), steam_error=str(exc), add="steam")
+        return services_redirect(form.get("next"), steam="connected")
 
     @router.post("/games/steam/refresh")
     async def steam_refresh(request: Request) -> Response:
+        form = await request.form()
         try:
             await request.app.state.games.refresh_owned(force=True)
         except (SteamProfileError, StoreError) as exc:
-            return services_redirect(steam_error=str(exc))
-        return services_redirect(steam="refreshed")
+            return services_redirect(form.get("next"), steam_error=str(exc))
+        return services_redirect(form.get("next"), steam="refreshed")
 
     @router.post("/games/steam/disconnect")
     async def steam_disconnect(request: Request) -> Response:
+        form = await request.form()
         await asyncio.to_thread(request.app.state.games.disconnect)
-        return services_redirect()
+        return services_redirect(form.get("next"))
 
     # Details ----------------------------------------------------------------------------
 

@@ -79,10 +79,12 @@ All games, ordered by Steam's relevance, then the user's own matches.
 
 ## Accounts
 
-The Services page connects Steam with Valve's **Sign in through Steam** button. The callback
+Both game services are managed on the Services page, which the games sidebar opens with
+**Manage**: the Xbox Game Pass card holds the plan and platform (saved on change), and Steam is
+added from **Add**. The Services page connects Steam with Valve's **Sign in through Steam** button. The callback
 carries a random `state` that must match an HttpOnly, SameSite=Lax cookie; the reply must name
 Steam's endpoint, our exact callback, and a matching claimed ID, and Steam must confirm it with
-`check_authentication`. Pasting a profile link is the fallback. One account is connected per
+`check_authentication`. The page to return to after Services travels in the same cookie. Pasting a profile link is the fallback. One account is connected per
 installation (`steam_account`); owned games are refreshed after six hours, or on demand, and a
 failed refresh keeps the previous list.
 

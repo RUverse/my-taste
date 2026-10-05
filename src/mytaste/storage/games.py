@@ -49,3 +49,9 @@ class GamePreferenceRepository:
                 (plan, platform),
             )
         return GamePreferences(plan, platform)
+
+    def clear(self) -> None:
+        """Forget the chosen plan; Game Pass stops counting as one of the user's services."""
+
+        with sqlite3.connect(self.database_path) as connection:
+            connection.execute("DELETE FROM game_preferences WHERE id=1")

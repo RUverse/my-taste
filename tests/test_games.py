@@ -446,11 +446,24 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
         assert app.state.preferences.get().provider_ids == (8, 337)
 
 
+class ServicesCatalog:
+    """Just enough catalog for the Services page."""
+
+    async def regions(self):
+        return ()
+
+    async def providers(self, region):
+        return ()
+
+
 def test_games_routes_settings_fragments_and_details(tmp_path):
     games = WebGames()
-    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=object(), games=games)
+    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=ServicesCatalog(), games=games)
     with TestClient(app) as client:
-        assert "Set up Game Pass" in client.get("/collections/games").text
+        unset = client.get("/collections/games").text
+        assert "Choose your country" in unset
+        assert 'href="/settings?next=%2Fcollections%2Fgames">Manage</a>' in unset
+        assert 'name="plan"' not in unset and "Plan and country" not in unset
         assert not games.calls
         app.state.preferences.save("DE", (8, 337))
         response = client.get("/collections/games?q=A+Game&sort=title&render=1")
@@ -463,7 +476,8 @@ def test_games_routes_settings_fragments_and_details(tmp_path):
         )
         assert "<html" not in fragment.text and "A Game" in fragment.text
         assert fragment.headers["x-next-page"] == ""
-        assert client.get("/collections/games?plan=pc&platform=cloud").status_code == 422
+        # The plan comes from the Services page; old plan parameters are ignored.
+        assert client.get("/collections/games?plan=pc&platform=cloud").status_code == 200
         detail = client.get(f"/api/games/{A}/details")
         assert detail.json()["portable_id"] == f"game-xbox-{A}"
         assert "&lt;script&gt;" in client.get(f"/games/{A}").text
@@ -475,19 +489,32 @@ def test_games_routes_settings_fragments_and_details(tmp_path):
         assert 'class="site-header"' not in standalone
         assert "data-detail-cast" not in standalone and "data-detail-episodes" not in standalone
         assert client.get("/api/games/not-an-id/details").status_code == 404
-        invalid = client.post(
-            "/games/settings", data={"region": "DE", "plan": "pc", "platform": "cloud"}
-        )
-        assert invalid.status_code == 422
-        assert app.state.game_preferences.get().plan == "ultimate"
+        old = client.get("/games/settings", follow_redirects=False)
+        assert old.status_code == 303 and old.headers["location"] == "/settings#gamepass"
+        invalid = client.post("/settings/game-pass", data={"plan": "pc", "platform": "cloud"})
+        assert invalid.status_code == 422 and "PC Game Pass supports Windows PC" in invalid.text
+        assert not app.state.game_preferences.configured()
         response = client.post(
-            "/games/settings",
-            data={"region": "de", "plan": "premium", "platform": "console"},
+            "/settings/game-pass",
+            data={"plan": "premium", "platform": "console", "next": "/collections/games"},
             follow_redirects=False,
         )
         assert response.status_code == 303
+        assert response.headers["location"] == "/settings?next=%2Fcollections%2Fgames#gamepass"
         assert app.state.preferences.get().provider_ids == (8, 337)
         assert app.state.game_preferences.get().plan == "premium"
+        assert "Premium · Xbox console" in client.get("/collections/games?render=1").text
+        services = client.get("/settings?next=/collections/games").text
+        assert 'id="gamepass"' in services and "/settings/game-pass/remove" in services
+        assert 'name="next" value="/collections/games"' in services
+        removed = client.post(
+            "/settings/game-pass/remove", data={"next": "/x"}, follow_redirects=False
+        )
+        assert removed.headers["location"] == "/settings?next=%2Fx"
+        assert not app.state.game_preferences.configured()
+        unsaved = client.get("/settings").text
+        assert 'id="gamepass"' in unsaved and "Save plan" in unsaved
+        assert "/settings/game-pass/remove" not in unsaved
         games.fail = True
         assert client.get("/collections/games?render=1").status_code == 503
         assert client.get(f"/api/games/{A}/details").status_code == 503

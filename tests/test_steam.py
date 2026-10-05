@@ -648,8 +648,11 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
         app.state.preferences.save("DE", (8, 337))
         assert "Connect Steam" in client.get("/settings?add=steam").text
         assert 'data-open-step="steam"' in client.get("/settings?add=steam").text
-        start = client.get("/games/steam/connect", follow_redirects=False)
+        start = client.get(
+            "/games/steam/connect?next=/collections/games/mine", follow_redirects=False
+        )
         assert start.status_code == 303
+        issued = client.cookies.get("mytaste_steam_state")
         params = parse_qs(urlparse(start.headers["location"]).query)
         return_to = params["openid.return_to"][0]
         state = parse_qs(urlparse(return_to).query)["state"][0]
@@ -670,13 +673,16 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
             follow_redirects=False,
         )
         assert "steam_error=" in rejected.headers["location"] and service.account() is None
-        client.cookies.set("mytaste_steam_state", state, path="/games/steam")
+        client.cookies.set("mytaste_steam_state", issued, path="/games/steam")
         signed_in = client.get(
             "/games/steam/callback",
             params={"state": state, "openid.sig": "good"},
             follow_redirects=False,
         )
-        assert signed_in.headers["location"] == "/settings?steam=connected#steam"
+        # Back on Services, Done still returns to the games page that opened it.
+        assert signed_in.headers["location"] == (
+            "/settings?steam=connected&next=%2Fcollections%2Fgames%2Fmine#steam"
+        )
         assert checked[-1] == return_to
         assert service.account().steam_id == STEAM_ID and service.account().owned
 
@@ -720,6 +726,8 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
         client.post("/games/steam/disconnect")
         assert service.account() is None
         reconnect = client.post(
-            "/games/steam/profile", data={"profile": "robin"}, follow_redirects=False
+            "/games/steam/profile",
+            data={"profile": "robin", "next": "//evil.example"},
+            follow_redirects=False,
         )
         assert reconnect.headers["location"] == "/settings?steam=connected#steam"

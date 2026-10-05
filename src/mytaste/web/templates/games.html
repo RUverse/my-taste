@@ -22,11 +22,9 @@
       {% endfor %}
     </ul>
     {% else %}
-    <p class="sidebar-label">Xbox Game Pass · {{ region or 'Choose country' }}</p>
+    <p class="sidebar-label">Xbox Game Pass · {{ plans[query.plan] }} · {{ platforms[query.platform] }}</p>
     {% endif %}
-    <label class="select-field"><span class="sr-only">Game Pass subscription</span><select id="game-plan" name="plan">{% for value, label in plans.items() %}<option value="{{ value }}" {% if query.plan == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-    <label class="select-field"><span class="sr-only">Play Game Pass on</span><select id="game-platform" name="platform">{% for value, label in platforms.items() %}<option value="{{ value }}" {% if query.platform == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
-    <div class="source-footer"><a href="/games/settings">Plan and country</a>{% if steam_available %}<a href="/settings{% if not steam_account %}?add=steam{% endif %}#steam">{{ 'Steam account' if steam_account else 'Connect Steam' }}</a>{% endif %}</div>
+    <div class="source-footer"><a href="{{ manage_url }}">Manage</a></div>
   </section>
   <section class="sidebar-section" id="sidebar-sort" aria-labelledby="sort-heading">
     <div class="sidebar-section-head"><h2 id="sort-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9M4 12h6M4 17h3M17 5v14M14 16l3 3 3-3"></path></svg>Sort</h2></div>

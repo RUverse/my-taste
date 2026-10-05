@@ -53,8 +53,6 @@
           <form class="search-form {% if search_query %}is-open{% endif %}" method="get" action="{{ page_path|default('/collections/games') if header_media == 'game' else '/' }}" role="search">
             <input type="hidden" name="media" value="{{ header_media }}">
             {% if header_media == 'game' and query %}
-              <input type="hidden" name="plan" value="{{ query.plan }}">
-              <input type="hidden" name="platform" value="{{ query.platform }}">
               {% if query.genre %}<input type="hidden" name="genre" value="{{ query.genre }}">{% endif %}
               {% if query.sort != 'catalog' %}<input type="hidden" name="sort" value="{{ query.sort }}">{% endif %}
               {% if query.order %}<input type="hidden" name="order" value="{{ query.order }}">{% endif %}

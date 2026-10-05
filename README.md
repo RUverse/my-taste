@@ -149,8 +149,9 @@ Steam's details and both stores' services; its details open **Open in Steam** wi
 it. Covers show the Game Pass logo when your plan includes the game and the Steam logo when it is
 in your Steam library, with the hours you played below the title.
 
-- **Game Pass:** open **Plan and country** to choose Ultimate, Premium, Essential, or PC Game Pass
-  and your platform. Plan selection is manual and needs no Xbox login; the country is shared
+- **Game Pass:** on the **Services** page (**Manage** in the games sidebar), add **Xbox Game
+  Pass** and choose Ultimate, Premium, Essential, or PC Game Pass and your platform; change them
+  later on its card. Plan selection is manual and needs no Xbox login; the country is shared
   with movies and series.
 - **Steam:** on the **Services** page, add **Steam** and use **Sign in through Steam**, or paste
   your profile link. MyTaste learns only your public Steam ID. Listing owned games needs the
