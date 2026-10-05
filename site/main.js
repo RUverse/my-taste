@@ -17,9 +17,12 @@
   // Everything the cursor can nudge: { el, edge(), offset, target }.
   const movers = [];
 
-  // Background bands: semi-transparent strips that overlap into a banding pattern.
-  const bandLayer = document.querySelector(".bands");
+  // Bands: semi-transparent strips that overlap into a banding pattern. Most sit in front of
+  // the hero and a few behind it, so the hero reads as standing among them.
+  const backLayer = document.querySelector(".bands");
+  const frontLayer = document.querySelector(".bands-front");
   const addBand = (x, width, alpha, gap) => {
+    const bandLayer = gap || random() < 0.35 ? backLayer : frontLayer;
     const el = document.createElement("div");
     el.className = gap ? "band is-gap" : "band";
     el.style.setProperty("--x", `${Math.round(x)}px`);

@@ -27,6 +27,7 @@
   --shade-4: #e2e2e2;
   --code-bg: rgb(0 0 0 / 0.05);
   --shot-edge: rgb(0 0 0 / 0.12);
+  --shadow: rgb(0 0 0 / 0.07);
   --hue-start: 355;
 
   --ease: cubic-bezier(0.76, 0, 0.24, 1);
@@ -58,6 +59,7 @@
     --shade-4: #1c1c1c;
     --code-bg: rgb(255 255 255 / 0.07);
     --shot-edge: rgb(255 255 255 / 0.14);
+    --shadow: rgb(0 0 0 / 0.3);
     --hue-start: 295;
   }
 }
@@ -122,19 +124,28 @@ a:focus-visible,
   left: clamp(24px, 9vw, 160px);
 }
 
+/* Inside the stage: above the hero, below the curtain. */
+.bands-front {
+  z-index: 2;
+}
+
+/* Each rectangle darkens towards its left side, like a shadow. */
 .band {
   position: absolute;
   top: 0;
   bottom: 0;
   left: var(--x);
   width: var(--w);
-  background: var(--band);
-  opacity: var(--a);
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--band) calc(var(--a) * 100%), transparent);
   will-change: transform;
 }
 
 .band.is-gap {
-  background: var(--gap);
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--gap) calc(var(--a) * 100%), transparent);
 }
 
 /* Top bar */
@@ -273,7 +284,7 @@ a:focus-visible,
 /* Curtain: panels that slide in over the hero when a page opens */
 
 .curtain {
-  z-index: 2;
+  z-index: 3;
 }
 
 .curtain-track {
@@ -295,8 +306,9 @@ a:focus-visible,
 .panel > span {
   position: absolute;
   inset: 0;
-  background: var(--shade);
-  opacity: var(--a);
+  background:
+    linear-gradient(to right, var(--shadow), transparent 9rem),
+    color-mix(in srgb, var(--shade) calc(var(--a) * 100%), transparent);
   will-change: transform;
 }
 
@@ -306,7 +318,7 @@ a:focus-visible,
 .pages {
   position: fixed;
   inset: 0;
-  z-index: 3;
+  z-index: 4;
   overflow: hidden;
   overscroll-behavior: contain;
   pointer-events: none;

@@ -16,7 +16,9 @@ The landing page for MyTaste: a static site with no build step and no dependenci
 
 The background is a set of semi-transparent vertical rectangles whose overlaps make the
 banding; their layout is seeded, so it is the same on every visit, and their sizes are in
-pixels, so phones show fewer rectangles rather than narrower ones. The "My" is an SVG whose
+pixels, so phones show fewer rectangles rather than narrower ones. Most rectangles sit in
+front of the hero and a few behind it, so the hero stands among them, and each one darkens
+towards its left side like a shadow. The "My" is an SVG whose
 gradient turns slowly around the colour wheel. Opening a page slides the hero aside while
 more rectangles close over the middle like a curtain, then keep closing slowly until most of
 the hero is hidden. The page scrolls on its own layer over the curtain. Escape, the browser's back button, or a
