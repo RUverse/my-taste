@@ -17,21 +17,22 @@
   // Everything the cursor can nudge: { el, edge(), offset, target }.
   const movers = [];
 
-  // Bands: semi-transparent strips that overlap into a banding pattern. Most sit in front of
-  // the hero and a few behind it, so the hero reads as standing among them.
+  // Bands: semi-transparent strips that overlap into a banding pattern.
   const backLayer = document.querySelector(".bands");
   const frontLayer = document.querySelector(".bands-front");
+  const bands = [];
   const addBand = (x, width, alpha, gap) => {
-    const bandLayer = gap || random() < 0.35 ? backLayer : frontLayer;
     const el = document.createElement("div");
     el.className = gap ? "band is-gap" : "band";
     el.style.setProperty("--x", `${Math.round(x)}px`);
     el.style.setProperty("--w", `${Math.round(width)}px`);
     el.style.setProperty("--a", alpha.toFixed(3));
-    bandLayer.append(el);
+    backLayer.append(el);
+    bands.push({ el, gap, center: x + width / 2 });
     movers.push({
       el,
-      edge: () => bandLayer.offsetLeft + el.offsetLeft + el.offsetWidth / 2,
+      // Both layers start at the same left edge.
+      edge: () => backLayer.offsetLeft + el.offsetLeft + el.offsetWidth / 2,
       offset: 0,
       target: 0,
     });
@@ -45,6 +46,22 @@
   for (let x = 40; x < SPAN; x += 300) {
     addBand(x + between(0, 200), between(3, 45), between(0.5, 0.85), true);
   }
+
+  // Every band crossing the hero sits in front of it except the few nearest its middle, so the
+  // hero reads as standing among them. The thin gaps stay behind; in front they cut the letters.
+  const hero = document.querySelector(".hero");
+  const layerBands = () => {
+    // offsetLeft ignores the hero's transform, so this is its home position even on a page.
+    const middle = hero.offsetLeft + hero.offsetWidth / 2 - backLayer.offsetLeft;
+    const keepBehind = hero.offsetWidth * 0.17;
+    for (const band of bands) {
+      const front = !band.gap && Math.abs(band.center - middle) > keepBehind;
+      const layer = front ? frontLayer : backLayer;
+      if (band.el.parentElement !== layer) layer.append(band.el);
+    }
+  };
+  layerBands();
+  window.addEventListener("resize", layerBands);
 
   // Curtain panels: offset from the curtain's edge (px), shade, opacity, and stagger.
   const track = document.querySelector(".curtain-track");
