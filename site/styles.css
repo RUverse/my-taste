@@ -37,6 +37,7 @@
   --hue-start: 355;
 
   --ease: cubic-bezier(0.76, 0, 0.24, 1);
+  --bar-h: 4.8rem;
   /* Fast start, long soft landing: page changes feel quick without snapping. */
   --snap: cubic-bezier(0.25, 1, 0.5, 1);
   --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
@@ -143,9 +144,16 @@ a:focus-visible,
 }
 
 /* Each rectangle darkens towards its left side, like a shadow. */
+/* The rectangles hang from just under the top bar with slanted tops (main.js sets them). */
+.band,
+.cover,
+.panel > span {
+  top: calc(var(--bar-h) + var(--dy, 0px));
+  clip-path: polygon(0 var(--sl, 0px), 100% var(--sr, 0px), 100% 100%, 0 100%);
+}
+
 .band {
   position: absolute;
-  top: 0;
   bottom: 0;
   left: var(--x);
   width: var(--w);
@@ -169,7 +177,7 @@ a:focus-visible,
   left: 0;
   right: 0;
   z-index: 4;
-  min-height: 4.8rem;
+  min-height: var(--bar-h);
   align-items: center;
   background: var(--bar);
   pointer-events: none;
@@ -273,7 +281,6 @@ a:focus-visible,
 
 .cover {
   position: absolute;
-  top: 0;
   bottom: 0;
   left: calc(var(--start) + var(--span) * var(--f0));
   width: calc(var(--span) * var(--fw));
@@ -370,7 +377,9 @@ a:focus-visible,
 
 .panel > span {
   position: absolute;
-  inset: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   background:
     linear-gradient(to right, var(--shadow), transparent 9rem),
     color-mix(in srgb, var(--shade) calc(var(--a) * 100%), transparent);
@@ -384,7 +393,10 @@ a:focus-visible,
   left: calc(var(--page-l) - clamp(1.5rem, 3vw, 3rem));
 }
 
+/* The sheet stays straight: it is the content's edge. */
 .sheet > span {
+  top: var(--bar-h);
+  clip-path: none;
   background: var(--sheet);
   box-shadow: -1.5rem 0 3rem -1rem var(--sheet-shadow);
 }
@@ -550,6 +562,7 @@ a:focus-visible,
   :root {
     --hero-w: 86vw;
     --dock-left: 1rem;
+    --bar-h: 5.6rem;
     --dock-top: 0.4rem;
     --dock-w: 72px;
     --curtain-l: 0px;

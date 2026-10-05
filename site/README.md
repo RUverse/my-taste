@@ -18,7 +18,8 @@ The background is a set of semi-transparent vertical rectangles whose overlaps m
 banding; their layout is seeded, so it is the same on every visit, and their sizes are in
 pixels, so phones show fewer rectangles rather than narrower ones. The rectangles crossing
 the hero sit in front of it except the few nearest its middle, so the hero stands among them, and each one darkens
-towards its left side like a shadow. The "My" is an SVG whose
+towards its left side like a shadow. They hang from just under the top bar with slanted top
+edges, like a curtain. The "My" is an SVG whose
 gradient turns slowly around the colour wheel and glows in the same colour. Opening a page
 sweeps more rectangles in from the right like a curtain until the hero is hidden, ending with
 a solid sheet behind the page text. At the same time a few opaque rectangles in the top-left

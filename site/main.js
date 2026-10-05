@@ -4,15 +4,29 @@
   const body = document.body;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  // A seeded generator keeps the band layout the same on every visit.
-  let seed = 20261005;
-  const random = () => {
-    seed = (seed + 0x6d2b79f5) | 0;
-    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  // Seeded generators keep the layout the same on every visit. The tops have their own, so
+  // tuning them never moves the bands sideways.
+  const seeded = (start) => {
+    let seed = start;
+    return () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
   };
+  const random = seeded(20261005);
   const between = (min, max) => min + (max - min) * random();
+  const tops = seeded(1005);
+
+  // Every rectangle hangs from just under the top bar with a slanted top edge, like a curtain:
+  // --dy moves the edge up or down, --sl and --sr drop its left and right corners.
+  const slant = (el) => {
+    const pick = (min, max) => `${Math.round(min + (max - min) * tops())}px`;
+    el.style.setProperty("--dy", pick(-8, 14));
+    el.style.setProperty("--sl", pick(0, 28));
+    el.style.setProperty("--sr", pick(0, 28));
+  };
 
   // Everything the cursor can nudge: { el, edge(), offset, target }.
   const movers = [];
@@ -27,6 +41,7 @@
     el.style.setProperty("--x", `${Math.round(x)}px`);
     el.style.setProperty("--w", `${Math.round(width)}px`);
     el.style.setProperty("--a", alpha.toFixed(3));
+    slant(el);
     backLayer.append(el);
     bands.push({ el, gap, center: x + width / 2 });
     movers.push({
@@ -85,6 +100,7 @@
     const fill = document.createElement("span");
     fill.style.setProperty("--shade", `var(--shade-${shade})`);
     fill.style.setProperty("--a", String(alpha));
+    slant(fill);
     el.append(fill);
     // The solid sheet behind the page text comes last, on top of the panels.
     curtain.insertBefore(el, curtain.querySelector(".sheet"));
