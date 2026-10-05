@@ -8,13 +8,18 @@ The landing page for MyTaste: a static site with no build step and no dependenci
   the OS setting.
 - `main.js` — draws the background bands, nudges the bands closest to the cursor, and opens
   pages from the URL hash (`#media-server`, `#login`, …).
+- `screenshots/` — the app in light and dark (WebP, 1440×900), shown below each page's text.
+  They were taken from a throwaway instance with demo data; never use a real library or
+  account.
 - `fonts/` — Space Grotesk (latin subset, SIL Open Font License, see `fonts/OFL.txt`).
 - `favicon.svg` — the icon.
 
 The background is a set of semi-transparent vertical rectangles whose overlaps make the
-banding; their layout is seeded, so it is the same on every visit. The "My" is an SVG whose
+banding; their layout is seeded, so it is the same on every visit, and their sizes are in
+pixels, so phones show fewer rectangles rather than narrower ones. The "My" is an SVG whose
 gradient turns slowly around the colour wheel. Opening a page slides the hero aside while
-more rectangles close over the middle like a curtain; Escape, the browser's back button, or a
+more rectangles close over the middle like a curtain, then keep closing slowly until most of
+the hero is hidden. The page scrolls on its own layer over the curtain. Escape, the browser's back button, or a
 click on the hero returns home. `prefers-reduced-motion` turns off the hue cycle, the cursor
 effect, and the slides. Without JavaScript the pages are plain sections below the hero.
 

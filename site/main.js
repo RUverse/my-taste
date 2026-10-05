@@ -22,45 +22,54 @@
   const addBand = (x, width, alpha, gap) => {
     const el = document.createElement("div");
     el.className = gap ? "band is-gap" : "band";
-    el.style.setProperty("--x", `${x.toFixed(2)}%`);
-    el.style.setProperty("--w", `${width.toFixed(2)}%`);
+    el.style.setProperty("--x", `${Math.round(x)}px`);
+    el.style.setProperty("--w", `${Math.round(width)}px`);
     el.style.setProperty("--a", alpha.toFixed(3));
     bandLayer.append(el);
-    movers.push({ el, edge: () => el.offsetLeft + el.offsetWidth / 2, offset: 0, target: 0 });
+    movers.push({
+      el,
+      edge: () => bandLayer.offsetLeft + el.offsetLeft + el.offsetWidth / 2,
+      offset: 0,
+      target: 0,
+    });
   };
-  // One band per slot keeps them spread across the page; the jitter makes them overlap.
-  for (let x = 11; x < 100; x += 6.5) {
-    addBand(x + between(-3, 3), between(3, 13), between(0.03, 0.08), false);
+  // Sizes are in pixels so phones get the same rectangles as desktops, only fewer of them.
+  // One band per slot keeps them spread out; the jitter makes them overlap.
+  const SPAN = 3840;
+  for (let x = 0; x < SPAN; x += 120) {
+    addBand(x + between(-45, 45), between(80, 260), between(0.03, 0.08), false);
   }
-  for (let x = 14; x < 100; x += 21) {
-    addBand(x + between(0, 14), between(0.2, 3), between(0.5, 0.85), true);
+  for (let x = 40; x < SPAN; x += 300) {
+    addBand(x + between(0, 200), between(3, 45), between(0.5, 0.85), true);
   }
 
-  // Curtain panels: offset from the curtain's edge (vw), shade, opacity, and stagger.
-  const curtain = document.querySelector(".curtain");
+  // Curtain panels: offset from the curtain's edge (px), shade, opacity, and stagger.
+  const track = document.querySelector(".curtain-track");
   const panels = [
     [0, 2, 0.55],
-    [2.2, 1, 0.8],
-    [4.5, 3, 0.88],
-    [9, 1, 0.6],
-    [15, 4, 0.55],
-    [23, 2, 0.5],
-    [31, 3, 0.55],
-    [41, 4, 0.45],
+    [36, 1, 0.8],
+    [72, 3, 0.88],
+    [150, 1, 0.6],
+    [250, 4, 0.55],
+    [370, 2, 0.5],
+    [500, 3, 0.55],
+    [660, 4, 0.45],
   ];
   panels.forEach(([offset, shade, alpha], index) => {
     const el = document.createElement("div");
     el.className = "panel";
-    el.style.setProperty("--o", `${offset}vw`);
+    el.style.setProperty("--o", `${offset}px`);
     el.style.setProperty("--open-delay", `${index * 0.035}s`);
     el.style.setProperty("--close-delay", `${(panels.length - index) * 0.03}s`);
-    el.style.setProperty("--wave", `${-(2 + index * 0.6).toFixed(1)}vw`);
+    el.style.setProperty("--wave", `${-(28 + index * 9)}px`);
     const fill = document.createElement("span");
     fill.style.setProperty("--shade", `var(--shade-${shade})`);
     fill.style.setProperty("--a", String(alpha));
     el.append(fill);
-    curtain.append(el);
-    movers.push({ el: fill, edge: () => el.offsetLeft, offset: 0, target: 0 });
+    track.append(el);
+    // Panels slide with the curtain, so their edge is read where it is now. Only the inner
+    // fill takes the cursor's push, so the outer box's position is unaffected by it.
+    movers.push({ el: fill, edge: () => el.getBoundingClientRect().left, live: true, offset: 0, target: 0 });
   });
 
   // The cursor pushes the closest rectangles a little to either side.
@@ -70,6 +79,11 @@
   let frame = 0;
   const measure = () => {
     edges = movers.map((mover) => mover.edge());
+  };
+  const measureLive = () => {
+    movers.forEach((mover, index) => {
+      if (mover.live) edges[index] = mover.edge();
+    });
   };
   const step = () => {
     let moving = false;
@@ -99,6 +113,7 @@
   };
   const onPointer = (event) => {
     if (reduceMotion.matches || event.pointerType === "touch") return;
+    measureLive();
     aim(event.clientX);
   };
   measure();
@@ -110,6 +125,7 @@
   // Pages: the hash names the open page; an empty hash is the home view.
   const pages = new Map([...document.querySelectorAll(".page")].map((page) => [page.id, page]));
   const pageLinks = document.querySelectorAll("a[data-page]");
+  const scroller = document.querySelector(".pages");
   let current = null;
   let switchTimer = 0;
 
@@ -132,6 +148,7 @@
     });
     const wasOpen = current !== null;
     current = next;
+    scroller.scrollTop = 0;
     if (focus && next) {
       pages.get(next).querySelector("h2").focus({ preventScroll: true });
     } else if (focus && wasOpen) {
@@ -143,9 +160,51 @@
 
   const fromHash = () => decodeURIComponent(window.location.hash.slice(1)) || null;
   window.addEventListener("hashchange", () => show(fromHash()));
-  document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && current) window.location.hash = "";
+  // Page links update the URL themselves: following the anchor would scroll the target
+  // section into view, starting the page halfway down.
+  document.addEventListener("click", (event) => {
+    const link = event.target.closest("a[data-page], .mark-link");
+    if (!link || event.defaultPrevented || event.button !== 0) return;
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const id = link.dataset.page || null;
+    if (id === current) return;
+    window.history.pushState(null, "", id ? `#${id}` : window.location.pathname + window.location.search);
+    show(id);
   });
+  // Back and Forward also scroll to the section; reset that once the browser has done it.
+  window.history.scrollRestoration = "manual";
+  window.addEventListener("popstate", () => {
+    show(fromHash());
+    requestAnimationFrame(() => {
+      scroller.scrollTop = 0;
+    });
+  });
+  const goHome = () => {
+    if (!current) return;
+    window.history.pushState(null, "", window.location.pathname + window.location.search);
+    show(null);
+  };
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") goHome();
+  });
+  // The scrolling layer covers the hero, so a click on its empty left side stands in for one.
+  scroller.addEventListener("click", (event) => {
+    const page = current && pages.get(current);
+    if (page && event.target === scroller && event.clientX < page.getBoundingClientRect().left) {
+      goHome();
+    }
+  });
+
+  // The browser scrolls a linked page's section into view once the document loads; undo it.
+  window.addEventListener(
+    "load",
+    () => {
+      scroller.scrollTop = 0;
+      window.scrollTo(0, 0);
+    },
+    { once: true },
+  );
 
   // Open a linked page without animating the curtain in.
   body.classList.add("no-anim");

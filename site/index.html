@@ -64,63 +64,195 @@
         interface. Create collections to share with others or add other people's collections.</p>
     </section>
 
-    <div class="curtain" aria-hidden="true"></div>
+    <div class="curtain" aria-hidden="true"><div class="curtain-track"></div></div>
 
     <div class="pages">
       <section class="page" id="media-server" aria-labelledby="media-server-title">
-        <h2 id="media-server-title" tabindex="-1">Media Server</h2>
-        <p class="lead">Your streaming services and your own folders, mixed into one poster wall.</p>
-        <ul>
-          <li>Pick the services you pay for; MyTaste shows what they carry in your country.</li>
-          <li>Point it at a USB drive, a NAS share, or the folders Plex already uses. Files are
-            matched on TMDB and sorted in with everything else.</li>
-          <li>A built-in player: direct play or ffmpeg streaming, subtitles, audio choices, and
-            resume where you stopped.</li>
-          <li>Xbox Game Pass and Steam games sit beside the movies and series.</li>
-        </ul>
+        <div class="page-text">
+          <h2 id="media-server-title" tabindex="-1">Media Server</h2>
+          <p class="lead">Your streaming services and your own folders, mixed into one poster wall.</p>
+          <ul>
+            <li>Pick the services you pay for; MyTaste shows what they carry in your country.</li>
+            <li>Point it at a USB drive, a NAS share, or the folders Plex already uses. Files are
+              matched on TMDB and sorted in with everything else.</li>
+            <li>A built-in player: direct play or ffmpeg streaming, subtitles, audio choices, and
+              resume where you stopped.</li>
+            <li>Xbox Game Pass and Steam games sit beside the movies and series.</li>
+          </ul>
+        </div>
+        <div class="shots">
+          <figure>
+            <picture>
+              <source srcset="screenshots/home-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/home-light.webp" alt="MyTaste home page: a poster grid of movies and series with a sidebar of collections and sources" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>The home page: everything your services carry, mixed with your own folders, in one order.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/details-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/details-light.webp" alt="A movie's details: backdrop, description, cast, and Watch buttons" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Title details with the trailer, cast, and a Watch button for each service.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/library-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/library-light.webp" alt="Titles from a local media folder in MyTaste" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Local files matched on TMDB, ready to play in the built-in player.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/games-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/games-light.webp" alt="The games view with Game Pass titles" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Game Pass and Steam games next to the films.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="page" id="share-collections" aria-labelledby="share-collections-title">
-        <h2 id="share-collections-title" tabindex="-1">Share Collections</h2>
-        <p class="lead">Collections are how you say what you like.</p>
-        <ul>
-          <li>Smart collections such as Popular, Latest, and every genre come built in.</li>
-          <li>Make your own lists and save movies, series, and games to them with one tap.</li>
-          <li>Next: export a collection as a <code>.taste</code> file to hand to a friend or an
-            agent, and add the collections other people share with you.</li>
-        </ul>
+        <div class="page-text">
+          <h2 id="share-collections-title" tabindex="-1">Share Collections</h2>
+          <p class="lead">Collections are how you say what you like.</p>
+          <ul>
+            <li>Smart collections such as Popular, Latest, and every genre come built in.</li>
+            <li>Make your own lists and save movies, series, and games to them with one tap.</li>
+            <li>Next: export a collection as a <code>.taste</code> file to hand to a friend or an
+              agent, and add the collections other people share with you.</li>
+          </ul>
+        </div>
+        <div class="shots">
+          <figure>
+            <picture>
+              <source srcset="screenshots/collections-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/collections-light.webp" alt="A user collection with movies, series, and a game" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Your own collections mix movies, series, and games.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/save-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/save-light.webp" alt="The save popover listing collections on a poster" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Save any title to a collection from its poster.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/home-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/home-light.webp" alt="MyTaste home page: a poster grid of movies and series with a sidebar of collections and sources" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>The home page: everything your services carry, mixed with your own folders, in one order.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="page" id="taste-format" aria-labelledby="taste-format-title">
-        <h2 id="taste-format-title" tabindex="-1">.taste format</h2>
-        <p class="lead">One file for a vibe.</p>
-        <p>A <code>.taste</code> file holds collections of mixed media (movies, series, music,
-          articles, games) that share a mood, with metadata, availability, tags, and optional
-          posters and screenshots. It is an open ZIP-based format that people and agents can both
-          read.</p>
-        <p><a class="button" href="https://github.com/RUverse/taste" rel="noopener">Read the spec</a></p>
+        <div class="page-text">
+          <h2 id="taste-format-title" tabindex="-1">.taste format</h2>
+          <p class="lead">One file for a vibe.</p>
+          <p>A <code>.taste</code> file holds collections of mixed media (movies, series, music,
+            articles, games) that share a mood, with metadata, availability, tags, and optional
+            posters and screenshots. It is an open ZIP-based format that people and agents can both
+            read.</p>
+          <p><a class="button" href="https://github.com/RUverse/taste" rel="noopener">Read the spec</a></p>
+        </div>
+        <div class="shots">
+          <figure>
+            <picture>
+              <source srcset="screenshots/collections-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/collections-light.webp" alt="A user collection with movies, series, and a game" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Your own collections mix movies, series, and games.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/save-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/save-light.webp" alt="The save popover listing collections on a poster" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Save any title to a collection from its poster.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/games-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/games-light.webp" alt="The games view with Game Pass titles" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Game Pass and Steam games next to the films.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="page" id="login" aria-labelledby="login-title">
-        <h2 id="login-title" tabindex="-1">Login</h2>
-        <p class="lead">One interface to all entertainment: your streaming services, local movies,
-          games, and articles.</p>
-        <p>Hosted accounts are not open yet. Until then, run MyTaste on your own machine.</p>
-        <p><a class="button" href="#self-host" data-page="self-host">Self-host it</a></p>
+        <div class="page-text">
+          <h2 id="login-title" tabindex="-1">Login</h2>
+          <p class="lead">One interface to all entertainment: your streaming services, local movies,
+            games, and articles.</p>
+          <p>Hosted accounts are not open yet. Until then, run MyTaste on your own machine.</p>
+          <p><a class="button" href="#self-host" data-page="self-host">Self-host it</a></p>
+        </div>
+        <div class="shots">
+          <figure>
+            <picture>
+              <source srcset="screenshots/home-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/home-light.webp" alt="MyTaste home page: a poster grid of movies and series with a sidebar of collections and sources" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>The home page: everything your services carry, mixed with your own folders, in one order.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/details-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/details-light.webp" alt="A movie's details: backdrop, description, cast, and Watch buttons" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Title details with the trailer, cast, and a Watch button for each service.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/games-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/games-light.webp" alt="The games view with Game Pass titles" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Game Pass and Steam games next to the films.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section class="page" id="self-host" aria-labelledby="self-host-title">
-        <h2 id="self-host-title" tabindex="-1">Self-host</h2>
-        <p class="lead">MyTaste is free and open source. It runs on anything with Python 3.11,
-          a Raspberry Pi included.</p>
-        <pre><code>git clone https://github.com/RUverse/my-taste
+        <div class="page-text">
+          <h2 id="self-host-title" tabindex="-1">Self-host</h2>
+          <p class="lead">MyTaste is free and open source. It runs on anything with Python 3.11,
+            a Raspberry Pi included.</p>
+          <pre><code>git clone https://github.com/RUverse/my-taste
 cd my-taste
 uv sync
 export MYTASTE_TMDB_TOKEN=your-token
 uv run mytaste serve</code></pre>
-        <p>You need a free <a href="https://www.themoviedb.org/settings/api" rel="noopener">TMDB
-          API token</a>. Prefer containers? The repository has a Docker Compose example.</p>
-        <p><a class="button" href="https://github.com/RUverse/my-taste#quick-start" rel="noopener">Setup guide</a></p>
+          <p>You need a free <a href="https://www.themoviedb.org/settings/api" rel="noopener">TMDB
+            API token</a>. Prefer containers? The repository has a Docker Compose example.</p>
+          <p><a class="button" href="https://github.com/RUverse/my-taste#quick-start" rel="noopener">Setup guide</a></p>
+        </div>
+        <div class="shots">
+          <figure>
+            <picture>
+              <source srcset="screenshots/home-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/home-light.webp" alt="MyTaste home page: a poster grid of movies and series with a sidebar of collections and sources" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>The home page: everything your services carry, mixed with your own folders, in one order.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/library-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/library-light.webp" alt="Titles from a local media folder in MyTaste" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Local files matched on TMDB, ready to play in the built-in player.</figcaption>
+          </figure>
+          <figure>
+            <picture>
+              <source srcset="screenshots/details-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="screenshots/details-light.webp" alt="A movie's details: backdrop, description, cast, and Watch buttons" width="1440" height="900" loading="lazy" decoding="async">
+            </picture>
+            <figcaption>Title details with the trailer, cast, and a Watch button for each service.</figcaption>
+          </figure>
+        </div>
       </section>
     </div>
   </main>
