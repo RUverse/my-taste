@@ -20,10 +20,11 @@ pixels, so phones show fewer rectangles rather than narrower ones. The rectangle
 the hero sit in front of it except the few nearest its middle, so the hero stands among them, and each one darkens
 towards its left side like a shadow. The "My" is an SVG whose
 gradient turns slowly around the colour wheel and glows in the same colour. Opening a page
-shrinks the hero into the top-left corner (`--dock-*` in `styles.css`; `main.js` measures it)
-while more rectangles sweep in from the right like a curtain, ending with a solid sheet behind
-the page text. The page scrolls on its own layer over the curtain. Escape, the browser's back
-button, or a click on the logo returns home. `prefers-reduced-motion` turns off the hue cycle, the cursor
+sweeps more rectangles in from the right like a curtain until the hero is hidden, ending with
+a solid sheet behind the page text. At the same time a few opaque rectangles in the top-left
+corner slide off the screen, uncovering a small copy of the logo that was behind them all
+along (`--dock-*` in `styles.css`). The page scrolls on its own layer over the curtain. Escape, the browser's back
+button, or a click on the small logo returns home. `prefers-reduced-motion` turns off the hue cycle, the cursor
 effect, and the slides. Without JavaScript the pages are plain sections below the hero.
 
 ## Preview

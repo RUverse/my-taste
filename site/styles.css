@@ -30,18 +30,21 @@
   --shadow: rgb(0 0 0 / 0.07);
   --glow: 0.55;
   --sheet: #fff;
+  --cover-1: #f3f3f3;
+  --cover-2: #ebebeb;
+  --cover-3: #f7f7f7;
   --sheet-shadow: rgb(0 0 0 / 0.18);
   --hue-start: 355;
 
   --ease: cubic-bezier(0.76, 0, 0.24, 1);
   /* Fast start, long soft landing: page changes feel quick without snapping. */
-  --snap: cubic-bezier(0.16, 1, 0.3, 1);
+  --snap: cubic-bezier(0.25, 1, 0.5, 1);
   --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
-  /* When a page is open the hero shrinks into this spot below the links (main.js measures it). */
+  /* Where the small logo sits on a page, below the links. */
   --dock-left: clamp(1.25rem, 4.3vw, 5.5rem);
   --dock-top: 5.75rem;
   --dock-w: clamp(150px, 14vw, 250px);
-  /* The curtain starts over the docked logo's "y"; the page starts a little right of it. */
+  /* The curtain starts over the small logo's "y"; the page starts a little right of it. */
   --curtain-l: calc(var(--dock-left) + var(--dock-w) * 0.86);
   --page-l: calc(var(--curtain-l) + clamp(2rem, 6vw, 7rem));
 
@@ -66,6 +69,9 @@
     --shadow: rgb(0 0 0 / 0.3);
     --glow: 0.85;
     --sheet: #0b0b0b;
+    --cover-1: #0c0c0c;
+    --cover-2: #141414;
+    --cover-3: #080808;
     --sheet-shadow: rgb(0 0 0 / 0.8);
     --hue-start: 295;
   }
@@ -230,19 +236,54 @@ a:focus-visible,
   width: var(--hero-w);
   margin-top: 4vh;
   container-type: inline-size;
-  transform-origin: 0 0;
-  transition: transform 0.75s var(--snap);
-  will-change: transform;
 }
 
-.dock-probe {
+/* The small logo and the opaque rectangles that hide it at home. */
+.mini {
   position: fixed;
   left: var(--dock-left);
   top: var(--dock-top);
+  z-index: 2;
+  display: block;
   width: var(--dock-w);
-  height: 0;
-  visibility: hidden;
+  color: var(--ink);
+  line-height: 0;
+}
+
+.mini-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.covers {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
   pointer-events: none;
+  /* The covers span the small logo plus room for its glow. */
+  --span: calc(var(--dock-w) + 4rem);
+  --start: calc(var(--dock-left) - 2rem);
+}
+
+.cover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--start) + var(--span) * var(--f0));
+  width: calc(var(--span) * var(--fw));
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    var(--shade);
+  transition: transform 0.7s var(--snap) var(--close-delay);
+}
+
+/* On a page they slide out past the left edge, uncovering the small logo. */
+.is-page .cover {
+  transform: translateX(calc(-1 * (var(--start) + var(--span) * (var(--f0) + var(--fw))) - 3rem));
+  transition-delay: var(--open-delay);
 }
 
 .mark {
@@ -320,7 +361,7 @@ a:focus-visible,
   /* A little past the edge, so the cursor's push never shows a gap. */
   right: -40px;
   transform: translateX(105vw);
-  transition: transform 0.6s var(--snap) var(--close-delay);
+  transition: transform 0.7s var(--snap) var(--close-delay);
   will-change: transform;
 }
 
@@ -488,27 +529,11 @@ a:focus-visible,
   color: var(--bg);
 }
 
-/* A page is open: the hero shrinks into the corner and the curtain sweeps over the middle. */
-
-.is-page .hero {
-  transform: translate(var(--dock-x, 0), var(--dock-y, 0)) scale(var(--dock-s, 1));
-}
+/* A page is open: the curtain sweeps over the hero and hides it completely. */
 
 .is-page .panel {
   transform: none;
   transition-delay: var(--open-delay);
-}
-
-/* The logo keeps only the mark; the tagline and intro get out of the way at once. */
-.tagline,
-.intro {
-  transition: opacity 0.35s ease 0.25s;
-}
-
-.is-page .tagline,
-.is-page .intro {
-  opacity: 0;
-  transition: opacity 0.15s ease;
 }
 
 .no-anim *,
@@ -528,8 +553,16 @@ a:focus-visible,
     --page-l: 1.25rem;
   }
 
-  .is-page .hero {
+  /* The curtain covers the full width here, so the small logo and its covers sit above it,
+     and the covers only fill the top corner instead of cutting through the hero. */
+  .mini {
     z-index: 5;
+  }
+
+  .covers {
+    z-index: 6;
+    bottom: auto;
+    height: calc(var(--dock-top) + var(--dock-w) * 0.62 + 1.5rem);
   }
 
   .sheet {
@@ -603,7 +636,9 @@ html:not(.js) .hero {
   margin: 0 auto 6rem;
 }
 
-html:not(.js) .curtain {
+html:not(.js) .curtain,
+html:not(.js) .mini,
+html:not(.js) .covers {
   display: none;
 }
 
@@ -635,11 +670,7 @@ html:not(.js) .page {
     animation: none;
   }
 
-  .hero,
-  .tagline,
-  .intro,
-  .is-page .tagline,
-  .is-page .intro,
+  .cover,
   .panel,
   .page,
   .page.is-active {

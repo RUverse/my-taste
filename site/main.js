@@ -63,19 +63,6 @@
   layerBands();
   window.addEventListener("resize", layerBands);
 
-  // On a page the hero shrinks into the corner. Its target comes from the CSS (a hidden probe
-  // placed at --dock-left/--dock-top/--dock-w); offsetLeft/Top ignore the hero's transform.
-  const probe = document.querySelector(".dock-probe");
-  const dock = () => {
-    const target = probe.getBoundingClientRect();
-    hero.style.setProperty("--dock-x", `${(target.left - hero.offsetLeft).toFixed(1)}px`);
-    hero.style.setProperty("--dock-y", `${(target.top - hero.offsetTop).toFixed(1)}px`);
-    hero.style.setProperty("--dock-s", (target.width / hero.offsetWidth).toFixed(4));
-  };
-  dock();
-  window.addEventListener("resize", dock);
-  // The hero's height, and so its centred position, changes once the web font arrives.
-  document.fonts?.ready.then(dock);
 
   // Curtain panels: offset from the curtain's edge (px), shade, opacity, and stagger.
   const curtain = document.querySelector(".curtain");
@@ -160,6 +147,7 @@
   const pages = new Map([...document.querySelectorAll(".page")].map((page) => [page.id, page]));
   const pageLinks = document.querySelectorAll("a[data-page]");
   const scroller = document.querySelector(".pages");
+  const mini = document.querySelector(".mini");
   let current = null;
 
   const show = (id, { focus = true } = {}) => {
@@ -174,13 +162,17 @@
       if (link.closest(".nav") && link.dataset.page === next) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
+    // Only one logo is ever reachable: the hero at home, the small one on a page.
+    hero.inert = next !== null;
+    mini.inert = next === null;
     const wasOpen = current !== null;
     current = next;
     scroller.scrollTop = 0;
     if (focus && next) {
       pages.get(next).querySelector("h2").focus({ preventScroll: true });
     } else if (focus && wasOpen) {
-      document.querySelector(".mark-link").focus({ preventScroll: true });
+      // The hero is still covered for a moment; focus it once the curtain has moved.
+      requestAnimationFrame(() => document.querySelector(".mark-link").focus({ preventScroll: true }));
     }
     // The fixed layers never scroll the document, but the browser's jump to the anchor may.
     window.scrollTo(0, 0);
@@ -191,7 +183,7 @@
   // Page links update the URL themselves: following the anchor would scroll the target
   // section into view, starting the page halfway down.
   document.addEventListener("click", (event) => {
-    const link = event.target.closest("a[data-page], .mark-link");
+    const link = event.target.closest("a[data-page], .mark-link, .mini");
     if (!link || event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
@@ -216,9 +208,9 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") goHome();
   });
-  // The scrolling layer covers the docked logo, so clicks there are passed on to it.
+  // On wide screens the scrolling layer lies over the small logo, so clicks there go to it.
   const overLogo = (event) => {
-    const box = hero.querySelector(".mark-svg").getBoundingClientRect();
+    const box = mini.getBoundingClientRect();
     return (
       event.target === scroller &&
       event.clientX >= box.left &&

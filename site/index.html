@@ -51,7 +51,7 @@
               <path d="M0 0H70L177 214L284 0H353V380H284V152L213 294H140L70 152V380H0Z"/>
               <path d="M387 66H459L529 220L599 66H671L528 380H456L493 299Z"/>
             </g>
-            <svg class="taste" x="174" y="281" width="316" height="108" viewBox="0 0 283 97">
+            <svg class="taste" id="taste-mark" x="174" y="281" width="316" height="108" viewBox="0 0 283 97">
               <g transform="translate(-2532 -519)"><g transform="matrix(0.937086,0,0,0.941748,173.354305,34)"><g transform="matrix(9.759103,0,0,9.710797,1179.544044,978.842668)">
                 <path d="M138.086,-39.247C137.534,-39.247 137.102,-38.815 137.102,-38.263C137.102,-37.723 137.534,-37.279 138.086,-37.279C138.626,-37.279 139.07,-37.723 139.07,-38.263C139.07,-38.815 138.626,-39.247 138.086,-39.247Z"/>
                 <path d="M144.494,-40.663C144.014,-39.343 143.258,-38.707 142.562,-38.707C142.13,-38.707 141.866,-38.971 141.866,-39.295C141.866,-39.379 141.89,-39.475 141.914,-39.559L143.09,-42.907L143.87,-42.907C144.482,-42.907 144.806,-43.339 144.806,-43.735C144.806,-44.047 144.602,-44.323 144.146,-44.323L143.606,-44.323L144.41,-46.663C144.434,-46.747 144.446,-46.819 144.446,-46.891C144.446,-47.335 144.134,-47.695 143.606,-47.695C143.21,-47.695 142.874,-47.419 142.73,-46.999L141.77,-44.323L141.266,-44.323C140.618,-44.323 140.342,-43.915 140.342,-43.531C140.342,-43.195 140.546,-42.907 140.87,-42.907L141.266,-42.907L140.258,-40.015L140.258,-40.027C140.162,-39.739 140.114,-39.475 140.114,-39.223C140.114,-37.999 141.206,-37.279 142.442,-37.279C143.978,-37.279 145.262,-38.419 145.946,-40.387C145.97,-40.471 145.994,-40.555 145.994,-40.627C145.994,-40.987 145.646,-41.215 145.274,-41.215C144.974,-41.215 144.638,-41.047 144.494,-40.663Z"/>
@@ -71,10 +71,24 @@
 
     <div class="bands bands-front" aria-hidden="true"></div>
 
+    <!-- The small logo shown on pages. At home it hides behind the covers, which slide off to
+         the left when a page opens; it reuses the hero's shapes, gradient, and glow. -->
+    <a class="mini" href="#" aria-label="My .taste, home" inert>
+      <svg class="mini-svg" viewBox="0 0 671 392" aria-hidden="true" focusable="false">
+        <use class="my-glow" href="#my-shape" filter="url(#my-glow-blur)"/>
+        <use href="#my-shape"/>
+        <use href="#taste-mark"/>
+      </svg>
+    </a>
+    <div class="covers" aria-hidden="true">
+      <div class="cover" style="--f0: 0; --fw: 0.42; --shade: var(--cover-1); --open-delay: 0.08s; --close-delay: 0s"></div>
+      <div class="cover" style="--f0: 0.3; --fw: 0.4; --shade: var(--cover-2); --open-delay: 0.04s; --close-delay: 0.04s"></div>
+      <div class="cover" style="--f0: 0.6; --fw: 0.4; --shade: var(--cover-3); --open-delay: 0s; --close-delay: 0.08s"></div>
+    </div>
+
     <div class="curtain" aria-hidden="true">
       <div class="panel sheet"><span></span></div>
     </div>
-    <div class="dock-probe" aria-hidden="true"></div>
 
     <div class="pages">
       <section class="page" id="media-server" aria-labelledby="media-server-title">
