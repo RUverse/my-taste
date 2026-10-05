@@ -4,8 +4,7 @@
   const body = document.body;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  // Seeded generators keep the layout the same on every visit. The tops have their own, so
-  // tuning them never moves the bands sideways.
+  // Seeded generators keep the layout the same on every visit.
   const seeded = (start) => {
     let seed = start;
     return () => {
@@ -15,69 +14,113 @@
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
   };
-  const random = seeded(20261005);
-  const between = (min, max) => min + (max - min) * random();
-  const tops = seeded(1005);
 
-  // Every rectangle hangs from just under the top bar with a slanted top edge, like a curtain:
-  // --dy moves the edge up or down, --sl and --sr drop its left and right corners.
-  const slant = (el) => {
-    const pick = (min, max) => `${Math.round(min + (max - min) * tops())}px`;
-    el.style.setProperty("--dy", pick(-8, 14));
-    el.style.setProperty("--sl", pick(0, 28));
-    el.style.setProperty("--sr", pick(0, 28));
-  };
-
-  // Everything the cursor can nudge: { el, edge(), offset, target }.
-  const movers = [];
-
-  // Bands: semi-transparent strips that overlap into a banding pattern.
-  const backLayer = document.querySelector(".bands");
-  const frontLayer = document.querySelector(".bands-front");
-  const bands = [];
-  const addBand = (x, width, alpha, gap) => {
-    const el = document.createElement("div");
-    el.className = gap ? "band is-gap" : "band";
-    el.style.setProperty("--x", `${Math.round(x)}px`);
-    el.style.setProperty("--w", `${Math.round(width)}px`);
-    el.style.setProperty("--a", alpha.toFixed(3));
-    slant(el);
-    backLayer.append(el);
-    bands.push({ el, gap, center: x + width / 2 });
-    movers.push({
-      el,
-      // Both layers start at the same left edge.
-      edge: () => backLayer.offsetLeft + el.offsetLeft + el.offsetWidth / 2,
-      offset: 0,
-      target: 0,
-    });
-  };
-  // Sizes are in pixels so phones get the same rectangles as desktops, only fewer of them.
-  // One band per slot keeps them spread out; the jitter makes them overlap.
-  const SPAN = 3840;
-  for (let x = 0; x < SPAN; x += 120) {
-    addBand(x + between(-45, 45), between(80, 260), between(0.03, 0.08), false);
-  }
-  for (let x = 40; x < SPAN; x += 300) {
-    addBand(x + between(0, 200), between(3, 45), between(0.5, 0.85), true);
-  }
-
-  // Every band crossing the hero sits in front of it except the few nearest its middle, so the
-  // hero reads as standing among them. The thin gaps stay behind; in front they cut the letters.
+  // Two rows of folded glass hang from the top bar: one behind the hero, and one in front of
+  // it that is parted around the hero's middle, like a curtain opened for it. Sizes are in
+  // pixels, so phones get the same folds as desktops, only fewer of them.
   const hero = document.querySelector(".hero");
-  const layerBands = () => {
-    // offsetLeft ignores the hero's transform, so this is its home position even on a page.
-    const middle = hero.offsetLeft + hero.offsetWidth / 2 - backLayer.offsetLeft;
-    const keepBehind = hero.offsetWidth * 0.17;
-    for (const band of bands) {
-      const front = !band.gap && Math.abs(band.center - middle) > keepBehind;
-      const layer = front ? frontLayer : backLayer;
-      if (band.el.parentElement !== layer) layer.append(band.el);
-    }
+  const back = document.querySelector(".glass-back");
+  const frontLeft = document.querySelector(".half-left");
+  const frontRight = document.querySelector(".half-right");
+  const ROWS = {
+    back: { seed: 11, minW: 110, maxW: 190, depth: 34 },
+    left: { seed: 23, minW: 70, maxW: 130, depth: 22 },
+    right: { seed: 37, minW: 70, maxW: 130, depth: 22 },
   };
-  layerBands();
-  window.addEventListener("resize", layerBands);
 
+  // A row is panels side by side between fold edges (page pixels). The tops zigzag between
+  // ridges, just under the bar, and valleys lower down; each face is shaded from its ridge to
+  // its valley, so the row reads as one sheet folded like an accordion.
+  const buildRow = (layer, from, to, { seed, minW, maxW, depth }) => {
+    const random = seeded(seed);
+    const between = (min, max) => min + (max - min) * random();
+    let edges = [from];
+    while (edges[edges.length - 1] < to) edges.push(edges[edges.length - 1] + between(minW, maxW));
+    // Stretch the folds a little so the last edge lands exactly on `to`.
+    const scale = (to - from) / (edges[edges.length - 1] - from);
+    edges = edges.map((x) => from + (x - from) * scale);
+    const heights = edges.map((_, i) => (i % 2 ? between(depth * 0.65, depth) : between(0, 5)));
+    const panels = [];
+    for (let i = 0; i < edges.length - 1; i += 1) {
+      const el = document.createElement("div");
+      el.className = heights[i] < heights[i + 1] ? "fold falls" : "fold rises";
+      el.style.setProperty("--x", `${edges[i].toFixed(1)}px`);
+      el.style.setProperty("--w", `${(edges[i + 1] - edges[i]).toFixed(1)}px`);
+      el.style.setProperty("--sl", `${heights[i].toFixed(1)}px`);
+      el.style.setProperty("--sr", `${heights[i + 1].toFixed(1)}px`);
+      panels.push(el);
+    }
+    layer.replaceChildren(...panels);
+    // The frosted front halves blur what is behind them in one pass, shaped like their folds.
+    if (layer !== back) {
+      const top = edges.map((x, i) => `${x.toFixed(1)}px calc(var(--row-top) + ${heights[i].toFixed(1)}px)`);
+      layer.style.clipPath = `polygon(${top.join(", ")}, ${to.toFixed(1)}px 100%, ${from.toFixed(1)}px 100%)`;
+    }
+    return { layer, edges, panels, offsets: edges.map(() => 0), targets: edges.map(() => 0) };
+  };
+
+  let rows = [];
+  const layout = () => {
+    // offsetLeft ignores transforms, so this is the hero's resting place.
+    const middle = hero.offsetLeft + hero.offsetWidth / 2;
+    const opening = hero.offsetWidth * 0.16;
+    const width = window.innerWidth;
+    rows = [
+      buildRow(back, -40, width + 40, ROWS.back),
+      buildRow(frontLeft, -40, middle - opening, ROWS.left),
+      buildRow(frontRight, middle + opening, width + 40, ROWS.right),
+    ];
+    // How far each half slides to clear the screen when a page opens.
+    frontLeft.style.setProperty("--out", `${-(middle - opening + 80)}px`);
+    frontRight.style.setProperty("--out", `${width - (middle + opening) + 80}px`);
+  };
+  layout();
+  window.addEventListener("resize", layout);
+
+  // The cursor pushes the nearest folds aside. Each fold edge moves on its own, and every panel
+  // is stretched between its two edges, so the folds compress and spread without coming apart.
+  const RADIUS = 150;
+  const MAX_PUSH = 22;
+  let frame = 0;
+  const step = () => {
+    let moving = false;
+    for (const row of rows) {
+      row.offsets = row.offsets.map((offset, i) => {
+        const delta = row.targets[i] - offset;
+        if (Math.abs(delta) < 0.05) return row.targets[i];
+        moving = true;
+        return offset + delta * 0.12;
+      });
+      row.panels.forEach((panel, i) => {
+        const left = row.offsets[i];
+        const right = row.offsets[i + 1];
+        const width = row.edges[i + 1] - row.edges[i];
+        panel.style.transform =
+          left || right ? `translate3d(${left.toFixed(2)}px,0,0) scaleX(${((width + right - left) / width).toFixed(4)})` : "";
+      });
+    }
+    frame = moving ? requestAnimationFrame(step) : 0;
+  };
+  const aim = (x) => {
+    for (const row of rows) {
+      // The front halves are off screen while a page is open.
+      const still = x === null || (row.layer !== back && body.classList.contains("is-page"));
+      row.targets = row.edges.map((edge) => {
+        if (still) return 0;
+        const u = (edge - x) / RADIUS;
+        // u·e^(−u²) peaks at u ≈ 0.707 with 0.429, and passes smoothly through 0 at the cursor.
+        return (MAX_PUSH / 0.429) * u * Math.exp(-u * u);
+      });
+    }
+    if (!frame) frame = requestAnimationFrame(step);
+  };
+  const onPointer = (event) => {
+    if (reduceMotion.matches || event.pointerType === "touch") return;
+    aim(event.clientX);
+  };
+  document.addEventListener("pointermove", onPointer, { passive: true });
+  document.documentElement.addEventListener("pointerleave", () => aim(null));
+  reduceMotion.addEventListener("change", () => aim(null));
 
   // Curtain panels: offset from the curtain's edge (px), shade, opacity, and stagger.
   const curtain = document.querySelector(".curtain");
@@ -100,64 +143,10 @@
     const fill = document.createElement("span");
     fill.style.setProperty("--shade", `var(--shade-${shade})`);
     fill.style.setProperty("--a", String(alpha));
-    slant(fill);
     el.append(fill);
     // The solid sheet behind the page text comes last, on top of the panels.
     curtain.insertBefore(el, curtain.querySelector(".sheet"));
-    // Panels slide in and out, so their edge is read where it is now. Only the inner fill
-    // takes the cursor's push, so the outer box's position is unaffected by it.
-    movers.push({ el: fill, edge: () => el.getBoundingClientRect().left, live: true, offset: 0, target: 0 });
   });
-
-  // The cursor pushes the closest rectangles a little to either side.
-  const RADIUS = 150;
-  const MAX_PUSH = 22;
-  let edges = [];
-  let frame = 0;
-  const measure = () => {
-    edges = movers.map((mover) => mover.edge());
-  };
-  const measureLive = () => {
-    movers.forEach((mover, index) => {
-      if (mover.live) edges[index] = mover.edge();
-    });
-  };
-  const step = () => {
-    let moving = false;
-    for (const mover of movers) {
-      const delta = mover.target - mover.offset;
-      if (Math.abs(delta) > 0.05) {
-        mover.offset += delta * 0.12;
-        moving = true;
-      } else {
-        mover.offset = mover.target;
-      }
-      mover.el.style.transform = mover.offset ? `translate3d(${mover.offset.toFixed(2)}px,0,0)` : "";
-    }
-    frame = moving ? requestAnimationFrame(step) : 0;
-  };
-  const aim = (x) => {
-    movers.forEach((mover, index) => {
-      if (x === null) {
-        mover.target = 0;
-        return;
-      }
-      const u = (edges[index] - x) / RADIUS;
-      // u·e^(−u²) peaks at u ≈ 0.707 with 0.429, and passes smoothly through 0 at the cursor.
-      mover.target = (MAX_PUSH / 0.429) * u * Math.exp(-u * u);
-    });
-    if (!frame) frame = requestAnimationFrame(step);
-  };
-  const onPointer = (event) => {
-    if (reduceMotion.matches || event.pointerType === "touch") return;
-    measureLive();
-    aim(event.clientX);
-  };
-  measure();
-  window.addEventListener("resize", measure);
-  document.addEventListener("pointermove", onPointer, { passive: true });
-  document.documentElement.addEventListener("pointerleave", () => aim(null));
-  reduceMotion.addEventListener("change", () => aim(null));
 
   // Pages: the hash names the open page; an empty hash is the home view.
   const pages = new Map([...document.querySelectorAll(".page")].map((page) => [page.id, page]));
