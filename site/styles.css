@@ -1,0 +1,522 @@
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
+}
+
+/* The hue of the "My" gradient turns once around the colour wheel. */
+@property --spin {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:root {
+  --bg: #fff;
+  --ink: #3a3a3a;
+  --text: #4f4f4f;
+  --nav: #3f3f3f;
+  --band: #000;
+  --gap: #fff;
+  --account-bg: #c9c9c9;
+  --shade-1: #fff;
+  --shade-2: #efefef;
+  --shade-3: #f9f9f9;
+  --shade-4: #e2e2e2;
+  --code-bg: rgb(0 0 0 / 0.05);
+  --hue-start: 355;
+
+  --ease: cubic-bezier(0.76, 0, 0.24, 1);
+  --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
+  /* Where the hero sits when a page is open, and where the curtain begins. */
+  --hero-left: 11vw;
+  --curtain-l: calc(var(--hero-left) + var(--hero-w) - 4.5vw);
+  --page-l: calc(var(--curtain-l) + 20vw);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000;
+    --ink: #fff;
+    --text: #ececec;
+    --nav: #e2e2e2;
+    --band: #fff;
+    --gap: #000;
+    --account-bg: #000;
+    --shade-1: #000;
+    --shade-2: #121212;
+    --shade-3: #070707;
+    --shade-4: #1c1c1c;
+    --code-bg: rgb(255 255 255 / 0.07);
+    --hue-start: 295;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+[tabindex="-1"]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+[tabindex="-1"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 10;
+  padding: 0.6rem 1rem;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Background bands */
+
+.bands,
+.curtain {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bands {
+  z-index: 0;
+}
+
+.band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--x);
+  width: var(--w);
+  background: var(--band);
+  opacity: var(--a);
+  will-change: transform;
+}
+
+.band.is-gap {
+  background: var(--gap);
+}
+
+/* Top bar */
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  font-size: clamp(14px, 0.95vw, 18px);
+  letter-spacing: 0.02em;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+}
+
+.nav a {
+  position: relative;
+  color: var(--nav);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.35em;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s var(--ease);
+}
+
+.nav a:hover::after,
+.nav a[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+
+.nav-main {
+  gap: clamp(1.5rem, 3.6vw, 4.5rem);
+  padding: 2.1rem 0 0 clamp(1.25rem, 4.3vw, 5.5rem);
+}
+
+.nav-account {
+  gap: clamp(1.5rem, 3vw, 3.5rem);
+  min-height: 4.8rem;
+  padding: 0 clamp(1.25rem, 4.3vw, 5.5rem) 0.4rem clamp(1.5rem, 4.2vw, 5rem);
+  background: var(--account-bg);
+}
+
+/* Stage and hero */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  width: var(--hero-w);
+  margin-top: 4vh;
+  container-type: inline-size;
+  transition: transform 0.95s var(--ease);
+}
+
+.mark {
+  margin: 0;
+  font-size: inherit;
+  line-height: 0;
+}
+
+.mark-link {
+  display: block;
+  color: var(--ink);
+  border-radius: 0.5rem;
+}
+
+.mark-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  animation: spin 36s linear infinite;
+}
+
+.taste {
+  fill: currentColor;
+  overflow: visible;
+}
+
+.my-stop-top {
+  stop-color: oklch(0.77 0.13 calc(var(--hue-start) + var(--spin)));
+}
+
+.my-stop-bottom {
+  stop-color: oklch(0.65 0.19 calc(var(--hue-start) + var(--spin)));
+}
+
+@keyframes spin {
+  to {
+    --spin: 360;
+  }
+}
+
+.tagline {
+  margin: 0.4cqi 0 0;
+  color: var(--ink);
+  font-size: 4.72cqi;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.intro {
+  margin: 1.2cqi 0 0;
+  max-width: 98%;
+  font-size: 4.3cqi;
+  font-weight: 400;
+  line-height: 1.07;
+  letter-spacing: 0.025em;
+}
+
+/* Curtain: panels that slide in over the hero when a page opens */
+
+.curtain {
+  z-index: 2;
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--curtain-l) + var(--o));
+  right: -12vw;
+  transform: translateX(115vw);
+  transition: transform 0.95s var(--ease) var(--close-delay);
+}
+
+.panel > span {
+  position: absolute;
+  inset: 0;
+  background: var(--shade);
+  opacity: var(--a);
+  will-change: transform;
+}
+
+/* Pages */
+
+.pages {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.page {
+  position: absolute;
+  top: 22vh;
+  bottom: 0;
+  left: var(--page-l);
+  width: min(32rem, calc(100vw - var(--page-l) - 6vw));
+  padding-bottom: 3rem;
+  overflow-y: auto;
+  font-size: clamp(15px, 1.15vw, 19px);
+  line-height: 1.35;
+  letter-spacing: 0.015em;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(3rem);
+  transition:
+    opacity 0.3s ease,
+    transform 0.4s var(--ease),
+    visibility 0s linear 0.4s;
+}
+
+.page.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  transition:
+    opacity 0.6s ease 0.55s,
+    transform 0.8s var(--ease) 0.45s,
+    visibility 0s;
+}
+
+.is-switching .page.is-active {
+  transition-delay: 0.3s, 0.25s, 0s;
+}
+
+.page h2 {
+  margin: 0 0 1.6em;
+  color: var(--ink);
+  font-size: 2.2em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.page p,
+.page ul,
+.page pre {
+  margin: 0 0 1.1em;
+}
+
+.page .lead {
+  color: var(--ink);
+}
+
+.page ul {
+  padding-left: 1.1em;
+}
+
+.page li + li {
+  margin-top: 0.5em;
+}
+
+.page code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.page pre {
+  overflow-x: auto;
+  padding: 1em 1.2em;
+  background: var(--code-bg);
+  line-height: 1.5;
+}
+
+.button {
+  display: inline-block;
+  margin-top: 0.4em;
+  padding: 0.6em 1.3em;
+  border: 1px solid currentColor;
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.button:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* A page is open: the hero moves aside and the curtain closes over the middle. */
+
+.is-page .hero {
+  transform: translateX(calc(var(--hero-left) - 50vw + var(--hero-w) / 2));
+}
+
+.is-page .panel {
+  transform: none;
+  transition-delay: var(--open-delay);
+}
+
+.is-switching .panel {
+  transform: translateX(var(--wave));
+  transition-duration: 0.3s;
+  transition-delay: var(--open-delay);
+}
+
+.no-anim *,
+.no-anim *::after {
+  transition: none !important;
+}
+
+/* Narrow screens: the curtain covers nearly everything and the hero peeks out on the left. */
+
+@media (max-width: 760px) {
+  :root {
+    --hero-w: 86vw;
+    --hero-left: -66vw;
+    --curtain-l: 7vw;
+    --page-l: 12vw;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .nav-account {
+    order: 1;
+    min-height: 3.4rem;
+    margin-left: auto;
+  }
+
+  .nav-main {
+    order: 2;
+    width: 100%;
+    gap: 0.95rem;
+    padding: 1rem 1.25rem 0.5rem;
+    font-size: 13px;
+    letter-spacing: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .hero {
+    margin-top: 0;
+  }
+
+  /* Only the edge of the "My" peeks out; cut-off lines of text would just look broken. */
+  .tagline,
+  .intro {
+    transition: opacity 0.4s ease 0.3s;
+  }
+
+  .is-page .tagline,
+  .is-page .intro {
+    opacity: 0;
+    transition-delay: 0s;
+  }
+
+  .page {
+    top: 8.5rem;
+    width: calc(100vw - var(--page-l) - 7vw);
+  }
+}
+
+/* Without JavaScript the pages are ordinary sections below the hero. */
+
+html:not(.js) body {
+  min-height: 100vh;
+}
+
+html:not(.js) .topbar {
+  position: absolute;
+}
+
+html:not(.js) .stage {
+  position: static;
+  display: block;
+  place-items: normal;
+  overflow: visible;
+  padding: 9rem 1.25rem 4rem;
+}
+
+html:not(.js) .hero {
+  margin: 0 auto 6rem;
+}
+
+html:not(.js) .curtain {
+  display: none;
+}
+
+html:not(.js) .pages {
+  position: static;
+}
+
+html:not(.js) .page {
+  position: static;
+  width: auto;
+  max-width: 34rem;
+  margin: 0 auto 4rem;
+  overflow: visible;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  scroll-margin-top: 2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-svg {
+    animation: none;
+  }
+
+  .hero,
+  .panel,
+  .page,
+  .page.is-active {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+
+  .page.is-active {
+    transition: opacity 0.3s ease;
+  }
+}
