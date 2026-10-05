@@ -221,7 +221,7 @@ class CatalogService:
         streaming titles the filters rule out by their local copies, such as watched ones.
         """
 
-        query = replace(query, library_ids=())
+        query = replace(query, library_ids=(), game_sources=())
         cache_key = (region, query)
         now = time.monotonic()
         cached = self._browse_pages.get(cache_key)

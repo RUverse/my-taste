@@ -736,6 +736,47 @@ class GamesService:
         self._streams.clear()
         return xbox_ids
 
+    async def playable(
+        self, region: str, language: str, query: GameQuery, *, game_pass: bool, steam: bool
+    ) -> list[Game]:
+        """The games the user can play, most popular first, for mixing with movies and series.
+
+        Game Pass games follow Microsoft's popular list, then the rest of the plan's catalog
+        (listed A–Z) by number of reviews; Steam library games not on Game Pass follow their
+        number of Steam reviews. The two lists alternate, so both stores reach the top. Games
+        without details are left out.
+        """
+
+        if not REGION.fullmatch(region):
+            return []
+        memo: dict[Any, Any] = {}
+        listed: list[Game] = []
+        if game_pass:
+            popular, _ = await self._game_pass(query, region, language, "popular", memo)
+            catalog, _ = await self._game_pass(query, region, language, "all", memo)
+            ranked_ids = {game.id for game in popular}
+            listed = _union(
+                popular,
+                sorted(
+                    (game for game in catalog if game.id not in ranked_ids),
+                    key=lambda game: -_reviews(game),
+                ),
+            )
+        owned: list[Game] = []
+        if steam and self.steam_available:
+            owned, _notices = await self._owned_games(region, language)
+        on_game_pass = {game.id for game in listed}
+        merged = [game for game in _union(listed, owned) if game.metadata_complete]
+        library = sorted(
+            (game for game in merged if game.id not in on_game_pass),
+            key=lambda game: -_reviews(game),
+        )
+        ranked = [game for game in merged if game.id in on_game_pass]
+        mixed: list[Game] = []
+        for index in range(max(len(ranked), len(library))):
+            mixed.extend(source[index] for source in (ranked, library) if index < len(source))
+        return mixed
+
     async def access(
         self, games: Sequence[Game], region: str, language: str, query: GameQuery
     ) -> list[Game]:
@@ -762,6 +803,12 @@ class GamesService:
             await self.steam.close()
         if self.linker is not None:
             await self.linker.close()
+
+
+def _reviews(game: Game) -> int:
+    """How many people reviewed a game: a stand-in for popularity where no ranking exists."""
+
+    return game.steam_reviews or game.rating_count or 0
 
 
 def _union(first: Sequence[Game], second: Sequence[Game]) -> list[Game]:

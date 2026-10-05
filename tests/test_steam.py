@@ -738,3 +738,66 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
             follow_redirects=False,
         )
         assert reconnect.headers["location"] == "/settings?steam=connected#steam"
+
+
+# All: movies, series, and games -----------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_playable_games_alternate_game_pass_ranking_and_the_steam_library(tmp_path):
+    service, _steam = make_service(tmp_path)
+    query = GameQuery()
+    games = await service.playable("DE", "en-US", query, game_pass=True, steam=True)
+    # Game Pass's popular list (Delta, then Zulu) alternates with owned games not on it.
+    assert [game.title for game in games] == ["Delta", "Gamma", "Zulu"]
+    assert games[0].game_pass and games[1].owned and games[1].playtime == 600
+    only_steam = await service.playable("DE", "en-US", query, game_pass=False, steam=True)
+    assert [game.title for game in only_steam] == ["Gamma"]
+    assert await service.playable("DE", "en-US", query, game_pass=False, steam=False) == []
+
+    # Past Microsoft's popular list, the catalog (A–Z) is ranked by its number of reviews.
+    (tmp_path / "unranked").mkdir()
+    unranked, _steam = make_service(tmp_path / "unranked")
+    unranked.client.lists["popular"] = []
+    unranked.client.games[A] = replace(unranked.client.games[A], rating_count=5)
+    games = await unranked.playable("DE", "en-US", query, game_pass=True, steam=False)
+    assert [game.title for game in games] == ["Delta", "Zulu"]  # 10 Steam reviews, then 5.
+
+
+def test_all_mixes_the_games_you_can_play_with_movies_and_series(tmp_path):
+    from fastapi.testclient import TestClient
+    from test_web import FakeCatalog
+
+    from mytaste.config import AppSettings
+    from mytaste.web.app import create_app
+
+    service, _steam = make_service(tmp_path)
+    app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=FakeCatalog(), games=service)
+    with TestClient(app) as client:
+        app.state.preferences.save("DE", (8, 337))
+        app.state.game_preferences.save("ultimate", "pc")
+
+        def titles(url):
+            page = client.get(url).text
+            return page, [
+                name
+                for name in ("A New Film", "A New Series", "Delta", "Gamma", "Zulu")
+                if f">{name}<" in page
+            ]
+
+        page, found = titles("/?q=a")
+        assert found == ["A New Film", "A New Series", "Delta", "Gamma"]
+        assert 'name="games" value="gamepass" checked' in page
+        assert 'name="games" value="steam" checked' in page
+        assert 'id="game-dialog"' in page and "games.js" in page
+        assert titles("/?q=a&games=steam")[1] == ["A New Film", "A New Series", "Gamma"]
+        assert titles("/?q=a&games=none")[1] == ["A New Film", "A New Series"]
+        movies, found = titles("/?q=a&media=movie")
+        assert found == ["A New Film", "A New Series"] and 'name="games"' not in movies
+        # A filter only TMDB titles can answer leaves games out.
+        assert "Delta" not in titles("/?q=a&genre=drama")[1]
+        # Without a Game Pass plan, only the Steam library counts as yours.
+        app.state.game_preferences.clear()
+        page, found = titles("/?q=a")
+        assert found == ["A New Film", "A New Series", "Gamma"]
+        assert 'value="gamepass"' not in page

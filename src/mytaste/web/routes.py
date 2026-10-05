@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import math
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, replace
@@ -15,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 from mytaste.catalog.filtering import FilterResolver
 from mytaste.catalog.filters import PERSON_ROLES, GenreChoice, TitleFilters
 from mytaste.catalog.grouping import GROUP_TITLE_LIMIT, GROUPINGS, TitleGroup, group_titles
+from mytaste.catalog.mixing import mix_games
 from mytaste.catalog.models import (
     SORT_KEYS,
     BrowseCategory,
@@ -30,10 +32,17 @@ from mytaste.catalog.models import (
 )
 from mytaste.catalog.service import LocalSource
 from mytaste.catalog.tmdb import TMDBError
-from mytaste.collections.models import HOME_COLLECTION, ICONS, Collection, smart_collection
+from mytaste.collections.models import (
+    HOME_COLLECTION,
+    ICONS,
+    Collection,
+    GameEntry,
+    SmartCollection,
+    smart_collection,
+)
 from mytaste.collections.service import GameAccess
 from mytaste.games.http import StoreError
-from mytaste.games.models import PLANS, PLATFORMS, Game, GameQuery, SteamAccount
+from mytaste.games.models import PLANS, PLATFORMS, SOURCES, Game, GameQuery, SteamAccount
 from mytaste.library.models import Library, LibraryStatus
 from mytaste.storage.games import GamePreferences
 from mytaste.storage.preferences import DisplayPreferences, Preferences
@@ -47,6 +56,8 @@ from mytaste.web.filter_options import (
 )
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 _MEDIA_LABELS: tuple[tuple[BrowseMediaType, str], ...] = (
     ("all", "All"),
@@ -67,6 +78,10 @@ _LEGACY_CATEGORIES: dict[str, tuple[str, str | None]] = {
 }
 _ADD_STEPS = frozenset({"choose", "streaming", "local", "steam", "gamepass"})
 _NO_SELECTION = "none"
+# Short enough for a sidebar row; ``SOURCES`` has the full names.
+_GAME_SOURCE_NAMES = {"gamepass": "Game Pass", "steam": "Steam"}
+# TMDB's page length, which catalog pages keep; mixed pages use it too.
+_CATALOG_PAGE_SIZE = 20
 _SEARCH_CATEGORY = BrowseCategory(HOME_COLLECTION, "Popular")
 _DISPLAY_FLAGS = (
     "show_year",
@@ -143,7 +158,10 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
 
         all_provider_ids = preferences.provider_ids if preferences.configured else ()
         all_library_ids = tuple(sorted(item.id for item in libraries))
-        query = _parse_browse_query(request, all_provider_ids, all_library_ids, key)
+        all_game_sources = _game_sources(request)
+        query = _parse_browse_query(
+            request, all_provider_ids, all_library_ids, key, all_game_sources
+        )
         lists = await _filter_lists(catalog, preferences.region or "US")
         query = replace(
             query,
@@ -158,7 +176,11 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         def url(value: BrowseQuery, *, grouping: str | None = None) -> str:
             chosen = group if grouping is None else grouping
             return _browse_url(
-                replace(value, group=chosen), all_provider_ids, all_library_ids, lists.genres
+                replace(value, group=chosen),
+                all_provider_ids,
+                all_library_ids,
+                lists.genres,
+                all_game_sources,
             )
 
         def collection_url(value: BrowseQuery, collection_key: str) -> str:
@@ -236,6 +258,44 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         item_ids = await resolver.local_item_ids() if query.library_ids else None
         exclude = resolver.streaming_exclude()
 
+        # Games join All's smart collections; filters only TMDB titles have leave them out.
+        games: list[GameEntry] = []
+        notice: str | None = None
+        if (
+            manual is None
+            and smart is not None
+            and query.media_type == "all"
+            and query.game_sources
+            and not filters.active
+        ):
+            try:
+                games = await _playable_games(request, preferences.region, query, smart)
+            except StoreError:
+                logger.warning("Games could not be mixed into %s", key, exc_info=True)
+                notice = "Games are unavailable right now, so only movies and series are shown."
+
+        async def mixed(
+            titles: Callable[[int], Awaitable[CatalogPage]],
+            category: BrowseCategory,
+            page_size: int,
+        ) -> CatalogPage:
+            """The collection's titles with the games mixed in; grouped, its first titles."""
+
+            order = ("popularity", True) if query.search else (sort, descending)
+            if order[0] == "added":
+                # Games have no added date; they are spread through the titles instead.
+                order = ("popularity", True)
+            found = await mix_games(
+                titles,
+                games,
+                sort=order[0],
+                descending=order[1],
+                page=1 if group else query.page,
+                page_size=GROUP_TITLE_LIMIT if group else page_size,
+                limit=None if query.search else category.limit,
+            )
+            return replace(found, total_pages=1) if group else found
+
         async def browse_library(
             value: BrowseQuery,
         ) -> tuple[tuple[BrowseCategory, ...], BrowseQuery, CatalogPage]:
@@ -244,6 +304,19 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             if not value.search:
                 value = replace(value, category=chosen.slug)
             size = GROUP_TITLE_LIMIT if group else 24
+            if games:
+
+                async def titles(number: int) -> CatalogPage:
+                    if not value.library_ids:
+                        return CatalogPage(items=(), page=number)
+                    return await library.browse(
+                        replace(value, page=number),
+                        category=chosen,
+                        page_size=size,
+                        item_ids=item_ids,
+                    )
+
+                return options, value, await mixed(titles, chosen, size)
             found = await library.browse(value, category=chosen, page_size=size, item_ids=item_ids)
             return options, value, found
 
@@ -251,7 +324,6 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
         categories: tuple[BrowseCategory, ...] = ()
         page = CatalogPage(items=())
         error: str | None = None
-        notice: str | None = None
         availability: tuple[int, int] | None = None
         if manual is not None:
             providers, categories, result = await asyncio.gather(
@@ -289,11 +361,26 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                         else None
                     )
                     narrowing = {"refine": refine, "exclude": exclude} if filters.active else {}
-                    page = await catalog.browse(preferences.region, query, local=local, **narrowing)
-                    if group:
-                        page = await _first_titles(
-                            catalog, preferences.region, query, local, page, narrowing
+                    if games:
+                        browsed = query
+
+                        async def titles(number: int) -> CatalogPage:
+                            return await catalog.browse(
+                                preferences.region,
+                                replace(browsed, page=number),
+                                local=local,
+                                **narrowing,
+                            )
+
+                        page = await mixed(titles, category, _CATALOG_PAGE_SIZE)
+                    else:
+                        page = await catalog.browse(
+                            preferences.region, query, local=local, **narrowing
                         )
+                        if group:
+                            page = await _first_titles(
+                                catalog, preferences.region, query, local, page, narrowing
+                            )
                 else:
                     providers = await load_providers()
                     categories, query, page = await browse_library(query)
@@ -380,8 +467,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             }
             for value, label in _MEDIA_LABELS
         )
+        # Game services are choices only where games are mixed in: All's smart collections.
+        game_rows = all_game_sources if manual is None and query.media_type == "all" else ()
         sources_changed = (
-            query.provider_ids != all_provider_ids or query.library_ids != all_library_ids
+            query.provider_ids != all_provider_ids
+            or query.library_ids != all_library_ids
+            or (bool(game_rows) and query.game_sources != all_game_sources)
         )
         if filters.local_only and query.provider_ids and manual is None and error is None:
             notice = (
@@ -420,8 +511,15 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             heading = smart.name if smart else ""
             description, icon = (smart.description, smart.icon) if smart else ("", "")
         all_sources_url = url(
-            replace(query, provider_ids=all_provider_ids, library_ids=all_library_ids, page=1)
+            replace(
+                query,
+                provider_ids=all_provider_ids,
+                library_ids=all_library_ids,
+                game_sources=all_game_sources,
+                page=1,
+            )
         )
+        no_games = () if game_rows else query.game_sources
         # Local libraries come first, then the streaming services.
         source_options = (
             *(
@@ -433,7 +531,13 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     "detail": f"Local · {item.media_label}",
                     "checked": item.id in query.library_ids,
                     "only_url": url(
-                        replace(query, provider_ids=(), library_ids=(item.id,), page=1)
+                        replace(
+                            query,
+                            provider_ids=(),
+                            library_ids=(item.id,),
+                            game_sources=no_games,
+                            page=1,
+                        )
                     ),
                 }
                 for item in libraries
@@ -447,10 +551,36 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                     "detail": "Streaming",
                     "checked": provider.id in query.provider_ids,
                     "only_url": url(
-                        replace(query, provider_ids=(provider.id,), library_ids=(), page=1)
+                        replace(
+                            query,
+                            provider_ids=(provider.id,),
+                            library_ids=(),
+                            game_sources=no_games,
+                            page=1,
+                        )
                     ),
                 }
                 for provider in configured_providers
+            ),
+            *(
+                {
+                    "kind": "game",
+                    "id": source,
+                    "name": _GAME_SOURCE_NAMES[source],
+                    "logo_url": None,
+                    "detail": SOURCES[source],
+                    "checked": source in query.game_sources,
+                    "only_url": url(
+                        replace(
+                            query,
+                            provider_ids=(),
+                            library_ids=(),
+                            game_sources=(source,),
+                            page=1,
+                        )
+                    ),
+                }
+                for source in game_rows
             ),
         )
         # The one source left showing needs no "Only" link.
@@ -597,10 +727,12 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             "saved_game_icons": collections.saved_game_icons()
             if hasattr(collections, "saved_game_icons")
             else {},
-            "has_games": any(
+            "has_games": bool(games)
+            or any(
                 getattr(item, "media_type", "") == "game"
                 for item in (*page.items, *(item for row in groups for item in row.items))
             ),
+            "game_rows": game_rows,
             "library_scanning": library_scanning,
             "streaming_selected": bool(query.provider_ids),
             "source_options": source_options,
@@ -1373,6 +1505,60 @@ def _steam_status(account: SteamAccount) -> str:
     return f"{_count(len(account.owned), 'game')} · checked {_relative_time(checked)}"
 
 
+def _game_sources(request: Request) -> tuple[str, ...]:
+    """The game services that count as the user's: a chosen Game Pass plan, a Steam account."""
+
+    sources = []
+    if request.app.state.game_preferences.configured():
+        sources.append("gamepass")
+    if _steam_account(request.app.state.games) is not None:
+        sources.append("steam")
+    return tuple(sources)
+
+
+async def _playable_games(
+    request: Request, region: str, query: BrowseQuery, smart: SmartCollection
+) -> list[GameEntry]:
+    """The user's games that belong in a smart collection, most popular first.
+
+    A search matches game titles anywhere; the year and rating filters apply to games as to
+    titles, with a game's release year and its 0–10 store score.
+    """
+
+    playable = getattr(request.app.state.games, "playable", None)
+    if not callable(playable) or not region or not (query.search or smart.has_games):
+        return []
+    preferred = request.app.state.game_preferences.get()
+    games = await playable(
+        region,
+        request.app.state.settings.language,
+        GameQuery(plan=preferred.plan, platform=preferred.platform),
+        game_pass="gamepass" in query.game_sources,
+        steam="steam" in query.game_sources,
+    )
+    today = date.today()
+    search = query.search.casefold()
+    kept = []
+    for game in games:
+        if search and search not in game.title.casefold():
+            continue
+        if not search and not smart.matches_game(game, today):
+            continue
+        year = int(game.release_date[:4]) if game.release_date[:4].isdigit() else None
+        if query.year_from is not None and (year is None or year < query.year_from):
+            continue
+        if query.year_to is not None and (year is None or year > query.year_to):
+            continue
+        if query.minimum_rating is not None:
+            score = game.score
+            if (score is None and not query.include_unrated) or (
+                score is not None and score < query.minimum_rating
+            ):
+                continue
+        kept.append(GameEntry(game))
+    return kept
+
+
 def _game_access(request: Request, region: str) -> GameAccess:
     """Mark saved games the user can play with their Game Pass plan or Steam library."""
 
@@ -1703,14 +1889,22 @@ def _parse_browse_query(
     all_provider_ids: tuple[int, ...],
     all_library_ids: tuple[int, ...],
     collection: str,
+    all_game_sources: tuple[str, ...] = (),
 ) -> BrowseQuery:
     params = request.query_params
     media_value = params.get("media", "all")
     media_type: BrowseMediaType = media_value if media_value in {"all", "movie", "tv"} else "all"
     provider_ids = _selection(params.getlist("providers"), all_provider_ids)
     library_ids = _selection(params.getlist("libraries"), all_library_ids)
-    if not provider_ids and not library_ids:
+    chosen_games = {token for value in params.getlist("games") for token in value.split(",")}
+    game_sources = (
+        tuple(source for source in all_game_sources if source in chosen_games)
+        if params.getlist("games")
+        else all_game_sources
+    )
+    if not provider_ids and not library_ids and not game_sources:
         provider_ids, library_ids = all_provider_ids, all_library_ids
+        game_sources = all_game_sources
 
     current_year = date.today().year
     year_from = _optional_int(params.get("year_from"), 1900, current_year)
@@ -1735,6 +1929,7 @@ def _parse_browse_query(
         sort=cast(SortKey, sort_value) if sort_value in SORT_KEYS else None,
         descending={"asc": False, "desc": True}.get(order or ""),
         group=group if (group := params.get("group") or "") in GROUPINGS else "",
+        game_sources=game_sources,
     )
 
 
@@ -1754,6 +1949,7 @@ def _browse_url(
     all_provider_ids: tuple[int, ...],
     all_library_ids: tuple[int, ...],
     genres: Sequence[GenreChoice] = (),
+    all_game_sources: tuple[str, ...] = (),
 ) -> str:
     """Link to a collection (or search results) with the query's sources, filters, and sort.
 
@@ -1769,6 +1965,8 @@ def _browse_url(
         params["providers"] = ",".join(str(value) for value in query.provider_ids) or _NO_SELECTION
     if query.library_ids != all_library_ids:
         params["libraries"] = ",".join(str(value) for value in query.library_ids) or _NO_SELECTION
+    if query.game_sources != all_game_sources:
+        params["games"] = ",".join(query.game_sources) or _NO_SELECTION
     if query.year_from is not None:
         params["year_from"] = query.year_from
     if query.year_to is not None:

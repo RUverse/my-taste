@@ -77,6 +77,23 @@ genre, and region, so following pages reuse them; lists stop after 100 pages lik
 lists. Search covers the collection's own games plus Steam's search for Steam collections and
 All games, ordered by Steam's relevance, then the user's own matches.
 
+## All: films, series, and games
+
+The All tab's smart collections mix in the games the user can play (`GamesService.playable`):
+the chosen Game Pass plan's games and the connected Steam library, nothing from the store. They
+are ranked once, most popular first: Microsoft's popular list, then the rest of the plan's
+catalog by review count, alternating with Steam library games by Steam review count.
+
+`catalog/mixing.py` merges them with a collection's titles page by page. Release date, rating,
+and title merge by `catalog_sort_key`, as library titles do. Popularity has no shared scale, so
+games are spread instead: every fourth card while both last. Popular keeps its 200 titles and
+takes one game per three of them; with only game services chosen, it is the 200 most popular
+games. Genre collections match games by Steam tag IDs among a game's first ten tags (later ones
+are often stray votes) or, for Xbox-only games, Microsoft Store categories
+(`SmartCollection.game_tags` and `game_genres`). Year and rating filters apply to games; any other
+filter answers only for TMDB titles, so it leaves games out. Games are chosen in the sidebar with
+`games=gamepass,steam`, like `providers` and `libraries`.
+
 ## Accounts
 
 Both game services are managed on the Services page, which the games sidebar opens with

@@ -21,6 +21,8 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/catalog/tmdb.py` — raw asynchronous TMDB requests and response normalization.
 - `src/mytaste/catalog/service.py` — browsing, cross-media merging, availability checks,
   enrichment, and in-memory caching.
+- `src/mytaste/catalog/mixing.py` — mixes the user's games into All's smart collections: merged
+  by the shared sort key, or spread every fourth card in popularity order.
 - `src/mytaste/catalog/filters.py` — browse filters (`TitleFilters`), TMDB discover parameters,
   and `title_matches`, the one rule every non-TMDB source is checked with; `filtering.py` applies
   it to library titles, collections, credits, and search results; `facts.py` reads per-title

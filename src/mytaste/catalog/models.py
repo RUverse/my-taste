@@ -247,6 +247,8 @@ class BrowseQuery:
     # Rows to split the titles into (see ``catalog.grouping``); empty shows one grid.
     group: str = ""
     filters: TitleFilters = field(default_factory=TitleFilters)
+    # Game services mixed into All: "gamepass" and "steam". The catalog ignores them.
+    game_sources: tuple[str, ...] = ()
 
     def sort_for(self, default: SortKey) -> tuple[SortKey, bool]:
         sort = self.sort or default

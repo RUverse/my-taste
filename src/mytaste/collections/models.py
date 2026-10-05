@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 from mytaste.catalog.models import (
     BrowseCategory,
@@ -14,6 +15,9 @@ from mytaste.catalog.models import (
 from mytaste.games.models import Game
 
 HOME_COLLECTION = "popular"
+# Steam lists a game's tags by votes; past the first ten they are often stray, such as
+# Psychological Horror on a flight simulator.
+GAME_TAG_DEPTH = 10
 
 ICONS: tuple[str, ...] = (
     "bookmark",
@@ -41,6 +45,9 @@ class SmartCollection:
 
     Genre collections name the TMDB genre per media type; a collection without a genre for a
     media type is hidden in that mode (TMDB has no Thriller or Romance genre for series).
+    Games join a genre collection through Steam tag IDs (``game_tags``) among a game's top
+    tags, or, for games not on Steam, Microsoft Store categories (``game_genres``) that clearly
+    mean the same; without either they stay out.
     """
 
     slug: str
@@ -52,10 +59,34 @@ class SmartCollection:
     tv_genre: str | None = None
     released_within_days: int | None = None
     limit: int | None = None
+    game_genres: tuple[str, ...] = ()
+    game_tags: tuple[int, ...] = ()
 
     @property
     def has_genre(self) -> bool:
         return self.movie_genre is not None or self.tv_genre is not None
+
+    @property
+    def has_games(self) -> bool:
+        return not self.has_genre or bool(self.game_genres or self.game_tags)
+
+    def matches_game(self, game: Game, today: date | None = None) -> bool:
+        if not self.has_games:
+            return False
+        if self.has_genre:
+            matched = (
+                set(self.game_tags).intersection(game.tag_ids[:GAME_TAG_DEPTH])
+                if game.tag_ids
+                else set(self.game_genres).intersection(game.genres)
+            )
+            if not matched:
+                return False
+        if self.released_within_days is not None:
+            today = today or date.today()
+            earliest = (today - timedelta(days=self.released_within_days)).isoformat()
+            if game.coming_soon or not earliest <= game.release_date[:10] <= today.isoformat():
+                return False
+        return True
 
     def supports(self, media_type: BrowseMediaType) -> bool:
         if not self.has_genre:
@@ -111,22 +142,53 @@ SMART_COLLECTIONS: tuple[SmartCollection, ...] = (
         description="Released in the past year, newest first.",
         released_within_days=365,
     ),
-    SmartCollection("comedy", "Comedy", movie_genre="Comedy", tv_genre="Comedy"),
-    SmartCollection("thriller", "Thriller", movie_genre="Thriller"),
+    # Steam tags: Comedy, Funny, Dark Comedy.
+    SmartCollection(
+        "comedy", "Comedy", movie_genre="Comedy", tv_genre="Comedy", game_tags=(1719, 4136, 19995)
+    ),
+    SmartCollection("thriller", "Thriller", movie_genre="Thriller", game_tags=(4064,)),
     SmartCollection("romance", "Romance", movie_genre="Romance"),
     SmartCollection("drama", "Drama", movie_genre="Drama", tv_genre="Drama"),
-    SmartCollection("action", "Action", movie_genre="Action", tv_genre="Action & Adventure"),
+    # Steam tags: Action, Shooter, Fighting.
     SmartCollection(
-        "science-fiction", "Sci-Fi", movie_genre="Science Fiction", tv_genre="Sci-Fi & Fantasy"
+        "action",
+        "Action",
+        movie_genre="Action",
+        tv_genre="Action & Adventure",
+        game_genres=("Action & adventure", "Shooter", "Fighting"),
+        game_tags=(19, 1774, 1743),
+    ),
+    # Steam tags: Sci-fi, Space, Cyberpunk.
+    SmartCollection(
+        "science-fiction",
+        "Sci-Fi",
+        movie_genre="Science Fiction",
+        tv_genre="Sci-Fi & Fantasy",
+        game_tags=(3942, 1755, 4115),
     ),
     SmartCollection("animation", "Animation", movie_genre="Animation", tv_genre="Animation"),
-    SmartCollection("crime", "Crime", movie_genre="Crime", tv_genre="Crime"),
-    SmartCollection("mystery", "Mystery", movie_genre="Mystery", tv_genre="Mystery"),
-    SmartCollection("horror", "Horror", movie_genre="Horror"),
+    # Steam tags: Crime, Noir.
+    SmartCollection(
+        "crime", "Crime", movie_genre="Crime", tv_genre="Crime", game_tags=(6378, 6052)
+    ),
+    # Steam tags: Mystery, Detective.
+    SmartCollection(
+        "mystery", "Mystery", movie_genre="Mystery", tv_genre="Mystery", game_tags=(5716, 5613)
+    ),
+    # Steam tags: Horror, Survival Horror, Psychological Horror.
+    SmartCollection("horror", "Horror", movie_genre="Horror", game_tags=(1667, 3978, 1721)),
     SmartCollection(
         "documentary", "Documentary", movie_genre="Documentary", tv_genre="Documentary"
     ),
-    SmartCollection("family", "Family", movie_genre="Family", tv_genre="Family"),
+    # Steam tag: Family Friendly.
+    SmartCollection(
+        "family",
+        "Family",
+        movie_genre="Family",
+        tv_genre="Family",
+        game_genres=("Family & kids",),
+        game_tags=(5350,),
+    ),
 )
 
 

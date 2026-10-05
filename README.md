@@ -7,7 +7,8 @@ matching releases in a clean poster grid.
 ## Features
 
 - Region-aware subscription choices such as Netflix, Prime Video, and Apple TV+
-- Unified All, Movies, and Series browsing
+- Unified All, Movies, Series, and Games browsing: All mixes the games you can play with the
+  movies and series on your services
 - Games from Steam and Xbox Game Pass in one catalog: a game sold in both stores is one card
   with both services, your Steam library (signed in through Steam) and Game Pass plan are marked
   on every cover, and the whole Steam store stays browsable
@@ -101,6 +102,17 @@ Everything you browse is a collection, shown as a tab above the grid:
   **Watchlist** and **My favourites**; you can rename, re-icon, describe, or delete them. A list
   only shows titles you can watch on your services or from your folders, and says how many of its
   titles that leaves (for example “12 of 23 titles are on your services”).
+
+In **All**, the predefined collections also hold the games you can play: those in your Game Pass
+plan and your Steam library. Sorted by release date, rating, or title, a game sits exactly where
+it ranks. TMDB's popularity has no equivalent for games, so in popularity order every fourth card
+is a game, most popular first (Game Pass's popular list, then review counts). Popular takes the
+games that fit beside its 200 titles; **Latest** takes games released in the past year; genre
+collections take games whose top Steam tags (or, for games not on Steam, Microsoft Store
+categories) clearly match, such as shooters in **Action**. Romance, Drama, Animation, and
+Documentary stay films and series. Game Pass and Steam appear under **Services** in the sidebar,
+and the year and rating filters apply to games too; any other filter shows only films and
+series.
 
 To add a title to your collections, open it and choose **Save**; the menu lists your collections
 with checkmarks, and **New collection…** makes one and saves the title into it. The **+** at the

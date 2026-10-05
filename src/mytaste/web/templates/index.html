@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import collection_icon %}
 {% from "_cards.html" import media_card, group_row with context %}
+{% from "_game_card.html" import steam_logo, gamepass_logo %}
 {% block title %}{{ heading }} · {{ display.site_title }}{% endblock %}
 {% block layout %}
   {% set folder_path = "M3 7.5A1.5 1.5 0 0 1 4.5 6h4.2l2 2h8.8A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-10Z" %}
@@ -49,8 +50,10 @@
                     {# Collapsed, the section is one row: its name, then the services' icons. #}
                     <span class="source-logos" data-disclosure-summary="sources" aria-hidden="true">
                       {% for option in source_options[:5] %}
-                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}{% if not option.checked %} is-excluded{% endif %}" title="{{ option.name }}">
-                          {% if option.logo_url %}
+                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% elif option.kind == 'game' %} game-source-logo game-source-{{ option.id }}{% endif %}{% if not option.checked %} is-excluded{% endif %}" title="{{ option.name }}">
+                          {% if option.kind == 'game' %}
+                            {% if option.id == 'steam' %}{{ steam_logo() }}{% else %}{{ gamepass_logo() }}{% endif %}
+                          {% elif option.logo_url %}
                             <img src="{{ option.logo_url }}" alt="" width="22" height="22">
                           {% elif option.kind == 'library' %}
                             <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
@@ -67,15 +70,18 @@
               </div>
               {% if configured_providers %}<input type="hidden" name="providers" value="none">{% endif %}
               {% if libraries %}<input type="hidden" name="libraries" value="none">{% endif %}
+              {% if game_rows %}<input type="hidden" name="games" value="none">{% endif %}
               <div class="source-body" id="sources-body" data-disclosure-body="sources" hidden>
                 <ul class="source-list" role="list">
                   {% for option in source_options %}
                     {% set input_id = 'source-' ~ option.kind ~ '-' ~ option.id %}
                     <li class="source-row">
-                      <input class="source-input" type="checkbox" id="{{ input_id }}" name="{{ 'providers' if option.kind == 'provider' else 'libraries' }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
+                      <input class="source-input" type="checkbox" id="{{ input_id }}" name="{{ {'provider': 'providers', 'library': 'libraries', 'game': 'games'}[option.kind] }}" value="{{ option.id }}" {% if option.checked %}checked{% endif %}>
                       <label class="source-toggle" for="{{ input_id }}" title="{{ 'Hide from this view' if option.checked else 'Show in this view' }}">
-                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% endif %}" aria-hidden="true">
-                          {% if option.logo_url %}
+                        <span class="source-row-logo{% if option.kind == 'library' %} is-local{% elif option.kind == 'game' %} game-source-logo game-source-{{ option.id }}{% endif %}" aria-hidden="true">
+                          {% if option.kind == 'game' %}
+                            {% if option.id == 'steam' %}{{ steam_logo() }}{% else %}{{ gamepass_logo() }}{% endif %}
+                          {% elif option.logo_url %}
                             <img src="{{ option.logo_url }}" alt="" width="26" height="26">
                           {% elif option.kind == 'library' %}
                             <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
