@@ -41,9 +41,10 @@
   /* Fast start, long soft landing: page changes feel quick without snapping. */
   --snap: cubic-bezier(0.25, 1, 0.5, 1);
   --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
-  /* Where the small logo sits on a page, below the links. */
+  /* Where the small logo sits on a page: at the left, halfway down. */
   --dock-left: clamp(1.25rem, 4.3vw, 5.5rem);
-  --dock-top: 5.75rem;
+  /* Vertically centred: the logo is 392/671 as tall as it is wide. */
+  --dock-top: calc(50vh - var(--dock-w) * 392 / 671 / 2);
   --dock-w: clamp(150px, 14vw, 250px);
   /* The curtain starts over the small logo's "y"; the page starts a little right of it. */
   --curtain-l: calc(var(--dock-left) + var(--dock-w) * 0.86);
