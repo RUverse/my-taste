@@ -18,13 +18,8 @@
   --ink: #3a3a3a;
   --text: #4f4f4f;
   --nav: #3f3f3f;
-  /* Folded glass: each face goes from its ridge colour to its valley colour; --fold-edge is
-     the thin highlight along a ridge. The front row is frosted and lighter. */
-  --back-ridge: rgb(0 0 0 / 0.015);
-  --back-valley: rgb(0 0 0 / 0.1);
-  --front-ridge: rgb(255 255 255 / 0.38);
-  --front-valley: rgb(0 0 0 / 0.07);
-  --fold-edge: rgb(255 255 255 / 0.95);
+  --band: #000;
+  --gap: #fff;
   --bar: rgb(201 201 201 / 0.8);
   --shade-1: #fff;
   --shade-2: #efefef;
@@ -35,6 +30,9 @@
   --shadow: rgb(0 0 0 / 0.07);
   --glow: 0.55;
   --sheet: #fff;
+  --cover-1: #f3f3f3;
+  --cover-2: #ebebeb;
+  --cover-3: #f7f7f7;
   --sheet-shadow: rgb(0 0 0 / 0.18);
   --hue-start: 355;
 
@@ -60,11 +58,8 @@
     --ink: #fff;
     --text: #ececec;
     --nav: #e2e2e2;
-    --back-ridge: rgb(255 255 255 / 0.075);
-    --back-valley: rgb(255 255 255 / 0.01);
-    --front-ridge: rgb(255 255 255 / 0.11);
-    --front-valley: rgb(0 0 0 / 0.3);
-    --fold-edge: rgb(255 255 255 / 0.2);
+    --band: #fff;
+    --gap: #000;
     --bar: rgb(0 0 0 / 0.72);
     --shade-1: #000;
     --shade-2: #121212;
@@ -75,6 +70,9 @@
     --shadow: rgb(0 0 0 / 0.3);
     --glow: 0.85;
     --sheet: #0b0b0b;
+    --cover-1: #0c0c0c;
+    --cover-2: #141414;
+    --cover-3: #080808;
     --sheet-shadow: rgb(0 0 0 / 0.8);
     --hue-start: 295;
   }
@@ -124,9 +122,9 @@ a:focus-visible,
   top: 1rem;
 }
 
-/* Folded glass */
+/* Background bands */
 
-.glass,
+.bands,
 .curtain {
   position: fixed;
   inset: 0;
@@ -134,60 +132,41 @@ a:focus-visible,
   pointer-events: none;
 }
 
-.glass-back {
+.bands {
   z-index: 0;
-  --row-top: calc(var(--bar-h) + 1.75rem);
-  --ridge: var(--back-ridge);
-  --valley: var(--back-valley);
+  /* The bands start a little in from the left edge, as in the design. */
+  left: clamp(24px, 9vw, 160px);
 }
 
-/* Inside the stage: in front of the hero, behind the curtain. */
-.glass-front {
+/* Inside the stage: above the hero, below the curtain. */
+.bands-front {
   z-index: 2;
-  --row-top: calc(var(--bar-h) + 0.1rem);
-  --ridge: var(--front-ridge);
-  --valley: var(--front-valley);
 }
 
-/* The front row's two halves; on a page they slide off either side (main.js sets --out). */
-.half {
+/* Each rectangle darkens towards its left side, like a shadow. */
+/* The rectangles hang from just under the top bar with slanted tops (main.js sets them). */
+.band,
+.cover,
+.panel > span {
+  top: calc(var(--bar-h) + var(--dy, 0px));
+  clip-path: polygon(0 var(--sl, 0px), 100% var(--sr, 0px), 100% 100%, 0 100%);
+}
+
+.band {
   position: absolute;
-  inset: 0;
-  transition: transform 0.7s var(--snap);
-}
-
-.is-page .half {
-  transform: translateX(var(--out, 0px));
-}
-
-/* One face of a fold. Its top runs from one fold point to the next (--sl, --sr), and it is
-   shaded from its ridge (high, catching the light) down to its valley. */
-.fold {
-  position: absolute;
-  top: var(--row-top);
   bottom: 0;
   left: var(--x);
   width: var(--w);
-  clip-path: polygon(0 var(--sl), 100% var(--sr), 100% 100%, 0 100%);
-  transform-origin: 0 0;
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--band) calc(var(--a) * 100%), transparent);
   will-change: transform;
 }
 
-.fold.falls {
+.band.is-gap {
   background:
-    linear-gradient(to right, var(--fold-edge) 0 1px, transparent 1px),
-    linear-gradient(to right, var(--ridge), var(--valley));
-}
-
-.fold.rises {
-  background:
-    linear-gradient(to left, var(--fold-edge) 0 1px, transparent 1px),
-    linear-gradient(to right, var(--valley), var(--ridge));
-}
-
-.glass-front .half {
-  -webkit-backdrop-filter: blur(2.5px);
-  backdrop-filter: blur(2.5px);
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--gap) calc(var(--a) * 100%), transparent);
 }
 
 /* Top bar */
@@ -254,39 +233,32 @@ a:focus-visible,
 .stage {
   position: fixed;
   inset: 0;
-  /* The small logo (z-index 2) sits above the whole stage. */
+  /* The small logo and its covers (z-index 2 and 3) sit above the whole stage. */
   z-index: 1;
   display: grid;
   place-items: center;
   overflow: hidden;
 }
 
-/* No z-index here, so the mark and the text can sit on either side of the front glass. */
 .hero {
   position: relative;
+  z-index: 1;
   width: var(--hero-w);
   margin-top: 4vh;
   container-type: inline-size;
 }
 
-/* The small logo, wiped in from the right as the front glass slides away. */
+/* The small logo and the opaque rectangles that hide it at home. */
 .mini {
   position: fixed;
   left: var(--dock-left);
   top: var(--dock-top);
   z-index: 2;
+  transition: clip-path 0.7s var(--snap);
   display: block;
   width: var(--dock-w);
   color: var(--ink);
   line-height: 0;
-  clip-path: inset(0 0 0 100%);
-  transition: clip-path 0.45s var(--snap);
-}
-
-.is-page .mini {
-  /* Negative insets leave room for the glow. */
-  clip-path: inset(-50%);
-  transition-delay: 0.08s;
 }
 
 .mini-svg {
@@ -296,19 +268,38 @@ a:focus-visible,
   overflow: visible;
 }
 
-/* The mark stands behind the front glass; the text in front of it stays sharp. */
+.covers {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  /* The covers span the small logo plus room for its glow. */
+  --span: calc(var(--dock-w) + 4rem);
+  --start: calc(var(--dock-left) - 2rem);
+}
+
+.cover {
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--start) + var(--span) * var(--f0));
+  width: calc(var(--span) * var(--fw));
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    var(--shade);
+  transition: transform 0.7s var(--snap) var(--close-delay);
+}
+
+/* On a page they slide out past the left edge, uncovering the small logo. */
+.is-page .cover {
+  transform: translateX(calc(-1 * (var(--start) + var(--span) * (var(--f0) + var(--fw))) - 3rem));
+  transition-delay: var(--open-delay);
+}
+
 .mark {
-  position: relative;
-  z-index: 1;
   margin: 0;
   font-size: inherit;
   line-height: 0;
-}
-
-.tagline,
-.intro {
-  position: relative;
-  z-index: 3;
 }
 
 .mark-link {
@@ -386,7 +377,6 @@ a:focus-visible,
 
 .panel > span {
   position: absolute;
-  top: var(--bar-h);
   right: 0;
   bottom: 0;
   left: 0;
@@ -579,9 +569,19 @@ a:focus-visible,
     --page-l: 1.25rem;
   }
 
-  /* The small logo sits in the top bar here, above it. */
+  /* The small logo sits in the top bar here, above it. Full-height covers would cut through
+     the hero, so instead the logo is wiped in from the right as a page opens. */
   .mini {
     z-index: 5;
+    clip-path: inset(0 0 0 100%);
+  }
+
+  .is-page .mini {
+    clip-path: inset(-50% -50% -50% -50%);
+  }
+
+  .covers {
+    display: none;
   }
 
   .sheet {
@@ -657,7 +657,8 @@ html:not(.js) .hero {
 }
 
 html:not(.js) .curtain,
-html:not(.js) .mini {
+html:not(.js) .mini,
+html:not(.js) .covers {
   display: none;
 }
 
@@ -690,7 +691,7 @@ html:not(.js) .page {
   }
 
   .mini,
-  .half,
+  .cover,
   .panel,
   .page,
   .page.is-active {

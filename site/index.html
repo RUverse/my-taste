@@ -16,7 +16,7 @@
 <body>
   <a class="skip-link" href="#main">Skip to content</a>
 
-  <div class="glass glass-back" aria-hidden="true"></div>
+  <div class="bands" aria-hidden="true"></div>
 
   <header class="topbar">
     <nav class="nav nav-main" aria-label="Main">
@@ -69,10 +69,7 @@
         interface. Create collections to share with others or add other people's collections.</p>
     </section>
 
-    <div class="glass glass-front" aria-hidden="true">
-      <div class="half half-left"></div>
-      <div class="half half-right"></div>
-    </div>
+    <div class="bands bands-front" aria-hidden="true"></div>
 
     <div class="curtain" aria-hidden="true">
       <div class="panel sheet"><span></span></div>
@@ -269,8 +266,9 @@ uv run mytaste serve</code></pre>
     </div>
   </main>
 
-  <!-- The small logo shown on pages, above the stage so it stays clickable. It is wiped in
-       as the front glass slides away; it reuses the hero's shapes, gradient, and glow. -->
+  <!-- The small logo shown on pages, above the stage so it stays clickable. At home it hides
+       behind the covers, which slide off to the left when a page opens; it reuses the hero's
+       shapes, gradient, and glow. -->
   <a class="mini" href="#" aria-label="My .taste, home" inert>
     <svg class="mini-svg" viewBox="0 0 671 392" aria-hidden="true" focusable="false">
       <use class="my-glow" href="#my-shape" filter="url(#my-glow-blur)"/>
@@ -278,6 +276,12 @@ uv run mytaste serve</code></pre>
       <use href="#taste-mark"/>
     </svg>
   </a>
+  <!-- The covers' tops stay tucked under the bar so the small logo's glow never shows. -->
+  <div class="covers" aria-hidden="true">
+    <div class="cover" style="--f0: 0; --fw: 0.42; --dy: -12px; --sl: 0px; --sr: 9px; --shade: var(--cover-1); --open-delay: 0.08s; --close-delay: 0s"></div>
+    <div class="cover" style="--f0: 0.3; --fw: 0.4; --dy: -12px; --sl: 7px; --sr: 0px; --shade: var(--cover-2); --open-delay: 0.04s; --close-delay: 0.04s"></div>
+    <div class="cover" style="--f0: 0.6; --fw: 0.4; --dy: -12px; --sl: 2px; --sr: 10px; --shade: var(--cover-3); --open-delay: 0s; --close-delay: 0.08s"></div>
+  </div>
 
   <script src="main.js" defer></script>
 </body>
