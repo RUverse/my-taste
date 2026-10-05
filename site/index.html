@@ -71,21 +71,6 @@
 
     <div class="bands bands-front" aria-hidden="true"></div>
 
-    <!-- The small logo shown on pages. At home it hides behind the covers, which slide off to
-         the left when a page opens; it reuses the hero's shapes, gradient, and glow. -->
-    <a class="mini" href="#" aria-label="My .taste, home" inert>
-      <svg class="mini-svg" viewBox="0 0 671 392" aria-hidden="true" focusable="false">
-        <use class="my-glow" href="#my-shape" filter="url(#my-glow-blur)"/>
-        <use href="#my-shape"/>
-        <use href="#taste-mark"/>
-      </svg>
-    </a>
-    <div class="covers" aria-hidden="true">
-      <div class="cover" style="--f0: 0; --fw: 0.42; --shade: var(--cover-1); --open-delay: 0.08s; --close-delay: 0s"></div>
-      <div class="cover" style="--f0: 0.3; --fw: 0.4; --shade: var(--cover-2); --open-delay: 0.04s; --close-delay: 0.04s"></div>
-      <div class="cover" style="--f0: 0.6; --fw: 0.4; --shade: var(--cover-3); --open-delay: 0s; --close-delay: 0.08s"></div>
-    </div>
-
     <div class="curtain" aria-hidden="true">
       <div class="panel sheet"><span></span></div>
     </div>
@@ -280,6 +265,22 @@ uv run mytaste serve</code></pre>
       </section>
     </div>
   </main>
+
+  <!-- The small logo shown on pages, above the stage so it stays clickable. At home it hides
+       behind the covers, which slide off to the left when a page opens; it reuses the hero's
+       shapes, gradient, and glow. -->
+  <a class="mini" href="#" aria-label="My .taste, home" inert>
+    <svg class="mini-svg" viewBox="0 0 671 392" aria-hidden="true" focusable="false">
+      <use class="my-glow" href="#my-shape" filter="url(#my-glow-blur)"/>
+      <use href="#my-shape"/>
+      <use href="#taste-mark"/>
+    </svg>
+  </a>
+  <div class="covers" aria-hidden="true">
+    <div class="cover" style="--f0: 0; --fw: 0.42; --shade: var(--cover-1); --open-delay: 0.08s; --close-delay: 0s"></div>
+    <div class="cover" style="--f0: 0.3; --fw: 0.4; --shade: var(--cover-2); --open-delay: 0.04s; --close-delay: 0.04s"></div>
+    <div class="cover" style="--f0: 0.6; --fw: 0.4; --shade: var(--cover-3); --open-delay: 0s; --close-delay: 0.08s"></div>
+  </div>
 
   <script src="main.js" defer></script>
 </body>

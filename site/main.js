@@ -208,26 +208,6 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") goHome();
   });
-  // On wide screens the scrolling layer lies over the small logo, so clicks there go to it.
-  const overLogo = (event) => {
-    const box = mini.getBoundingClientRect();
-    return (
-      event.target === scroller &&
-      event.clientX >= box.left &&
-      event.clientX <= box.right &&
-      event.clientY >= box.top &&
-      event.clientY <= box.bottom
-    );
-  };
-  scroller.addEventListener("pointermove", (event) => {
-    scroller.style.cursor = overLogo(event) ? "pointer" : "";
-  });
-  scroller.addEventListener("click", (event) => {
-    if (current && overLogo(event)) {
-      goHome();
-    }
-  });
-
   // The browser scrolls a linked page's section into view once the document loads; undo it.
   window.addEventListener(
     "load",
