@@ -63,8 +63,22 @@
   layerBands();
   window.addEventListener("resize", layerBands);
 
+  // On a page the hero shrinks into the corner. Its target comes from the CSS (a hidden probe
+  // placed at --dock-left/--dock-top/--dock-w); offsetLeft/Top ignore the hero's transform.
+  const probe = document.querySelector(".dock-probe");
+  const dock = () => {
+    const target = probe.getBoundingClientRect();
+    hero.style.setProperty("--dock-x", `${(target.left - hero.offsetLeft).toFixed(1)}px`);
+    hero.style.setProperty("--dock-y", `${(target.top - hero.offsetTop).toFixed(1)}px`);
+    hero.style.setProperty("--dock-s", (target.width / hero.offsetWidth).toFixed(4));
+  };
+  dock();
+  window.addEventListener("resize", dock);
+  // The hero's height, and so its centred position, changes once the web font arrives.
+  document.fonts?.ready.then(dock);
+
   // Curtain panels: offset from the curtain's edge (px), shade, opacity, and stagger.
-  const track = document.querySelector(".curtain-track");
+  const curtain = document.querySelector(".curtain");
   const panels = [
     [0, 2, 0.55],
     [36, 1, 0.8],
@@ -79,16 +93,16 @@
     const el = document.createElement("div");
     el.className = "panel";
     el.style.setProperty("--o", `${offset}px`);
-    el.style.setProperty("--open-delay", `${index * 0.035}s`);
-    el.style.setProperty("--close-delay", `${(panels.length - index) * 0.03}s`);
-    el.style.setProperty("--wave", `${-(28 + index * 9)}px`);
+    el.style.setProperty("--open-delay", `${index * 0.03}s`);
+    el.style.setProperty("--close-delay", `${(panels.length - index) * 0.02}s`);
     const fill = document.createElement("span");
     fill.style.setProperty("--shade", `var(--shade-${shade})`);
     fill.style.setProperty("--a", String(alpha));
     el.append(fill);
-    track.append(el);
-    // Panels slide with the curtain, so their edge is read where it is now. Only the inner
-    // fill takes the cursor's push, so the outer box's position is unaffected by it.
+    // The solid sheet behind the page text comes last, on top of the panels.
+    curtain.insertBefore(el, curtain.querySelector(".sheet"));
+    // Panels slide in and out, so their edge is read where it is now. Only the inner fill
+    // takes the cursor's push, so the outer box's position is unaffected by it.
     movers.push({ el: fill, edge: () => el.getBoundingClientRect().left, live: true, offset: 0, target: 0 });
   });
 
@@ -147,16 +161,10 @@
   const pageLinks = document.querySelectorAll("a[data-page]");
   const scroller = document.querySelector(".pages");
   let current = null;
-  let switchTimer = 0;
 
   const show = (id, { focus = true } = {}) => {
     const next = pages.has(id) ? id : null;
     if (next === current) return;
-    if (current && next) {
-      body.classList.add("is-switching");
-      window.clearTimeout(switchTimer);
-      switchTimer = window.setTimeout(() => body.classList.remove("is-switching"), 320);
-    }
     body.classList.toggle("is-page", next !== null);
     pages.forEach((page, key) => {
       page.classList.toggle("is-active", key === next);
@@ -208,10 +216,22 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") goHome();
   });
-  // The scrolling layer covers the hero, so a click on its empty left side stands in for one.
+  // The scrolling layer covers the docked logo, so clicks there are passed on to it.
+  const overLogo = (event) => {
+    const box = hero.querySelector(".mark-svg").getBoundingClientRect();
+    return (
+      event.target === scroller &&
+      event.clientX >= box.left &&
+      event.clientX <= box.right &&
+      event.clientY >= box.top &&
+      event.clientY <= box.bottom
+    );
+  };
+  scroller.addEventListener("pointermove", (event) => {
+    scroller.style.cursor = overLogo(event) ? "pointer" : "";
+  });
   scroller.addEventListener("click", (event) => {
-    const page = current && pages.get(current);
-    if (page && event.target === scroller && event.clientX < page.getBoundingClientRect().left) {
+    if (current && overLogo(event)) {
       goHome();
     }
   });

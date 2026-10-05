@@ -29,18 +29,21 @@
   --shot-edge: rgb(0 0 0 / 0.12);
   --shadow: rgb(0 0 0 / 0.07);
   --glow: 0.55;
+  --sheet: #fff;
+  --sheet-shadow: rgb(0 0 0 / 0.18);
   --hue-start: 355;
 
   --ease: cubic-bezier(0.76, 0, 0.24, 1);
+  /* Fast start, long soft landing: page changes feel quick without snapping. */
+  --snap: cubic-bezier(0.16, 1, 0.3, 1);
   --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
-  /* Where the hero sits when a page is open, and where the curtain begins. */
-  --hero-left: 11vw;
-  --curtain-l: calc(var(--hero-left) + var(--hero-w) - 4.5vw);
-  --page-l: calc(var(--curtain-l) + 20vw);
-  /* Once a page is open the curtain keeps closing by this much, hiding more of the hero. */
-  --cover-more: calc(var(--hero-w) * 0.7);
-  /* Screenshots start a little right of where the curtain ends up. */
-  --shots-l: calc(var(--curtain-l) - var(--cover-more) + 5vw);
+  /* When a page is open the hero shrinks into this spot below the links (main.js measures it). */
+  --dock-left: clamp(1.25rem, 4.3vw, 5.5rem);
+  --dock-top: 5.75rem;
+  --dock-w: clamp(150px, 14vw, 250px);
+  /* The curtain starts over the docked logo's "y"; the page starts a little right of it. */
+  --curtain-l: calc(var(--dock-left) + var(--dock-w) * 0.86);
+  --page-l: calc(var(--curtain-l) + clamp(2rem, 6vw, 7rem));
 
   color-scheme: light dark;
 }
@@ -62,6 +65,8 @@
     --shot-edge: rgb(255 255 255 / 0.14);
     --shadow: rgb(0 0 0 / 0.3);
     --glow: 0.85;
+    --sheet: #0b0b0b;
+    --sheet-shadow: rgb(0 0 0 / 0.8);
     --hue-start: 295;
   }
 }
@@ -158,6 +163,7 @@ a:focus-visible,
   left: 0;
   right: 0;
   z-index: 4;
+  pointer-events: none;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -168,6 +174,7 @@ a:focus-visible,
 .nav {
   display: flex;
   align-items: center;
+  pointer-events: auto;
 }
 
 .nav a {
@@ -223,7 +230,19 @@ a:focus-visible,
   width: var(--hero-w);
   margin-top: 4vh;
   container-type: inline-size;
-  transition: transform 0.95s var(--ease);
+  transform-origin: 0 0;
+  transition: transform 0.75s var(--snap);
+  will-change: transform;
+}
+
+.dock-probe {
+  position: fixed;
+  left: var(--dock-left);
+  top: var(--dock-top);
+  width: var(--dock-w);
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .mark {
@@ -293,20 +312,16 @@ a:focus-visible,
   z-index: 3;
 }
 
-.curtain-track {
-  position: absolute;
-  inset: 0;
-  transition: transform 0.95s var(--ease);
-}
-
 .panel {
   position: absolute;
   top: 0;
   bottom: 0;
   left: calc(var(--curtain-l) + var(--o));
-  right: -60vw;
-  transform: translateX(115vw);
-  transition: transform 0.95s var(--ease) var(--close-delay);
+  /* A little past the edge, so the cursor's push never shows a gap. */
+  right: -40px;
+  transform: translateX(105vw);
+  transition: transform 0.6s var(--snap) var(--close-delay);
+  will-change: transform;
 }
 
 .panel > span {
@@ -316,6 +331,18 @@ a:focus-visible,
     linear-gradient(to right, var(--shadow), transparent 9rem),
     color-mix(in srgb, var(--shade) calc(var(--a) * 100%), transparent);
   will-change: transform;
+}
+
+/* A solid sheet behind the page text, so the content has a clear edge. */
+.sheet {
+  --open-delay: 0.12s;
+  --close-delay: 0s;
+  left: calc(var(--page-l) - clamp(1.5rem, 3vw, 3rem));
+}
+
+.sheet > span {
+  background: var(--sheet);
+  box-shadow: -1.5rem 0 3rem -1rem var(--sheet-shadow);
 }
 
 /* Pages */
@@ -340,8 +367,8 @@ a:focus-visible,
 .page {
   position: absolute;
   top: 22vh;
-  left: var(--shots-l);
-  width: calc(100vw - var(--shots-l) - 5vw);
+  left: var(--page-l);
+  width: calc(100vw - var(--page-l) - 5vw);
   max-height: 100vh;
   padding-bottom: 6rem;
   overflow: hidden;
@@ -350,12 +377,12 @@ a:focus-visible,
   letter-spacing: 0.015em;
   opacity: 0;
   visibility: hidden;
-  transform: translateX(3rem);
+  transform: translateX(2rem);
   transition:
-    opacity 0.3s ease,
-    transform 0.4s var(--ease),
-    visibility 0s linear 0.4s,
-    max-height 0s linear 0.4s;
+    opacity 0.15s ease,
+    transform 0.25s ease,
+    visibility 0s linear 0.25s,
+    max-height 0s linear 0.25s;
 }
 
 /* Hidden pages keep a viewport's height so they never lengthen the scroll of the open one. */
@@ -365,20 +392,15 @@ a:focus-visible,
   visibility: visible;
   transform: none;
   transition:
-    opacity 0.6s ease 0.55s,
-    transform 0.8s var(--ease) 0.45s,
+    opacity 0.4s ease 0.2s,
+    transform 0.7s var(--snap) 0.15s,
     visibility 0s,
     max-height 0s;
 }
 
-.is-switching .page.is-active {
-  transition-delay: 0.3s, 0.25s, 0s, 0s;
-}
-
 .page-text {
-  max-width: 32rem;
+  max-width: 34rem;
   min-height: 70vh;
-  margin-left: calc(var(--page-l) - var(--shots-l));
 }
 
 /* Screenshots below the text: one wide, then pairs. */
@@ -466,10 +488,10 @@ a:focus-visible,
   color: var(--bg);
 }
 
-/* A page is open: the hero moves aside and the curtain closes over the middle. */
+/* A page is open: the hero shrinks into the corner and the curtain sweeps over the middle. */
 
 .is-page .hero {
-  transform: translateX(calc(var(--hero-left) - 50vw + var(--hero-w) / 2));
+  transform: translate(var(--dock-x, 0), var(--dock-y, 0)) scale(var(--dock-s, 1));
 }
 
 .is-page .panel {
@@ -477,27 +499,16 @@ a:focus-visible,
   transition-delay: var(--open-delay);
 }
 
-/* The hero's text fades as the curtain keeps closing; cut-off lines would just look broken. */
+/* The logo keeps only the mark; the tagline and intro get out of the way at once. */
 .tagline,
 .intro {
-  transition: opacity 0.5s ease;
+  transition: opacity 0.35s ease 0.25s;
 }
 
 .is-page .tagline,
 .is-page .intro {
   opacity: 0;
-  transition: opacity 2s ease 0.9s;
-}
-
-.is-page .curtain-track {
-  transform: translateX(calc(-1 * var(--cover-more)));
-  transition: transform 2.8s cubic-bezier(0.3, 0.1, 0.2, 1) 0.85s;
-}
-
-.is-switching .panel {
-  transform: translateX(var(--wave));
-  transition-duration: 0.3s;
-  transition-delay: var(--open-delay);
+  transition: opacity 0.15s ease;
 }
 
 .no-anim *,
@@ -505,16 +516,24 @@ a:focus-visible,
   transition: none !important;
 }
 
-/* Narrow screens: the curtain covers nearly everything and the hero peeks out on the left. */
+/* Narrow screens: the logo docks beside the account links, above a full-width curtain. */
 
 @media (max-width: 760px) {
   :root {
     --hero-w: 86vw;
-    --hero-left: -66vw;
-    --curtain-l: 7vw;
-    --page-l: 12vw;
-    --cover-more: 0px;
-    --shots-l: var(--page-l);
+    --dock-left: 1rem;
+    --dock-top: 0.75rem;
+    --dock-w: 88px;
+    --curtain-l: 0px;
+    --page-l: 1.25rem;
+  }
+
+  .is-page .hero {
+    z-index: 5;
+  }
+
+  .sheet {
+    left: 0;
   }
 
   .topbar {
@@ -549,7 +568,7 @@ a:focus-visible,
 
   .page {
     top: 8.5rem;
-    width: calc(100vw - var(--page-l) - 7vw);
+    width: calc(100vw - 2 * var(--page-l));
   }
 
   .page-text {
@@ -621,8 +640,6 @@ html:not(.js) .page {
   .intro,
   .is-page .tagline,
   .is-page .intro,
-  .curtain-track,
-  .is-page .curtain-track,
   .panel,
   .page,
   .page.is-active {
