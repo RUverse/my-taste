@@ -85,7 +85,7 @@ def browse_url(query: GameQuery, *, steam: bool = True, connected: bool = True) 
     path = "/collections/games" + (f"/{query.collection}" if query.collection != "all" else "")
     params: list[tuple[str, Any]] = []
     if steam and set(query.sources) != set(SOURCES):
-        params.extend(("source", source) for source in query.sources or ("none",))
+        params.append(("source", ",".join(query.sources) or "none"))
     default = default_sort(query, steam, connected)
     for name, value in (
         ("q", query.search),
@@ -107,7 +107,8 @@ def _parse_query(
     request: Request, key: str, defaults: GamePreferences, steam: bool, connected: bool
 ) -> GameQuery:
     params = request.query_params
-    chosen = params.getlist("source")
+    # Repeated (form) or comma-separated (sidebar script) values; "none" alone means none.
+    chosen = [part for value in params.getlist("source") for part in value.split(",")]
     sources = tuple(source for source in SOURCES if source in chosen) if chosen else tuple(SOURCES)
     query = GameQuery(
         plan=defaults.plan,

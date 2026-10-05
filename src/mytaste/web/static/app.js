@@ -574,7 +574,7 @@
       event.preventDefault();
       const params = new URLSearchParams();
       new FormData(filterForm).forEach((value, key) => {
-        if (key === "providers" || key === "libraries" || value === "") return;
+        if (key === "providers" || key === "libraries" || key === "source" || value === "") return;
         if (sortChanged && filterForm.elements[key] === sortOrder) return;
         // Defaults are left out to keep links short.
         if (filterForm.elements[key]?.dataset?.default === value) return;
@@ -582,7 +582,8 @@
         const values = params.has(key) ? params.get(key).split(",") : [];
         if (!values.includes(value)) params.set(key, [...values, value].join(","));
       });
-      ["providers", "libraries"].forEach((key) => {
+      // Services are left out while all are on; "none" stands for an empty choice.
+      ["providers", "libraries", "source"].forEach((key) => {
         const boxes = sourceBoxes.filter((box) => box.name === key);
         const checked = boxes.filter((box) => box.checked).map((box) => box.value);
         if (boxes.length && checked.length !== boxes.length) {

@@ -696,6 +696,13 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
         assert "Recently played" in mine and 'name="source" value="steam"' in mine
         only_gamepass = client.get("/collections/games/mine?source=gamepass&render=1").text
         assert "In your Steam library" not in only_gamepass.split("data-game-results")[1]
+        # The sidebar script sends one comma-separated list, with "none" from the hidden field.
+        for value in ("none,gamepass", "gamepass"):
+            page = client.get(f"/collections/games/mine?source={value}&render=1").text
+            assert 'id="game-source-gamepass" name="source" value="gamepass" checked' in page
+            assert 'id="game-source-steam" name="source" value="steam" >' in page
+        both = client.get("/collections/games/mine?source=none,gamepass,steam&render=1").text
+        assert 'value="steam" checked' in both and 'value="gamepass" checked' in both
 
         assert client.get(f"/games/xbox-{B}", follow_redirects=False).headers["location"] == (
             "/games/steam-40"
