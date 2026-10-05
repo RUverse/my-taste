@@ -41,8 +41,13 @@
                 <stop class="my-stop-top" offset="0"/>
                 <stop class="my-stop-bottom" offset="1"/>
               </linearGradient>
+              <filter id="my-glow-blur" x="-40%" y="-50%" width="180%" height="200%">
+                <feGaussianBlur stdDeviation="32"/>
+              </filter>
             </defs>
-            <g class="my" fill="url(#my-fill)">
+            <!-- A blurred copy behind the letters; it shares their gradient, so the glow follows the hue. -->
+            <use class="my-glow" href="#my-shape" filter="url(#my-glow-blur)"/>
+            <g class="my" id="my-shape" fill="url(#my-fill)">
               <path d="M0 0H70L177 214L284 0H353V380H284V152L213 294H140L70 152V380H0Z"/>
               <path d="M387 66H459L529 220L599 66H671L528 380H456L493 299Z"/>
             </g>
