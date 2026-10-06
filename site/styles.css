@@ -47,9 +47,11 @@
   /* Vertically centred: the logo is 392/671 as tall as it is wide. */
   --dock-top: calc(50vh - var(--dock-w) * 392 / 671 / 2);
   --dock-w: clamp(150px, 14vw, 250px);
-  /* The curtain starts over the small logo's "y"; the page starts a little right of it. */
-  --curtain-l: calc(var(--dock-left) + var(--dock-w) * 0.86);
-  --page-l: calc(var(--curtain-l) + clamp(2rem, 6vw, 7rem));
+  /* The curtain starts just right of the small logo. */
+  --curtain-l: calc(var(--dock-left) + var(--dock-w) + 1rem);
+  /* Room between the logo and the sheet, and between the sheet's edge and the text. */
+  --sheet-l: calc(var(--dock-left) + var(--dock-w) + clamp(2.5rem, 5vw, 6rem));
+  --page-l: calc(var(--sheet-l) + clamp(2.5rem, 5vw, 6rem));
 
   color-scheme: light dark;
 }
@@ -393,7 +395,7 @@ a:focus-visible,
 .sheet {
   --open-delay: 0.12s;
   --close-delay: 0s;
-  left: calc(var(--page-l) - clamp(1.5rem, 3vw, 3rem));
+  left: var(--sheet-l);
 }
 
 /* The sheet stays straight: it is the content's edge. */
@@ -462,20 +464,17 @@ a:focus-visible,
   min-height: 70vh;
 }
 
-/* Screenshots below the text: one wide, then pairs. */
+/* Screenshots: a grid of small ones that wraps to fewer columns as space runs out. */
 .shots {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(1rem, 2.5vw, 2.5rem);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: clamp(1rem, 2vw, 2rem);
+  max-width: 52rem;
   margin: 0;
 }
 
 .shots figure {
   margin: 0;
-}
-
-.shots figure:first-child {
-  grid-column: 1 / -1;
 }
 
 .shots img {
@@ -643,6 +642,7 @@ a:focus-visible,
     --dock-top: 0.4rem;
     --dock-w: 72px;
     --curtain-l: 0px;
+    --sheet-l: 0px;
     --page-l: 1.25rem;
   }
 
@@ -706,9 +706,6 @@ a:focus-visible,
     margin-bottom: 2.5rem;
   }
 
-  .shots {
-    grid-template-columns: 1fr;
-  }
 }
 
 /* Without JavaScript the pages are ordinary sections below the hero. */
