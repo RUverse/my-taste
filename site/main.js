@@ -224,45 +224,6 @@
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") goHome();
   });
-  // The waitlist form posts to a form service (Formspree's JSON API) and reports back in place.
-  // Without JavaScript the browser posts it normally and the service shows its own page.
-  const waitlist = document.querySelector(".waitlist");
-  const waitlistStatus = waitlist.querySelector(".waitlist-status");
-  const say = (message, tone = "") => {
-    waitlistStatus.textContent = message;
-    waitlistStatus.dataset.tone = tone;
-  };
-  waitlist.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const endpoint = waitlist.getAttribute("action");
-    if (!endpoint) {
-      say("Sign-ups aren't connected yet. Please try again soon.", "error");
-      return;
-    }
-    const button = waitlist.querySelector("button");
-    button.disabled = true;
-    say("Adding you…");
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        body: new FormData(waitlist),
-        headers: { Accept: "application/json" },
-      });
-      if (response.ok) {
-        waitlist.reset();
-        say("You're on the list. We'll email you when accounts open.");
-      } else {
-        const data = await response.json().catch(() => ({}));
-        const reason = data.errors?.map((error) => error.message).join(" ");
-        say(reason || "That didn't work. Please check the address and try again.", "error");
-      }
-    } catch {
-      say("Couldn't reach the waitlist. Check your connection and try again.", "error");
-    } finally {
-      button.disabled = false;
-    }
-  });
-
   // The browser scrolls a linked page's section into view once the document loads; undo it.
   window.addEventListener(
     "load",

@@ -197,21 +197,8 @@
           <h2 id="login-title" tabindex="-1">Login</h2>
           <p class="lead">One interface to all entertainment: your streaming services, local movies,
             games, and articles.</p>
-          <p>Hosted accounts are not open yet. Join the waitlist and we'll email you once they
-            are.</p>
-          <!-- Sign-ups go to a form service (Formspree); set its endpoint as the action. -->
-          <form class="waitlist" action="" method="POST">
-            <label for="waitlist-email">Email</label>
-            <input id="waitlist-email" name="email" type="email" required autocomplete="email"
-              placeholder="you@example.com">
-            <input type="hidden" name="_subject" value="MyTaste waitlist">
-            <!-- Left empty by people; bots fill it in, and the service drops those sign-ups. -->
-            <input class="trap" type="text" name="_gotcha" tabindex="-1" autocomplete="off" aria-hidden="true">
-            <button type="submit">Join the waitlist</button>
-            <p class="waitlist-status" role="status"></p>
-          </form>
-          <p>Or run MyTaste on your own machine today:
-            <a href="#self-host" data-page="self-host">self-host it</a>.</p>
+          <p>Hosted accounts are not open yet. Until then, run MyTaste on your own machine.</p>
+          <p><a class="button" href="#self-host" data-page="self-host">Self-host it</a></p>
         </div>
         <div class="shots">
           <figure>
