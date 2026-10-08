@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from conftest import owner_client
 from fastapi.testclient import TestClient
 
 from mytaste.catalog.filters import GenreChoice, TitleFacts, genre_choices
@@ -393,7 +394,7 @@ def make_client(
         tmdb_token="test-token",
         database_path=tmp_path / "mytaste.db",
     )
-    return TestClient(
+    return owner_client(
         create_app(settings, catalog=catalog or FakeCatalog(), library=library or FakeLibrary())
     )
 
@@ -1212,24 +1213,17 @@ def test_collections_are_created_edited_and_deleted(tmp_path: Path) -> None:
     ]
 
 
-def test_site_title_is_renamed_and_kept_by_display_changes(tmp_path: Path) -> None:
+def test_header_shows_who_is_signed_in(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
-        default = client.get("/")
-        renamed = client.post("/api/preferences/site-title", json={"title": " Sarah's  Taste "})
         client.post("/api/preferences/display", json={"show_year": False})
         home = client.get("/")
-        blank = client.post("/api/preferences/site-title", json={"title": "  "})
-        wrong = client.post("/api/preferences/site-title", json={"name": "x"})
+        signed_out = TestClient(client.app).get("/login")
 
-    assert '<span class="brand-name" data-site-title>MyTaste</span>' in default.text
-    assert renamed.json() == {"site_title": "Sarah's Taste"}
-    assert '<span class="brand-name" data-site-title>Sarah&#39;s Taste</span>' in home.text
-    assert 'value="Sarah&#39;s Taste" maxlength="40"' in home.text
-    assert "<title>Popular · Sarah&#39;s Taste</title>" in home.text
+    assert '<span class="brand-name">Owner</span>' in home.text
+    assert "<title>Popular · MyTaste</title>" in home.text
     assert 'data-show-year="false"' in home.text
-    assert blank.status_code == 422
-    assert wrong.status_code == 422
+    assert '<span class="brand-name">MyTaste</span>' in signed_out.text
 
 
 def test_sidebar_source_changes_return_to_the_page(tmp_path: Path) -> None:

@@ -10,15 +10,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from mytaste.accounts.context import current_user_id
 from mytaste.catalog.models import SORT_KEYS, MediaType
 from mytaste.collections.models import ICONS, Collection, CollectionItem, SavedGame
 from mytaste.games.models import Game, game_key, parse_game_key
+from mytaste.storage.migrations import FIRST_USER_ID
 
 _MAX_NAME_LENGTH = 60
 _MAX_DESCRIPTION_LENGTH = 200
 _MEDIA_TYPES = frozenset({"movie", "tv"})
 
-# Created once, the first time the collections table appears; deleting them is final.
+# Every account starts with these; deleting them is final.
 _DEFAULT_COLLECTIONS = (
     ("Watchlist", "Titles to watch next.", "bookmark"),
     ("My favourites", "Titles you love.", "heart"),
@@ -29,7 +31,32 @@ def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 
+def create_default_collections(connection: sqlite3.Connection, user_id: int) -> None:
+    """Give an account the starting collections, unless it already has collections."""
+
+    if not connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'collections'"
+    ).fetchone():
+        return
+    if connection.execute("SELECT 1 FROM collections WHERE user_id = ?", (user_id,)).fetchone():
+        return
+    now = utc_now()
+    connection.executemany(
+        """
+        INSERT INTO collections (user_id, name, description, icon, position, created_at,
+                                 portable_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            (user_id, name, description, icon, position, now, f"collection-{uuid4().hex}")
+            for position, (name, description, icon) in enumerate(_DEFAULT_COLLECTIONS)
+        ),
+    )
+
+
 class CollectionRepository:
+    """Each user's collections, the titles saved in them, and where titles stream (shared)."""
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
 
@@ -44,6 +71,7 @@ class CollectionRepository:
                 """
                 CREATE TABLE IF NOT EXISTS collections (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL DEFAULT 1,
                     name TEXT NOT NULL,
                     description TEXT NOT NULL DEFAULT '',
                     icon TEXT NOT NULL DEFAULT '',
@@ -63,19 +91,16 @@ class CollectionRepository:
             )
         self._migrate_saved_items("saved_items" not in tables and "collection_items" in tables)
         with self._connect() as connection:
-            if "collections" not in tables:
-                now = utc_now()
-                connection.executemany(
-                    """
-                    INSERT INTO collections (name, description, icon, position, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        (name, description, icon, position, now)
-                        for position, (name, description, icon) in enumerate(_DEFAULT_COLLECTIONS)
-                    ),
-                )
             columns = {row[1] for row in connection.execute("PRAGMA table_info(collections)")}
+            if "user_id" not in columns:
+                # Collections from before accounts belong to the first user.
+                connection.execute(
+                    f"ALTER TABLE collections ADD COLUMN user_id INTEGER NOT NULL "
+                    f"DEFAULT {FIRST_USER_ID}"
+                )
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS collections_user ON collections (user_id, position)"
+            )
             if "portable_id" not in columns:
                 connection.execute("ALTER TABLE collections ADD COLUMN portable_id TEXT")
             missing = connection.execute(
@@ -89,6 +114,8 @@ class CollectionRepository:
                 "CREATE UNIQUE INDEX IF NOT EXISTS collections_portable_id "
                 "ON collections(portable_id)"
             )
+            if "collections" not in tables:
+                create_default_collections(connection, FIRST_USER_ID)
 
     def _migrate_saved_items(self, copy_titles: bool) -> None:
         """Create the shared saved items and ordered collection entries.
@@ -155,13 +182,17 @@ class CollectionRepository:
 
     def list(self) -> tuple[Collection, ...]:
         with self._connect() as connection:
-            rows = connection.execute(f"{_COLLECTION_SELECT} ORDER BY c.position, c.id").fetchall()
+            rows = connection.execute(
+                f"{_COLLECTION_SELECT} WHERE c.user_id = ? ORDER BY c.position, c.id",
+                (current_user_id(),),
+            ).fetchall()
         return tuple(_collection_from_row(row) for row in rows)
 
     def get(self, collection_id: int) -> Collection | None:
         with self._connect() as connection:
             row = connection.execute(
-                f"{_COLLECTION_SELECT} WHERE c.id = ?", (collection_id,)
+                f"{_COLLECTION_SELECT} WHERE c.id = ? AND c.user_id = ?",
+                (collection_id, current_user_id()),
             ).fetchone()
         return _collection_from_row(row) if row else None
 
@@ -174,17 +205,19 @@ class CollectionRepository:
         default_sort: str = "added",
     ) -> Collection:
         values = _validated(name, description, icon, default_sort)
+        user_id = current_user_id()
         with self._connect() as connection:
             position = connection.execute(
-                "SELECT COALESCE(MAX(position) + 1, 0) FROM collections"
+                "SELECT COALESCE(MAX(position) + 1, 0) FROM collections WHERE user_id = ?",
+                (user_id,),
             ).fetchone()[0]
             cursor = connection.execute(
                 """
-                INSERT INTO collections (name, description, icon, default_sort, position,
-                                         created_at, portable_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO collections (user_id, name, description, icon, default_sort,
+                                         position, created_at, portable_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (*values, int(position), utc_now(), f"collection-{uuid4().hex}"),
+                (user_id, *values, int(position), utc_now(), f"collection-{uuid4().hex}"),
             )
             collection_id = int(cursor.lastrowid or 0)
         created = self.get(collection_id)
@@ -205,15 +238,18 @@ class CollectionRepository:
             cursor = connection.execute(
                 """
                 UPDATE collections SET name = ?, description = ?, icon = ?, default_sort = ?
-                WHERE id = ?
+                WHERE id = ? AND user_id = ?
                 """,
-                (*values, collection_id),
+                (*values, collection_id, current_user_id()),
             )
         return self.get(collection_id) if cursor.rowcount else None
 
     def delete(self, collection_id: int) -> bool:
         with self._connect() as connection:
-            cursor = connection.execute("DELETE FROM collections WHERE id = ?", (collection_id,))
+            cursor = connection.execute(
+                "DELETE FROM collections WHERE id = ? AND user_id = ?",
+                (collection_id, current_user_id()),
+            )
         return cursor.rowcount > 0
 
     # Titles and games -------------------------------------------------------------------
@@ -224,8 +260,8 @@ class CollectionRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 f"{_ITEM_SELECT} WHERE e.collection_id = ? AND s.kind IN ('movie', 'tv') "
-                "ORDER BY e.position",
-                (collection_id,),
+                f"AND {_OWN_COLLECTION} ORDER BY e.position",
+                (collection_id, current_user_id()),
             ).fetchall()
         return tuple(_item_from_row(row) for row in rows)
 
@@ -236,8 +272,9 @@ class CollectionRepository:
             rows = connection.execute(
                 "SELECT s.snapshot, s.steam_appid, s.xbox_id, e.added_at, e.position, "
                 "s.portable_id FROM collection_entries e JOIN saved_items s ON s.id = e.item_id "
-                "WHERE e.collection_id = ? AND s.kind = 'game' ORDER BY e.position",
-                (collection_id,),
+                f"WHERE e.collection_id = ? AND s.kind = 'game' AND {_OWN_COLLECTION} "
+                "ORDER BY e.position",
+                (collection_id, current_user_id()),
             ).fetchall()
         return tuple(_saved_game(row) for row in rows)
 
@@ -332,13 +369,13 @@ class CollectionRepository:
     def remove_item(self, collection_id: int, media_type: MediaType, tmdb_id: int) -> bool:
         with self._connect() as connection:
             cursor = connection.execute(
-                """
-                DELETE FROM collection_entries
-                WHERE collection_id = ? AND item_id IN (
+                f"""
+                DELETE FROM collection_entries AS e
+                WHERE e.collection_id = ? AND e.item_id IN (
                     SELECT id FROM saved_items WHERE kind = ? AND tmdb_id = ?
-                )
+                ) AND {_OWN_COLLECTION}
                 """,
-                (collection_id, media_type, tmdb_id),
+                (collection_id, media_type, tmdb_id, current_user_id()),
             )
         return cursor.rowcount > 0
 
@@ -349,8 +386,9 @@ class CollectionRepository:
             if item_id is None:
                 return False
             cursor = connection.execute(
-                "DELETE FROM collection_entries WHERE collection_id = ? AND item_id = ?",
-                (collection_id, item_id),
+                f"DELETE FROM collection_entries AS e WHERE e.collection_id = ? "
+                f"AND e.item_id = ? AND {_OWN_COLLECTION}",
+                (collection_id, item_id, current_user_id()),
             )
         return cursor.rowcount > 0
 
@@ -360,8 +398,9 @@ class CollectionRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT e.collection_id FROM collection_entries e "
-                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = ? AND s.tmdb_id = ?",
-                (media_type, tmdb_id),
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = ? AND s.tmdb_id = ? "
+                f"AND {_OWN_COLLECTION}",
+                (media_type, tmdb_id, current_user_id()),
             ).fetchall()
         return frozenset(int(row[0]) for row in rows)
 
@@ -372,7 +411,9 @@ class CollectionRepository:
             if item_id is None:
                 return frozenset()
             rows = connection.execute(
-                "SELECT collection_id FROM collection_entries WHERE item_id = ?", (item_id,)
+                f"SELECT e.collection_id FROM collection_entries e WHERE e.item_id = ? "
+                f"AND {_OWN_COLLECTION}",
+                (item_id, current_user_id()),
             ).fetchall()
         return frozenset(int(row[0]) for row in rows)
 
@@ -382,7 +423,9 @@ class CollectionRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT s.kind, s.tmdb_id, e.collection_id FROM collection_entries e "
-                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind IN ('movie', 'tv')"
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind IN ('movie', 'tv') "
+                f"AND {_OWN_COLLECTION}",
+                (current_user_id(),),
             ).fetchall()
         saved: dict[tuple[str, int], set[int]] = {}
         for media_type, tmdb_id, collection_id in rows:
@@ -395,7 +438,9 @@ class CollectionRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT s.steam_appid, s.xbox_id, e.collection_id FROM collection_entries e "
-                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = 'game'"
+                f"JOIN saved_items s ON s.id = e.item_id WHERE s.kind = 'game' "
+                f"AND {_OWN_COLLECTION}",
+                (current_user_id(),),
             ).fetchall()
         saved: dict[str, set[int]] = {}
         for steam, xbox, collection_id in rows:
@@ -468,6 +513,9 @@ _COLLECTION_SELECT = """
     FROM collections c
 """
 
+# Limits collection entries (aliased ``e``) to the current user's collections.
+_OWN_COLLECTION = "e.collection_id IN (SELECT id FROM collections WHERE user_id = ?)"
+
 _ITEM_SELECT = """
     SELECT s.kind, s.tmdb_id, e.added_at, s.title, s.release_date, s.overview, s.rating,
            s.popularity, s.poster_path, s.genre_ids, s.genres, e.position
@@ -521,7 +569,10 @@ _SAVED_ITEMS_SCHEMA = (
 def _add_entry(
     connection: sqlite3.Connection, collection_id: int, item_id: int, added_at: str
 ) -> bool:
-    found = connection.execute("SELECT 1 FROM collections WHERE id = ?", (collection_id,))
+    found = connection.execute(
+        "SELECT 1 FROM collections WHERE id = ? AND user_id = ?",
+        (collection_id, current_user_id()),
+    )
     if found.fetchone() is None:
         raise LookupError("Unknown collection")
     cursor = connection.execute(

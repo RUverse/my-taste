@@ -5,9 +5,12 @@ import sqlite3
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from mytaste.accounts.context import current_user_id
+from mytaste.storage.migrations import give_to_first_user, table_columns
+from mytaste.storage.settings import SCHEMA as SETTINGS_SCHEMA
+
 _REGION_PATTERN = re.compile(r"^[A-Z]{2}$")
 DEFAULT_SITE_TITLE = "MyTaste"
-_MAX_SITE_TITLE_LENGTH = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,80 +34,99 @@ class DisplayPreferences:
     card_size: str = "comfortable"
     autoplay_trailer: bool = True
     sidebar_open: bool = True
+    # The app's name, for browser tab titles; the header shows the signed-in person.
     site_title: str = DEFAULT_SITE_TITLE
 
 
+_PREFERENCES = """
+    CREATE TABLE IF NOT EXISTS preferences (
+        user_id INTEGER PRIMARY KEY,
+        region TEXT NOT NULL
+    )
+"""
+_SUBSCRIPTIONS = """
+    CREATE TABLE IF NOT EXISTS subscriptions (
+        user_id INTEGER NOT NULL,
+        provider_id INTEGER NOT NULL CHECK (provider_id > 0),
+        PRIMARY KEY (user_id, provider_id)
+    )
+"""
+_DISPLAY = """
+    CREATE TABLE IF NOT EXISTS display_preferences (
+        user_id INTEGER PRIMARY KEY,
+        show_year INTEGER NOT NULL DEFAULT 1,
+        show_rating INTEGER NOT NULL DEFAULT 1,
+        show_media_type INTEGER NOT NULL DEFAULT 1,
+        show_genres INTEGER NOT NULL DEFAULT 0,
+        show_people INTEGER NOT NULL DEFAULT 0,
+        card_size TEXT NOT NULL DEFAULT 'comfortable'
+            CHECK (card_size IN ('compact', 'comfortable')),
+        autoplay_trailer INTEGER NOT NULL DEFAULT 1,
+        sidebar_open INTEGER NOT NULL DEFAULT 1,
+        show_providers INTEGER NOT NULL DEFAULT 0
+    )
+"""
+_DISPLAY_COLUMNS = (
+    "show_year",
+    "show_rating",
+    "show_media_type",
+    "show_genres",
+    "show_people",
+    "card_size",
+    "autoplay_trailer",
+    "sidebar_open",
+    "show_providers",
+)
+
+
 class PreferenceRepository:
+    """Each user's region, streaming services, and display options."""
+
     def __init__(self, database_path: Path) -> None:
         self.database_path = database_path
 
     def initialize(self) -> None:
         self.database_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS preferences (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    region TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS subscriptions (
-                    provider_id INTEGER PRIMARY KEY CHECK (provider_id > 0)
-                );
-                CREATE TABLE IF NOT EXISTS display_preferences (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    show_year INTEGER NOT NULL DEFAULT 1,
-                    show_rating INTEGER NOT NULL DEFAULT 1,
-                    show_media_type INTEGER NOT NULL DEFAULT 1,
-                    show_genres INTEGER NOT NULL DEFAULT 0,
-                    show_people INTEGER NOT NULL DEFAULT 0,
-                    card_size TEXT NOT NULL DEFAULT 'comfortable'
-                        CHECK (card_size IN ('compact', 'comfortable')),
-                    autoplay_trailer INTEGER NOT NULL DEFAULT 1,
-                    sidebar_open INTEGER NOT NULL DEFAULT 1,
-                    show_providers INTEGER NOT NULL DEFAULT 0,
-                    site_title TEXT NOT NULL DEFAULT 'MyTaste'
-                );
-                """
-            )
-            display_columns = {
-                str(row[1]) for row in connection.execute("PRAGMA table_info(display_preferences)")
-            }
-            if "autoplay_trailer" not in display_columns:
+            connection.execute(SETTINGS_SCHEMA)
+            self._upgrade_one_profile_display(connection)
+        # Before accounts these held one profile; they become the first user's.
+        give_to_first_user(self.database_path, "preferences", _PREFERENCES, ("region",))
+        give_to_first_user(self.database_path, "subscriptions", _SUBSCRIPTIONS, ("provider_id",))
+        give_to_first_user(self.database_path, "display_preferences", _DISPLAY, _DISPLAY_COLUMNS)
+        with self._connect() as connection:
+            connection.execute(_PREFERENCES)
+            connection.execute(_SUBSCRIPTIONS)
+            connection.execute(_DISPLAY)
+
+    def _upgrade_one_profile_display(self, connection: sqlite3.Connection) -> None:
+        """Bring a display table from before accounts up to date before it is converted.
+
+        Its site name is dropped: the header shows the signed-in person's name instead.
+        """
+
+        columns = table_columns(connection, "display_preferences")
+        if not columns or "user_id" in columns:
+            return
+        for column, definition in (
+            ("autoplay_trailer", "INTEGER NOT NULL DEFAULT 1"),
+            ("show_providers", "INTEGER NOT NULL DEFAULT 0"),
+            ("sidebar_open", "INTEGER NOT NULL DEFAULT 1"),
+        ):
+            if column not in columns:
                 connection.execute(
-                    """
-                    ALTER TABLE display_preferences
-                    ADD COLUMN autoplay_trailer INTEGER NOT NULL DEFAULT 1
-                    """
-                )
-            if "show_providers" not in display_columns:
-                connection.execute(
-                    """
-                    ALTER TABLE display_preferences
-                    ADD COLUMN show_providers INTEGER NOT NULL DEFAULT 0
-                    """
-                )
-            if "sidebar_open" not in display_columns:
-                connection.execute(
-                    """
-                    ALTER TABLE display_preferences
-                    ADD COLUMN sidebar_open INTEGER NOT NULL DEFAULT 1
-                    """
-                )
-            if "site_title" not in display_columns:
-                connection.execute(
-                    """
-                    ALTER TABLE display_preferences
-                    ADD COLUMN site_title TEXT NOT NULL DEFAULT 'MyTaste'
-                    """
+                    f"ALTER TABLE display_preferences ADD COLUMN {column} {definition}"
                 )
 
     def get(self) -> Preferences:
+        user_id = current_user_id()
         with self._connect() as connection:
             preference = connection.execute(
-                "SELECT region FROM preferences WHERE id = 1"
+                "SELECT region FROM preferences WHERE user_id = ?", (user_id,)
             ).fetchone()
             providers = connection.execute(
-                "SELECT provider_id FROM subscriptions ORDER BY provider_id"
+                "SELECT provider_id FROM subscriptions WHERE user_id = ? ORDER BY provider_id",
+                (user_id,),
             ).fetchall()
         return Preferences(
             region=str(preference[0]) if preference else "",
@@ -119,30 +141,34 @@ class PreferenceRepository:
         if any(provider_id <= 0 for provider_id in normalized_ids):
             raise ValueError("Streaming service ids must be positive")
 
+        user_id = current_user_id()
         with self._connect() as connection:
             connection.execute(
                 """
-                INSERT INTO preferences (id, region) VALUES (1, ?)
-                ON CONFLICT(id) DO UPDATE SET region = excluded.region
+                INSERT INTO preferences (user_id, region) VALUES (?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET region = excluded.region
                 """,
-                (normalized_region,),
+                (user_id, normalized_region),
             )
-            connection.execute("DELETE FROM subscriptions")
+            connection.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
             connection.executemany(
-                "INSERT INTO subscriptions (provider_id) VALUES (?)",
-                ((provider_id,) for provider_id in normalized_ids),
+                "INSERT INTO subscriptions (user_id, provider_id) VALUES (?, ?)",
+                ((user_id, provider_id) for provider_id in normalized_ids),
             )
         return Preferences(region=normalized_region, provider_ids=normalized_ids)
 
     def get_display(self) -> DisplayPreferences:
+        """The current user's display options."""
+
         with self._connect() as connection:
             row = connection.execute(
                 """
                 SELECT show_year, show_rating, show_media_type, show_genres,
                        show_people, card_size, autoplay_trailer, sidebar_open,
-                       show_providers, site_title
-                FROM display_preferences WHERE id = 1
-                """
+                       show_providers
+                FROM display_preferences WHERE user_id = ?
+                """,
+                (current_user_id(),),
             ).fetchone()
         if row is None:
             return DisplayPreferences()
@@ -156,27 +182,22 @@ class PreferenceRepository:
             autoplay_trailer=bool(row[6]),
             sidebar_open=bool(row[7]),
             show_providers=bool(row[8]),
-            site_title=str(row[9]) or DEFAULT_SITE_TITLE,
         )
 
     def save_display(self, preferences: DisplayPreferences) -> DisplayPreferences:
+        """Save the current user's display options."""
+
         if preferences.card_size not in {"compact", "comfortable"}:
             raise ValueError("Card size must be compact or comfortable")
-        site_title = " ".join(preferences.site_title.split())
-        if not site_title:
-            raise ValueError("Give the site a name")
-        if len(site_title) > _MAX_SITE_TITLE_LENGTH:
-            raise ValueError(f"Keep the name under {_MAX_SITE_TITLE_LENGTH} characters")
-        preferences = replace(preferences, site_title=site_title)
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO display_preferences (
-                    id, show_year, show_rating, show_media_type,
+                    user_id, show_year, show_rating, show_media_type,
                     show_genres, show_people, card_size, autoplay_trailer, sidebar_open,
-                    show_providers, site_title
-                ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
+                    show_providers
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
                     show_year = excluded.show_year,
                     show_rating = excluded.show_rating,
                     show_media_type = excluded.show_media_type,
@@ -185,10 +206,10 @@ class PreferenceRepository:
                     card_size = excluded.card_size,
                     autoplay_trailer = excluded.autoplay_trailer,
                     sidebar_open = excluded.sidebar_open,
-                    show_providers = excluded.show_providers,
-                    site_title = excluded.site_title
+                    show_providers = excluded.show_providers
                 """,
                 (
+                    current_user_id(),
                     preferences.show_year,
                     preferences.show_rating,
                     preferences.show_media_type,
@@ -198,10 +219,9 @@ class PreferenceRepository:
                     preferences.autoplay_trailer,
                     preferences.sidebar_open,
                     preferences.show_providers,
-                    preferences.site_title,
                 ),
             )
-        return preferences
+        return replace(preferences, site_title=DEFAULT_SITE_TITLE)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=5)

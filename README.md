@@ -34,7 +34,12 @@ matching releases in a clean poster grid.
   including optional icons of the subscribed services that carry each title
 - Infinite scroll: more titles (or rows, when grouped) load as you near the bottom; without
   JavaScript the page links still work
-- Single-profile preferences persisted in SQLite, including the site's name (click it to rename)
+- Accounts for everyone at home, each with their own services, collections, display options,
+  Steam and Game Pass, and Continue watching. A "Who's watching?" screen lets people switch
+  profiles like on a TV; a profile can have a password, a short PIN, or nothing. The owner and
+  admins manage the server and choose which local libraries each member sees
+  (see [Accounts](#accounts))
+- Preferences persisted in SQLite; the header shows the name of whoever is signed in
 - Responsive, server-rendered interface that follows the OS light or dark theme
 - Native Python and Docker deployment
 
@@ -57,7 +62,8 @@ export MYTASTE_TMDB_TOKEN=your-read-access-token
 uv run mytaste serve
 ```
 
-Open <http://127.0.0.1:8000>, then add your streaming subscriptions, a local folder, or both.
+Open <http://127.0.0.1:8000> and create the owner account, then add your streaming
+subscriptions, a local folder, or both.
 
 To serve on a LAN or from a container:
 
@@ -65,9 +71,27 @@ To serve on a LAN or from a container:
 uv run mytaste serve --host 0.0.0.0 --port 8000
 ```
 
-MyTaste has no built-in user authentication. Keep the default loopback binding for local use,
-or place it behind an authenticated HTTPS reverse proxy when exposing it to an untrusted
-network.
+Everyone signs in (see [Accounts](#accounts)), but the "Who's watching?" screen lets anyone who
+can reach the server open a profile without a password. Keep the default loopback binding or a
+home network or VPN; to expose MyTaste more widely, turn the profile screen off, give everyone a
+password, and put it behind an HTTPS reverse proxy.
+
+## Accounts
+
+The first visit asks for the owner account. Data from before accounts existed (services,
+collections, watch progress, display options, Game Pass and Steam) becomes the owner's. Under
+**People** in the account menu, the owner adds the people at home:
+
+- **Members** use the app with their own services, collections, display options, Steam account,
+  Game Pass plan, and Continue watching, and see only the local libraries they are given.
+- **Admins** also manage libraries and folders, and people. Only the owner can
+  add admins, change roles, or hand over ownership.
+- A profile signs in with a password, a 4–8 digit PIN, or nothing (members only); the owner and
+  admins always use a password. After five wrong tries a profile waits before the next one.
+- The **profile screen** shows everyone's profiles when signing in, like a TV at home. Turned
+  off, everyone signs in with a username and password.
+
+Sessions stay signed in on a device for 180 days of inactivity, so a TV doesn't keep asking.
 
 ## Configuration
 
@@ -207,7 +231,7 @@ The sidebar's **Services** section lists what you have enabled: streaming subscr
 libraries. Collapsed, it shows their icons beside its name; expanded, each one has a checkmark
 that hides it from (or shows it in) the current view and an **Only** link that shows just that
 one. Nothing is removed there: **Manage** opens the Services page, which adds and removes them. The
-Services page (**Sources and region** in the menu under the site's name) also lets you change
+Services page (**Sources and region** in the menu under your name) also lets you change
 the region, add folders to a library, rename it, and rescan it. To add a library, choose **Add**,
 pick **Local library**, browse to a folder, and say whether it holds
 movies or TV shows. A library can span several folders, for example a `Movies` and a `TV Shows`
@@ -228,8 +252,8 @@ movie such as `Title (2019)/`, director folders like `Nolan/2010 - Inception/`, 
 as `Show/S01/Show.S01E01.mkv` or `Show/Season 1/`. Titles that cannot be matched still appear
 with a placeholder poster. Files are never modified or copied.
 
-Because the app has no authentication, anyone who can reach it can add folders, see file names,
-and play the files. Set `MYTASTE_LIBRARY_ROOTS` to limit which folders may be connected.
+Only admins can add folders and see their paths; members play the files of the libraries they
+are given. Set `MYTASTE_LIBRARY_ROOTS` to limit which folders may be connected.
 
 ## Watching local files
 

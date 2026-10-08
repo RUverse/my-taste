@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}{% if mode == 'setup' %}Set up accounts{% elif me %}Switch profile{% else %}Sign in{% endif %} · {{ display.site_title }}{% endblock %}
+{% block header %}
+<header class="site-header signin-header">
+  <div class="header-primary">
+    <span class="brand brand-static"><span class="brand-name">{{ display.site_title }}</span><span class="brand-logo" aria-hidden="true"></span></span>
+    {% if me %}<a class="button button-secondary" href="{{ next or '/' }}">Cancel</a>{% endif %}
+  </div>
+</header>
+{% endblock %}
+{% block footer %}{% endblock %}
+{% block content %}
+{% macro avatar(person, size='') -%}
+  <span class="avatar {{ size }}" style="--avatar: {{ person.color }}" aria-hidden="true">{{ person.initial }}</span>
+{%- endmacro %}
+<div class="signin-page">
+  {% if mode == 'setup' %}
+    <section class="signin-card" aria-labelledby="signin-title">
+      <h1 id="signin-title">Set up accounts</h1>
+      <p class="signin-lead">Create the owner account first. The owner adds the people at home, chooses the libraries each of them sees, and manages this server.</p>
+      {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      <form class="signin-form" method="post" action="/setup">
+        <label for="setup-name">Your name</label>
+        <input id="setup-name" name="name" type="text" value="{{ form.name or '' }}" maxlength="40" autocomplete="name" required autofocus>
+        <label for="setup-username">Username <small>for signing in on other devices</small></label>
+        <input id="setup-username" name="username" type="text" value="{{ form.username or '' }}" maxlength="32" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="Made from your name if left empty">
+        <label for="setup-password">Password <small>at least {{ min_password }} characters</small></label>
+        <input id="setup-password" name="password" type="password" minlength="{{ min_password }}" autocomplete="new-password" required>
+        <label for="setup-confirm">Password again</label>
+        <input id="setup-confirm" name="confirm" type="password" minlength="{{ min_password }}" autocomplete="new-password" required>
+        <button class="button button-primary" type="submit">Create the owner account</button>
+      </form>
+      <p class="signin-note">Everything already on this server, such as your services, collections, and watch progress, becomes yours.</p>
+    </section>
+
+  {% elif mode == 'picker' %}
+    <section class="profile-picker" aria-labelledby="signin-title">
+      <h1 id="signin-title">Who's watching?</h1>
+      {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      <ul class="profile-grid">
+        {% for person in profiles %}
+          <li>
+            {% if person.secret_kind %}
+              <a class="profile-choice" href="/login?user={{ person.id }}{% if next and next != '/' %}&amp;next={{ next|urlencode }}{% endif %}" {% if me and me.id == person.id %}aria-current="true"{% endif %}>
+                {{ avatar(person, 'avatar-large') }}
+                <span class="profile-name">{{ person.name }}</span>
+                <span class="profile-lock">
+                  <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="5" y="10.5" width="14" height="10" rx="2"></rect><path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5"></path></svg>
+                  {{ 'PIN' if person.secret_kind == 'pin' else 'Password' }}
+                </span>
+              </a>
+            {% else %}
+              <form method="post" action="/login">
+                <input type="hidden" name="user" value="{{ person.id }}">
+                <input type="hidden" name="next" value="{{ next }}">
+                <button class="profile-choice" type="submit" {% if me and me.id == person.id %}aria-current="true"{% endif %}>
+                  {{ avatar(person, 'avatar-large') }}
+                  <span class="profile-name">{{ person.name }}</span>
+                </button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+  {% elif mode == 'secret' %}
+    <section class="signin-card signin-card-narrow" aria-labelledby="signin-title">
+      {{ avatar(profile, 'avatar-large') }}
+      <h1 id="signin-title">{{ profile.name }}</h1>
+      {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      <form class="signin-form" method="post" action="/login">
+        <input type="hidden" name="user" value="{{ profile.id }}">
+        <input type="hidden" name="next" value="{{ next }}">
+        {% if profile.secret_kind == 'pin' %}
+          <label for="signin-secret">PIN</label>
+          <input id="signin-secret" class="pin-input" name="secret" type="password" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="8" autocomplete="off" required autofocus>
+        {% else %}
+          <input type="hidden" name="username" value="{{ profile.username }}" autocomplete="username">
+          <label for="signin-secret">Password</label>
+          <input id="signin-secret" name="secret" type="password" autocomplete="current-password" required autofocus>
+        {% endif %}
+        <button class="button button-primary" type="submit">Continue</button>
+      </form>
+      <a class="signin-back" href="/login{% if next and next != '/' %}?next={{ next|urlencode }}{% endif %}">Pick another profile</a>
+    </section>
+
+  {% else %}
+    <section class="signin-card signin-card-narrow" aria-labelledby="signin-title">
+      <h1 id="signin-title">Sign in</h1>
+      {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      <form class="signin-form" method="post" action="/login">
+        <input type="hidden" name="next" value="{{ next }}">
+        <label for="signin-username">Username</label>
+        <input id="signin-username" name="username" type="text" value="{{ form.username or '' }}" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+        <label for="signin-secret">Password or PIN</label>
+        <input id="signin-secret" name="secret" type="password" autocomplete="current-password" required>
+        <button class="button button-primary" type="submit">Sign in</button>
+      </form>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

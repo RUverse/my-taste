@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Your account · {{ display.site_title }}{% endblock %}
+{% block content %}
+{% set kind_labels = {'password': 'Password', 'pin': 'PIN', '': 'Nothing'} %}
+{% set kind_help = {'password': 'At least ' ~ min_password ~ ' characters.', 'pin': '4 to 8 digits, quick to type on a TV.', '': 'Anyone at home can open your profile from the profile screen.'} %}
+<div class="account-page">
+  <header class="account-header">
+    <span class="avatar avatar-large" style="--avatar: {{ me.color }}" aria-hidden="true">{{ me.initial }}</span>
+    <div>
+      <h1>{{ me.name }}</h1>
+      <p class="account-meta">{{ me.role_label }} · username <strong>{{ me.username }}</strong></p>
+    </div>
+  </header>
+
+  {% if saved %}<p class="notice" role="status">{{ 'Your name is saved.' if saved == 'name' else 'Sign-in updated.' }}</p>{% endif %}
+
+  <section class="account-section" aria-labelledby="account-name-title">
+    <h2 id="account-name-title">Name</h2>
+    {% if name_error %}<p class="alert" role="alert">{{ name_error }}</p>{% endif %}
+    <form class="account-form account-form-inline" method="post" action="/account">
+      <label class="sr-only" for="account-name">Name</label>
+      <input id="account-name" name="name" type="text" value="{{ me.name }}" maxlength="40" autocomplete="name" required>
+      <button class="button button-primary" type="submit">Save</button>
+    </form>
+  </section>
+
+  <section class="account-section" aria-labelledby="account-secret-title">
+    <h2 id="account-secret-title">How you sign in</h2>
+    <p class="account-help">Now: <strong>{{ kind_labels[me.secret_kind] }}</strong>.
+      {% if me.is_admin %}Admins always use a password, because they can change the server.{% endif %}</p>
+    {% if secret_error %}<p class="alert" role="alert">{{ secret_error }}</p>{% endif %}
+    <form class="account-form" method="post" action="/account/secret" data-secret-form>
+      {% set chosen = chosen_kind if chosen_kind is defined else (me.secret_kind if me.secret_kind in secret_kinds else secret_kinds[0]) %}
+      {% if secret_kinds|length > 1 %}
+        <fieldset class="secret-kinds">
+          <legend>Protect your profile with</legend>
+          {% for kind in secret_kinds %}
+            <label class="secret-kind">
+              <input type="radio" name="kind" value="{{ kind }}" {% if kind == chosen %}checked{% endif %} data-secret-kind>
+              <span><strong>{{ kind_labels[kind] }}</strong><small>{{ kind_help[kind] }}</small></span>
+            </label>
+          {% endfor %}
+        </fieldset>
+      {% else %}
+        <input type="hidden" name="kind" value="password">
+      {% endif %}
+      {% if me.secret_kind %}
+        <label for="account-current">Current {{ 'PIN' if me.secret_kind == 'pin' else 'password' }}</label>
+        <input id="account-current" name="current" type="password" autocomplete="current-password" {% if me.secret_kind == 'pin' %}inputmode="numeric"{% endif %} required>
+      {% endif %}
+      <div class="secret-fields" data-secret-fields>
+        <label for="account-secret">New password or PIN</label>
+        <input id="account-secret" name="secret" type="password" autocomplete="new-password">
+        <label for="account-confirm">Again</label>
+        <input id="account-confirm" name="confirm" type="password" autocomplete="new-password">
+      </div>
+      <button class="button button-primary" type="submit">Update</button>
+    </form>
+  </section>
+
+  <section class="account-section">
+    <form method="post" action="/logout">
+      <button class="button button-secondary" type="submit">Sign out on this device</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

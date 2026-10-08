@@ -28,24 +28,22 @@
       <div class="header-primary">
         <div class="popover-anchor brand-menu">
           <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
-            <span class="brand-name" data-site-title>{{ display.site_title }}</span>
+            <span class="brand-name">{{ me.name if me else display.site_title }}</span>
             <span class="brand-logo" aria-hidden="true"></span>
           </button>
           <div class="popover brand-popover" id="brand-popover" hidden>
-            <div data-brand-actions>
+            <div>
               <a href="/">Home</a>
-              <button type="button" data-rename-site>Rename…</button>
               <a href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %}>Sources and region</a>
-            </div>
-            <form class="rename-form" data-site-title-form hidden>
-              <label for="site-title-input">Name this site</label>
-              <input id="site-title-input" name="title" type="text" value="{{ display.site_title }}" maxlength="40" autocomplete="off" required>
-              <p class="form-error" data-site-title-error role="alert" hidden></p>
-              <div class="rename-actions">
-                <button class="button button-secondary" type="button" data-rename-cancel>Cancel</button>
-                <button class="button button-primary" type="submit">Save</button>
+              {% if me %}
+              <div class="brand-account">
+                <a href="/login?next={{ request.url.path|urlencode }}">Switch profile</a>
+                <a href="/account" {% if current_path == '/account' %}aria-current="page"{% endif %}>Your account</a>
+                {% if me.is_admin %}<a href="/settings/people" {% if current_path == '/settings/people' %}aria-current="page"{% endif %}>People</a>{% endif %}
+                <form method="post" action="/logout"><button type="submit">Sign out</button></form>
               </div>
-            </form>
+              {% endif %}
+            </div>
           </div>
         </div>
 

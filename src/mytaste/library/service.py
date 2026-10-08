@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from mytaste.accounts.context import visible_libraries
 from mytaste.catalog.models import (
     BrowseCategory,
     BrowseMediaType,
@@ -364,7 +365,8 @@ class LibraryService:
     # Browsing --------------------------------------------------------------------------
 
     def matched_keys(self, library_ids: Sequence[int] | None = None) -> frozenset[tuple[str, int]]:
-        if library_ids is not None:
+        # The cache holds every library's titles; someone who sees only some gets a fresh read.
+        if library_ids is not None or visible_libraries() is not None:
             return self.repository.matched_keys(library_ids)
         if self._matched_keys is None:
             self._matched_keys = self.repository.matched_keys()

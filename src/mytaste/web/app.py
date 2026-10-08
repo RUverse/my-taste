@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -30,10 +30,14 @@ from mytaste.storage.games import GamePreferenceRepository
 from mytaste.storage.library import LibraryRepository
 from mytaste.storage.playback import PlaybackRepository
 from mytaste.storage.preferences import PreferenceRepository
+from mytaste.storage.settings import InstanceSettings
 from mytaste.storage.steam import SteamAccountRepository
+from mytaste.storage.users import UserRepository
+from mytaste.web.accounts import create_accounts_router
 from mytaste.web.games import create_games_router
 from mytaste.web.playback import create_playback_router
 from mytaste.web.routes import create_router
+from mytaste.web.signin import SignInMiddleware
 
 _WEB_ROOT = Path(__file__).parent
 
@@ -50,6 +54,10 @@ def create_app(
     games: Any | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_app_settings()
+    users = UserRepository(resolved_settings.database_path)
+    users.initialize()
+    instance_settings = InstanceSettings(resolved_settings.database_path)
+    instance_settings.initialize()
     repository = preferences or PreferenceRepository(resolved_settings.database_path)
     repository.initialize()
     game_preferences = GamePreferenceRepository(resolved_settings.database_path)
@@ -181,14 +189,21 @@ def create_app(
     app.state.settings = resolved_settings
     app.state.games = games
     app.state.game_preferences = game_preferences
+    app.state.users = users
+    app.state.instance_settings = instance_settings
+    app.add_middleware(SignInMiddleware, users=users)
 
-    templates = Jinja2Templates(directory=_WEB_ROOT / "templates")
+    def signed_in(request: Request) -> dict[str, Any]:
+        return {"me": getattr(request.state, "user", None)}
+
+    templates = Jinja2Templates(directory=_WEB_ROOT / "templates", context_processors=[signed_in])
     templates.env.globals["asset_version"] = hashlib.sha256(
         b"".join(
             (_WEB_ROOT / "static" / name).read_bytes() for name in ("app.css", "app.js", "games.js")
         )
     ).hexdigest()[:12]
     app.mount("/static", StaticFiles(directory=_WEB_ROOT / "static"), name="static")
+    app.include_router(create_accounts_router(templates))
     app.include_router(create_games_router(templates))
     app.include_router(create_router(templates))
     app.include_router(create_playback_router(templates))

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
+from conftest import OWNER_FORM, owner_client
 
 from mytaste.catalog.models import CatalogItem
 from mytaste.collections.models import CollectionItem
@@ -403,7 +403,7 @@ def test_games_share_browse_controls_and_keep_movie_series_routes_working(tmp_pa
 
     catalog, games = FakeCatalog(), WebGames()
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=catalog, games=games)
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         app.state.preferences.save("DE", (8, 337))
         game_page = client.get("/collections/games?q=A+Game&sort=title&order=desc&render=1")
         assert game_page.status_code == 200
@@ -459,7 +459,7 @@ class ServicesCatalog:
 def test_games_routes_settings_fragments_and_details(tmp_path):
     games = WebGames()
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=ServicesCatalog(), games=games)
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         unset = client.get("/collections/games").text
         assert "Choose your country" in unset
         assert 'href="/settings?next=%2Fcollections%2Fgames">Manage</a>' in unset
@@ -526,7 +526,7 @@ def test_games_layout_does_not_wait_for_catalog_and_deferred_results_can_retry(t
     games.fail = True
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=object(), games=games)
     url = "/collections/games/recent?q=A+Game&genre=Action&sort=title&order=desc&page=2"
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         app.state.preferences.save("DE", (8, 337))
         shell = client.get(url)
         assert shell.status_code == 200 and not games.calls
@@ -580,6 +580,7 @@ async def test_game_layout_is_available_while_results_are_blocked(tmp_path):
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app), base_url="http://test"
     ) as client:
+        await client.post("/setup", data=OWNER_FORM)
         request = asyncio.create_task(
             client.get("/collections/games", headers={"X-MyTaste-Fragment": "games-page"})
         )

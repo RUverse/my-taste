@@ -228,56 +228,6 @@
     }
   });
 
-  const brandForm = document.querySelector("[data-site-title-form]");
-  const brandActions = document.querySelector("[data-brand-actions]");
-  const brandPopover = brandForm?.closest(".popover");
-  if (brandForm && brandActions && brandPopover) {
-    const input = brandForm.querySelector("input");
-    const error = brandForm.querySelector("[data-site-title-error]");
-    const showActions = () => {
-      brandForm.hidden = true;
-      brandActions.hidden = false;
-      error.hidden = true;
-    };
-    document.querySelector("[data-rename-site]")?.addEventListener("click", () => {
-      brandActions.hidden = true;
-      brandForm.hidden = false;
-      input.focus();
-      input.select();
-    });
-    brandForm.querySelector("[data-rename-cancel]")?.addEventListener("click", () => {
-      input.value = document.querySelector("[data-site-title]").textContent;
-      showActions();
-      brandActions.querySelector("[data-rename-site]")?.focus();
-    });
-    brandPopover.addEventListener("popoverclose", showActions);
-    brandForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      try {
-        const response = await fetch("/api/preferences/site-title", {
-          method: "POST",
-          headers: { Accept: "application/json", "Content-Type": "application/json" },
-          body: JSON.stringify({ title: input.value }),
-        });
-        const payload = await response.json();
-        if (!response.ok) throw new Error(payload.error || "Could not rename the site");
-        const previous = document.querySelector("[data-site-title]").textContent;
-        document.querySelectorAll("[data-site-title]").forEach((node) => {
-          node.textContent = payload.site_title;
-        });
-        if (document.title.endsWith(previous)) {
-          document.title = `${document.title.slice(0, -previous.length)}${payload.site_title}`;
-        }
-        input.value = payload.site_title;
-        const button = document.querySelector('[aria-controls="brand-popover"]');
-        if (button) closePopover(button, { restoreFocus: true });
-      } catch (failure) {
-        error.textContent = failure.message;
-        error.hidden = false;
-      }
-    });
-  }
-
   const sidebar = document.querySelector("#browse-sidebar");
   const sidebarToggles = Array.from(document.querySelectorAll("[data-sidebar-toggle]"));
   const rail = document.querySelector(".sidebar-rail");
@@ -2112,6 +2062,24 @@
   };
   initializeInfiniteScroll();
   document.addEventListener("mytaste:results-ready", initializeInfiniteScroll);
+
+  // Choosing how someone signs in: the password or PIN fields only apply when one is chosen.
+  document.querySelectorAll("[data-secret-form]").forEach((form) => {
+    const fields = form.querySelector("[data-secret-fields]");
+    const update = () => {
+      const kind = form.querySelector("[data-secret-kind]:checked")?.value ?? "password";
+      if (!fields) return;
+      fields.hidden = kind === "";
+      fields.querySelectorAll("input").forEach((input) => {
+        input.required = kind !== "";
+        input.inputMode = kind === "pin" ? "numeric" : "text";
+      });
+    };
+    form.querySelectorAll("[data-secret-kind]").forEach((radio) => {
+      radio.addEventListener("change", update);
+    });
+    update();
+  });
 
   document.querySelectorAll("form[data-confirm]").forEach((form) => {
     form.addEventListener("submit", (event) => {

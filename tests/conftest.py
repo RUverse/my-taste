@@ -5,6 +5,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
+
+from mytaste.accounts.context import bind
+from mytaste.storage.migrations import FIRST_USER_ID
 
 FFMPEG = shutil.which("ffmpeg")
 FFPROBE = shutil.which("ffprobe")
@@ -110,3 +114,30 @@ def media_dir(tmp_path_factory: pytest.TempPathFactory) -> Path:
         str(folder / "LongAudio.mp4"),
     )
     return folder
+
+
+@pytest.fixture(autouse=True)
+def first_user():
+    """Storage and service tests work as the first account, like a signed-in request."""
+
+    bind(FIRST_USER_ID, None)
+    yield
+    bind(None, None)
+
+
+OWNER_PASSWORD = "owner-password"
+OWNER_FORM = {
+    "name": "Owner",
+    "username": "owner",
+    "password": OWNER_PASSWORD,
+    "confirm": OWNER_PASSWORD,
+}
+
+
+def owner_client(app) -> TestClient:
+    """A test client signed in as the owner, created through the setup page."""
+
+    client = TestClient(app)
+    response = client.post("/setup", data=OWNER_FORM, follow_redirects=False)
+    assert response.status_code == 303, response.text
+    return client

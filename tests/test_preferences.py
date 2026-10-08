@@ -89,17 +89,3 @@ def test_existing_display_preferences_gain_new_defaults(tmp_path: Path) -> None:
     assert display.sidebar_open is True
     assert display.show_providers is False
     assert display.site_title == "MyTaste"
-
-
-def test_site_title_is_cleaned_and_required(tmp_path: Path) -> None:
-    repository = PreferenceRepository(tmp_path / "mytaste.db")
-    repository.initialize()
-
-    saved = repository.save_display(DisplayPreferences(site_title="  Sarah's   Taste "))
-
-    assert saved.site_title == "Sarah's Taste"
-    assert repository.get_display().site_title == "Sarah's Taste"
-    with pytest.raises(ValueError, match="name"):
-        repository.save_display(DisplayPreferences(site_title=" "))
-    with pytest.raises(ValueError, match="40"):
-        repository.save_display(DisplayPreferences(site_title="x" * 41))
