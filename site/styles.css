@@ -1,0 +1,703 @@
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("fonts/space-grotesk-latin.woff2") format("woff2");
+}
+
+/* The hue of the "My" gradient turns once around the colour wheel. */
+@property --spin {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 0;
+}
+
+:root {
+  --bg: #fff;
+  --ink: #3a3a3a;
+  --text: #4f4f4f;
+  --nav: #3f3f3f;
+  --band: #000;
+  --gap: #fff;
+  --bar: transparent;
+  --shade-1: #fff;
+  --shade-2: #efefef;
+  --shade-3: #f9f9f9;
+  --shade-4: #e2e2e2;
+  --code-bg: rgb(0 0 0 / 0.05);
+  --shot-edge: rgb(0 0 0 / 0.12);
+  --shadow: rgb(0 0 0 / 0.07);
+  --glow: 0.55;
+  --sheet: #fff;
+  --cover-1: #f3f3f3;
+  --cover-2: #ebebeb;
+  --cover-3: #f7f7f7;
+  --sheet-shadow: rgb(0 0 0 / 0.18);
+  --hue-start: 355;
+
+  --ease: cubic-bezier(0.76, 0, 0.24, 1);
+  --bar-h: 4.8rem;
+  /* Fast start, long soft landing: page changes feel quick without snapping. */
+  --snap: cubic-bezier(0.25, 1, 0.5, 1);
+  --hero-w: clamp(min(84vw, 300px), 31vw, 760px);
+  /* Where the small logo sits on a page: at the left, halfway down. */
+  --dock-left: clamp(1.25rem, 4.3vw, 5.5rem);
+  /* Vertically centred: the logo is 392/671 as tall as it is wide. */
+  --dock-top: calc(50vh - var(--dock-w) * 392 / 671 / 2);
+  --dock-w: clamp(150px, 14vw, 250px);
+  /* The curtain starts just right of the small logo. */
+  --curtain-l: calc(var(--dock-left) + var(--dock-w) + 1rem);
+  /* Room between the logo and the sheet, and between the sheet's edge and the text. */
+  --sheet-l: calc(var(--dock-left) + var(--dock-w) + clamp(2.5rem, 5vw, 6rem));
+  --page-l: calc(var(--sheet-l) + clamp(2.5rem, 5vw, 6rem));
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #000;
+    --ink: #fff;
+    --text: #ececec;
+    --nav: #e2e2e2;
+    --band: #fff;
+    --gap: #000;
+    --bar: rgb(0 0 0 / 0.72);
+    --shade-1: #000;
+    --shade-2: #121212;
+    --shade-3: #070707;
+    --shade-4: #1c1c1c;
+    --code-bg: rgb(255 255 255 / 0.07);
+    --shot-edge: rgb(255 255 255 / 0.14);
+    --shadow: rgb(0 0 0 / 0.3);
+    --glow: 0.85;
+    --sheet: #0b0b0b;
+    --cover-1: #0c0c0c;
+    --cover-2: #141414;
+    --cover-3: #080808;
+    --sheet-shadow: rgb(0 0 0 / 0.8);
+    --hue-start: 295;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+}
+
+a:focus-visible,
+[tabindex="-1"]:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  border-radius: 2px;
+}
+
+[tabindex="-1"]:focus:not(:focus-visible) {
+  outline: none;
+}
+
+.skip-link {
+  position: absolute;
+  left: 1rem;
+  top: -4rem;
+  z-index: 10;
+  padding: 0.6rem 1rem;
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.skip-link:focus {
+  top: 1rem;
+}
+
+/* Background bands */
+
+.bands,
+.curtain {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.bands {
+  z-index: 0;
+  /* The bands start a little in from the left edge, as in the design. */
+  left: clamp(24px, 9vw, 160px);
+}
+
+/* Inside the stage: above the hero, below the curtain. */
+.bands-front {
+  z-index: 2;
+}
+
+/* Each rectangle darkens towards its left side, like a shadow. */
+/* The rectangles hang from just under the top bar with slanted tops (main.js sets them). */
+.band,
+.cover,
+.panel > span {
+  top: calc(var(--bar-h) + var(--dy, 0px));
+  clip-path: polygon(0 var(--sl, 0px), 100% var(--sr, 0px), 100% 100%, 0 100%);
+}
+
+.band {
+  position: absolute;
+  bottom: 0;
+  left: var(--x);
+  width: var(--w);
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--band) calc(var(--a) * 100%), transparent);
+  will-change: transform;
+}
+
+.band.is-gap {
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    color-mix(in srgb, var(--gap) calc(var(--a) * 100%), transparent);
+}
+
+/* Top bar */
+
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
+  min-height: var(--bar-h);
+  align-items: center;
+  background: var(--bar);
+  pointer-events: none;
+  display: flex;
+  justify-content: space-between;
+  font-size: clamp(14px, 0.95vw, 18px);
+  letter-spacing: 0.02em;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.nav a {
+  position: relative;
+  color: var(--nav);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.35em;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.35s var(--ease);
+}
+
+.nav a:hover::after,
+.nav a[aria-current="page"]::after {
+  transform: scaleX(1);
+}
+
+.nav-main {
+  gap: clamp(1.5rem, 3.6vw, 4.5rem);
+  padding-left: clamp(1.25rem, 4.3vw, 5.5rem);
+}
+
+.nav-account {
+  gap: clamp(1.5rem, 3vw, 3.5rem);
+  padding-right: clamp(1.25rem, 4.3vw, 5.5rem);
+}
+
+/* Stage and hero */
+
+.stage {
+  position: fixed;
+  inset: 0;
+  /* The small logo and its covers (z-index 2 and 3) sit above the whole stage. */
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.hero {
+  position: relative;
+  z-index: 1;
+  width: var(--hero-w);
+  margin-top: 4vh;
+  container-type: inline-size;
+}
+
+/* The small logo and the opaque rectangles that hide it at home. */
+.mini {
+  position: fixed;
+  left: var(--dock-left);
+  top: var(--dock-top);
+  z-index: 2;
+  transition: clip-path 0.7s var(--snap);
+  display: block;
+  width: var(--dock-w);
+  color: var(--ink);
+  line-height: 0;
+}
+
+.mini-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.covers {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  /* The covers span the small logo plus room for its glow. */
+  --span: calc(var(--dock-w) + 4rem);
+  --start: calc(var(--dock-left) - 2rem);
+}
+
+.cover {
+  position: absolute;
+  bottom: 0;
+  left: calc(var(--start) + var(--span) * var(--f0));
+  width: calc(var(--span) * var(--fw));
+  background:
+    linear-gradient(to right, var(--shadow), transparent 65%),
+    var(--shade);
+  transition: transform 0.7s var(--snap) var(--close-delay);
+}
+
+/* On a page they slide out past the left edge, uncovering the small logo. */
+.is-page .cover {
+  transform: translateX(calc(-1 * (var(--start) + var(--span) * (var(--f0) + var(--fw))) - 3rem));
+  transition-delay: var(--open-delay);
+}
+
+.mark {
+  margin: 0;
+  font-size: inherit;
+  line-height: 0;
+}
+
+.mark-link {
+  display: block;
+  color: var(--ink);
+  border-radius: 0.5rem;
+}
+
+.mark-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+  animation: spin 36s linear infinite;
+}
+
+.my-glow {
+  opacity: var(--glow);
+}
+
+.taste {
+  fill: currentColor;
+  overflow: visible;
+}
+
+.my-stop-top {
+  stop-color: oklch(0.77 0.13 calc(var(--hue-start) + var(--spin)));
+}
+
+.my-stop-bottom {
+  stop-color: oklch(0.65 0.19 calc(var(--hue-start) + var(--spin)));
+}
+
+@keyframes spin {
+  to {
+    --spin: 360;
+  }
+}
+
+.tagline {
+  margin: 0.4cqi 0 0;
+  color: var(--ink);
+  font-size: 4.72cqi;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+.intro {
+  margin: 1.2cqi 0 0;
+  max-width: 98%;
+  font-size: 4.3cqi;
+  font-weight: 400;
+  line-height: 1.07;
+  letter-spacing: 0.025em;
+}
+
+/* Curtain: panels that slide in over the hero when a page opens */
+
+.curtain {
+  z-index: 3;
+}
+
+.panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--curtain-l) + var(--o));
+  /* A little past the edge, so the cursor's push never shows a gap. */
+  right: -40px;
+  transform: translateX(105vw);
+  transition: transform 0.7s var(--snap) var(--close-delay);
+  will-change: transform;
+}
+
+.panel > span {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background:
+    linear-gradient(to right, var(--shadow), transparent 9rem),
+    color-mix(in srgb, var(--shade) calc(var(--a) * 100%), transparent);
+  will-change: transform;
+}
+
+/* A solid sheet behind the page text, so the content has a clear edge. */
+.sheet {
+  --open-delay: 0.12s;
+  --close-delay: 0s;
+  left: var(--sheet-l);
+}
+
+/* The sheet stays straight: it is the content's edge. */
+.sheet > span {
+  top: var(--bar-h);
+  clip-path: none;
+  background: var(--sheet);
+  box-shadow: -1.5rem 0 3rem -1rem var(--sheet-shadow);
+}
+
+/* Pages */
+
+/* The open page scrolls in this layer while the hero and the curtain stay put. */
+.pages {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  pointer-events: none;
+  /* Content fades out under the top bar instead of running into its links. */
+  mask-image: linear-gradient(transparent 4.8rem, #000 7rem);
+}
+
+.is-page .pages {
+  overflow-y: auto;
+  pointer-events: auto;
+}
+
+.page {
+  position: absolute;
+  top: 22vh;
+  left: var(--page-l);
+  width: calc(100vw - var(--page-l) - 5vw);
+  max-height: 100vh;
+  padding-bottom: 6rem;
+  overflow: hidden;
+  font-size: clamp(15px, 1.15vw, 19px);
+  line-height: 1.35;
+  letter-spacing: 0.015em;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(2rem);
+  transition:
+    opacity 0.15s ease,
+    transform 0.25s ease,
+    visibility 0s linear 0.25s,
+    max-height 0s linear 0.25s;
+}
+
+/* Hidden pages keep a viewport's height so they never lengthen the scroll of the open one. */
+.page.is-active {
+  max-height: 100000px;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity 0.4s ease 0.2s,
+    transform 0.7s var(--snap) 0.15s,
+    visibility 0s,
+    max-height 0s;
+}
+
+.page-text {
+  max-width: 34rem;
+  min-height: 70vh;
+}
+
+/* Screenshots: a grid of small ones that wraps to fewer columns as space runs out. */
+.shots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+  gap: clamp(1rem, 2vw, 2rem);
+  max-width: 52rem;
+  margin: 0;
+}
+
+.shots figure {
+  margin: 0;
+}
+
+.shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--shot-edge);
+  box-shadow: 0 1.5rem 4rem -1.5rem rgb(0 0 0 / 0.35);
+}
+
+.shots figcaption {
+  margin-top: 0.7em;
+  font-size: 0.85em;
+}
+
+.page h2 {
+  margin: 0 0 1.6em;
+  color: var(--ink);
+  font-size: 2.2em;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.page p,
+.page ul,
+.page pre {
+  margin: 0 0 1.1em;
+}
+
+.page .lead {
+  color: var(--ink);
+}
+
+.page ul {
+  padding-left: 1.1em;
+}
+
+.page li + li {
+  margin-top: 0.5em;
+}
+
+.page code {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.88em;
+}
+
+.page pre {
+  overflow-x: auto;
+  padding: 1em 1.2em;
+  background: var(--code-bg);
+  line-height: 1.5;
+}
+
+.button {
+  display: inline-block;
+  margin-top: 0.4em;
+  padding: 0.6em 1.3em;
+  border: 1px solid currentColor;
+  color: var(--ink);
+  text-decoration: none;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+
+.button:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+/* A page is open: the curtain sweeps over the hero and hides it completely. */
+
+.is-page .panel {
+  transform: none;
+  transition-delay: var(--open-delay);
+}
+
+.no-anim *,
+.no-anim *::after {
+  transition: none !important;
+}
+
+/* Narrow screens: the logo docks beside the account links, above a full-width curtain. */
+
+@media (max-width: 760px) {
+  :root {
+    --hero-w: 86vw;
+    --dock-left: 1rem;
+    --bar-h: 5.6rem;
+    --dock-top: 0.4rem;
+    --dock-w: 72px;
+    --curtain-l: 0px;
+    --sheet-l: 0px;
+    --page-l: 1.25rem;
+  }
+
+  /* The small logo sits in the top bar here, above it. Full-height covers would cut through
+     the hero, so instead the logo is wiped in from the right as a page opens. */
+  .mini {
+    z-index: 5;
+    clip-path: inset(0 0 0 100%);
+  }
+
+  .is-page .mini {
+    clip-path: inset(-50% -50% -50% -50%);
+  }
+
+  .covers {
+    display: none;
+  }
+
+  .sheet {
+    left: 0;
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+  }
+
+  .nav-account {
+    order: 1;
+    min-height: 3.4rem;
+    margin-left: auto;
+    gap: 1.5rem;
+  }
+
+  .nav-main {
+    order: 2;
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.6rem;
+    padding: 0.2rem 1rem 0.9rem;
+    font-size: 13px;
+    letter-spacing: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .hero {
+    margin-top: 0;
+  }
+
+  .pages {
+    mask-image: linear-gradient(transparent 5.6rem, #000 7.6rem);
+  }
+
+  .page {
+    top: 8.5rem;
+    width: calc(100vw - 2 * var(--page-l));
+  }
+
+  .page-text {
+    min-height: 0;
+    margin-bottom: 2.5rem;
+  }
+
+}
+
+/* Without JavaScript the pages are ordinary sections below the hero. */
+
+html:not(.js) body {
+  min-height: 100vh;
+}
+
+html:not(.js) .topbar {
+  position: absolute;
+}
+
+html:not(.js) .stage {
+  position: static;
+  display: block;
+  place-items: normal;
+  overflow: visible;
+  padding: 9rem 1.25rem 4rem;
+}
+
+html:not(.js) .hero {
+  margin: 0 auto 6rem;
+}
+
+html:not(.js) .curtain,
+html:not(.js) .mini,
+html:not(.js) .covers {
+  display: none;
+}
+
+html:not(.js) .pages {
+  position: static;
+  mask-image: none;
+}
+
+html:not(.js) .page-text {
+  min-height: 0;
+  margin: 0 0 2.5rem;
+}
+
+html:not(.js) .page {
+  position: static;
+  width: auto;
+  max-width: 60rem;
+  max-height: none;
+  margin: 0 auto 4rem;
+  overflow: visible;
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  scroll-margin-top: 2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-svg {
+    animation: none;
+  }
+
+  .mini,
+  .cover,
+  .panel,
+  .page,
+  .page.is-active {
+    transition-duration: 0s;
+    transition-delay: 0s;
+  }
+
+  .page.is-active {
+    transition: opacity 0.3s ease;
+  }
+}
