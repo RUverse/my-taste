@@ -3901,7 +3901,7 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
   }
   body.sidebar-overlay-open .sidebar-backdrop { opacity: 1; pointer-events: auto; }
   body.sidebar-overlay-open { overflow: hidden; }
-  .header-primary { grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; }
+  .header-primary { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
   .primary-controls { justify-content: flex-end; }
   .search-form.is-open, .search-form:focus-within { width: min(230px, 30vw); }
   .media-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); }
@@ -4151,25 +4151,15 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 
 .avatar-large { width: 96px; height: 96px; font-size: 2.4rem; border-radius: 22px; }
 
-.account-menu { justify-self: end; }
-.avatar-small { width: 22px; height: 22px; font-size: 0.66rem; }
-.brand-avatar,
-.brand-account { display: none; }
-.brand-account form { display: grid; }
-
-.account-button {
+/* The site menu also holds the account: who is signed in, switching, and signing out. */
+.brand-account {
   display: grid;
-  padding: 3px;
-  place-items: center;
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
 }
 
-.account-button:hover,
-.account-button[aria-expanded="true"] { background: var(--surface-raised); }
-.account-popover { width: 220px; }
+.brand-account form { display: grid; }
 
 .account-popover-name {
   display: grid;
@@ -4181,7 +4171,6 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 }
 
 .account-popover-name small { color: var(--muted); font-size: 0.72rem; font-weight: 600; }
-.account-popover form { display: grid; }
 
 .signin-header .header-primary { display: flex; justify-content: space-between; }
 .brand-static { cursor: default; }
@@ -4390,20 +4379,3 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .person-edit .alert { margin: 0; }
 .person-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .switch-form .check-row { align-items: flex-start; }
-
-/* Phones: the account menu joins the site menu, so the header keeps one row. */
-@media (max-width: 640px) {
-  .account-menu { display: none; }
-
-  .brand-account {
-    display: grid;
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid var(--border);
-  }
-}
-
-/* Where there is room, the site name also shows who is signed in. */
-@media (min-width: 421px) and (max-width: 640px) {
-  .brand-avatar { display: inline-grid; margin-left: 4px; }
-}

@@ -30,7 +30,6 @@
           <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
             <span class="brand-name" data-site-title>{{ display.site_title }}</span>
             <span class="brand-logo" aria-hidden="true"></span>
-            {% if me %}<span class="avatar avatar-small brand-avatar" style="--avatar: {{ me.color }}" aria-hidden="true">{{ me.initial }}</span>{% endif %}
           </button>
           <div class="popover brand-popover" id="brand-popover" hidden>
             <div data-brand-actions>
@@ -38,12 +37,11 @@
               {% if me and me.is_admin %}<button type="button" data-rename-site>Rename…</button>{% endif %}
               <a href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %}>Sources and region</a>
               {% if me %}
-              {# On phones the account menu moves here, so the header keeps one row. #}
               <div class="brand-account">
                 <p class="account-popover-name">{{ me.name }}<small>{{ me.role_label }}</small></p>
                 <a href="/login?next={{ request.url.path|urlencode }}">Switch profile</a>
-                <a href="/account">Your account</a>
-                {% if me.is_admin %}<a href="/settings/people">People</a>{% endif %}
+                <a href="/account" {% if current_path == '/account' %}aria-current="page"{% endif %}>Your account</a>
+                {% if me.is_admin %}<a href="/settings/people" {% if current_path == '/settings/people' %}aria-current="page"{% endif %}>People</a>{% endif %}
                 <form method="post" action="/logout"><button type="submit">Sign out</button></form>
               </div>
               {% endif %}
@@ -103,22 +101,6 @@
 
         </div>
 
-        {% if me %}
-        <div class="popover-anchor account-menu">
-          <button class="account-button" type="button" data-popover-button aria-expanded="false" aria-controls="account-popover" aria-label="{{ me.name }}: account menu" title="{{ me.name }}">
-            <span class="avatar" style="--avatar: {{ me.color }}" aria-hidden="true">{{ me.initial }}</span>
-          </button>
-          <div class="popover account-popover" id="account-popover" hidden>
-            <div>
-              <p class="account-popover-name">{{ me.name }}<small>{{ me.role_label }}</small></p>
-              <a href="/login?next={{ request.url.path|urlencode }}">Switch profile</a>
-              <a href="/account" {% if current_path == '/account' %}aria-current="page"{% endif %}>Your account</a>
-              {% if me.is_admin %}<a href="/settings/people" {% if current_path == '/settings/people' %}aria-current="page"{% endif %}>People</a>{% endif %}
-              <form method="post" action="/logout"><button type="submit">Sign out</button></form>
-            </div>
-          </div>
-        </div>
-        {% endif %}
       </div>
     </header>
     {% endblock %}
