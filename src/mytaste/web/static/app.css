@@ -4353,3 +4353,17 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .person-edit .alert { margin: 0; }
 .person-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .switch-form .check-row { align-items: flex-start; }
+
+/* Sign in with MyTaste, under the other ways in. */
+.hub-signin {
+  display: grid;
+  width: 100%;
+  margin-top: 8px;
+  gap: 10px;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.signin-card .hub-signin .button { justify-self: stretch; justify-content: center; }
+.profile-picker .hub-signin { width: auto; }

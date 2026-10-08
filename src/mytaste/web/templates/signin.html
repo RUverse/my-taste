@@ -13,6 +13,14 @@
 {% macro avatar(person, size='') -%}
   <span class="avatar {{ size }}" style="--avatar: {{ person.color }}" aria-hidden="true">{{ person.initial }}</span>
 {%- endmacro %}
+{% macro hub_button() -%}
+  {% if hub_signin %}
+    <div class="hub-signin">
+      <span>or</span>
+      <a class="button button-secondary hub-button" href="/auth/hub/start{% if next and next != '/' %}?next={{ next|urlencode }}{% endif %}">Sign in with MyTaste</a>
+    </div>
+  {% endif %}
+{%- endmacro %}
 <div class="signin-page">
   {% if mode == 'setup' %}
     <section class="signin-card" aria-labelledby="signin-title">
@@ -37,6 +45,7 @@
     <section class="profile-picker" aria-labelledby="signin-title">
       <h1 id="signin-title">Who's watching?</h1>
       {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      {% if hub_message %}<p class="alert" role="alert">{{ hub_message }}</p>{% endif %}
       <ul class="profile-grid">
         {% for person in profiles %}
           <li>
@@ -62,6 +71,7 @@
           </li>
         {% endfor %}
       </ul>
+      {{ hub_button() }}
     </section>
 
   {% elif mode == 'secret' %}
@@ -89,6 +99,7 @@
     <section class="signin-card signin-card-narrow" aria-labelledby="signin-title">
       <h1 id="signin-title">Sign in</h1>
       {% if error %}<p class="alert" role="alert">{{ error }}</p>{% endif %}
+      {% if hub_message %}<p class="alert" role="alert">{{ hub_message }}</p>{% endif %}
       <form class="signin-form" method="post" action="/login">
         <input type="hidden" name="next" value="{{ next }}">
         <label for="signin-username">Username</label>
@@ -97,6 +108,7 @@
         <input id="signin-secret" name="secret" type="password" autocomplete="current-password" required>
         <button class="button button-primary" type="submit">Sign in</button>
       </form>
+      {{ hub_button() }}
     </section>
   {% endif %}
 </div>

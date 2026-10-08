@@ -172,6 +172,16 @@ everything as before. The old site name is no longer used: the header shows the 
 person's name. There is
 no way back to the one-profile layout except restoring a backup, so back up the database first.
 
+### Sign in with MyTaste
+
+Set `MYTASTE_HUB_URL` to offer "Sign in with MyTaste". The server then makes outbound HTTPS
+requests to the hub (its configuration, registration, and the token endpoint); browsers go to
+the hub to sign in and come back. **Connect to MyTaste** on the People page registers the server
+with the hub using the address you opened it at, plus `/auth/hub/callback`, so connect from the
+address people use (behind a reverse proxy, make sure it passes the original host and scheme).
+If that address changes, disconnect and connect again. The first start of this version adds the
+`hub_links` and `hub_invites` tables and a `hub_only` column on `users`; nothing is rewritten.
+
 ## Network exposure
 
 Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. Everyone

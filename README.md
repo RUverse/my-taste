@@ -93,6 +93,19 @@ collections, watch progress, display options, Game Pass and Steam) becomes the o
 
 Sessions stay signed in on a device for 180 days of inactivity, so a TV doesn't keep asking.
 
+### Sign in with MyTaste
+
+With `MYTASTE_HUB_URL` set to a MyTaste Hub, **People** offers **Connect to MyTaste**, which
+registers this server with the hub once. Then:
+
+- Anyone can link their profile to their MyTaste account under **Your account**, and sign in
+  with it from the sign-in screen.
+- The owner and admins can invite friends by MyTaste username, choosing the libraries they see.
+  The first time an invited friend signs in with MyTaste, they get a member account here. Such
+  accounts sign in only with MyTaste and don't appear on the profile screen, which is for the
+  people at home.
+- Nothing else is shared with the hub: it learns only that someone signed in to this server.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -112,6 +125,7 @@ Sessions stay signed in on a device for 180 days of inactivity, so a TV doesn't 
 | `MYTASTE_STEAM_API_KEY` | unset | Steam Web API key, needed to list owned Steam games |
 | `MYTASTE_STEAM_ENABLED` | `true` | `false` hides Steam and keeps Games to Game Pass |
 | `MYTASTE_GAMEPASS_CACHE_ENABLED` | `false` | Keep game store data between requests (see [deployment](docs/deployment.md#game-pass-caching)) |
+| `MYTASTE_HUB_URL` | unset | A MyTaste Hub to offer "Sign in with MyTaste" through (see [Sign in with MyTaste](#sign-in-with-mytaste)) |
 
 ## Collections
 
