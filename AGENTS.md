@@ -21,7 +21,7 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   rules), `passwords.py` (scrypt), and `context.py`, which holds the signed-in user and the
   libraries they may see for the current request (`current_user_id`, `visible_libraries`).
 - `src/mytaste/storage/users.py` — accounts, sign-in sessions (only token hashes are stored),
-  and `library_access`; `settings.py` — instance-wide settings such as the site's name;
+  and `library_access`; `settings.py` — instance-wide settings such as whether the profile screen is shown;
   `access.py` — the SQL condition that limits library queries to the user's libraries;
   `migrations.py` — `give_to_first_user`, which turns a one-profile table into a per-user one.
 - `src/mytaste/catalog/models.py` — immutable domain and browse-query models.

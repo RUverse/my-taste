@@ -168,7 +168,8 @@ display options, watch progress, Game Pass plan, Steam account) a `user_id` and 
 existing rows to user 1; collections get a `user_id` column. Each table is rebuilt in its own
 transaction, and nothing is copied or deleted otherwise. Until someone opens the app and creates
 the owner on the setup page, every page redirects there; the owner becomes user 1 and finds
-everything as before. The site's name moves to the shared `instance_settings` table. There is
+everything as before. The old site name is no longer used: the header shows the signed-in
+person's name. There is
 no way back to the one-profile layout except restoring a backup, so back up the database first.
 
 ## Network exposure

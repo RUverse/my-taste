@@ -28,7 +28,7 @@
       <div class="header-primary">
         <div class="popover-anchor brand-menu">
           <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
-            <span class="brand-name">{{ display.site_title }}</span>
+            <span class="brand-name">{{ me.name if me else display.site_title }}</span>
             <span class="brand-logo" aria-hidden="true"></span>
           </button>
           <div class="popover brand-popover" id="brand-popover" hidden>
@@ -37,7 +37,6 @@
               <a href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %}>Sources and region</a>
               {% if me %}
               <div class="brand-account">
-                <p class="account-popover-name">{{ me.name }}<small>{{ me.role_label }}</small></p>
                 <a href="/login?next={{ request.url.path|urlencode }}">Switch profile</a>
                 <a href="/account" {% if current_path == '/account' %}aria-current="page"{% endif %}>Your account</a>
                 {% if me.is_admin %}<a href="/settings/people" {% if current_path == '/settings/people' %}aria-current="page"{% endif %}>People</a>{% endif %}

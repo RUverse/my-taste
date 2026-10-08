@@ -173,7 +173,6 @@ def test_members_cant_change_the_server(tmp_path: Path) -> None:
 
     assert kid.get("/api/libraries/folders").status_code == 403
     assert kid.post("/settings/libraries", data={"name": "Mine"}).status_code == 403
-    assert kid.post("/settings/people/site-name", data={"title": "Kid TV"}).status_code == 403
     assert kid.get("/settings/people").status_code == 403
     assert kid.post("/api/games/steam-1/unlink").status_code == 403
     page = kid.get("/settings").text
@@ -361,7 +360,6 @@ def test_one_profile_data_becomes_the_owners(tmp_path: Path) -> None:
         assert preferences.get().provider_ids == (8, 337)
         display = preferences.get_display()
         assert display.show_genres is True and display.card_size == "compact"
-        assert display.site_title == "Home Cinema"
         assert app.state.game_preferences.get().plan == "premium"
         assert PlaybackRepository(database).state("movie:603").position == 1200  # type: ignore[union-attr]
     names = [item["name"] for item in owner.get("/api/collections").json()["collections"]]
@@ -375,11 +373,10 @@ def test_one_profile_data_becomes_the_owners(tmp_path: Path) -> None:
     assert steam == [(1, "7656")]
     assert leftovers == []
 
-    # Someone added later starts from scratch, and the site keeps its name for everyone.
+    # Someone added later starts from scratch.
     add_person(owner, "Kid")
     with acting_as(2):
         assert preferences.get().provider_ids == ()
-        assert preferences.get_display().site_title == "Home Cinema"
         assert [item.name for item in CollectionRepository(database).list()] == [
             "Watchlist",
             "My favourites",

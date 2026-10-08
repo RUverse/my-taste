@@ -11,7 +11,6 @@ from mytaste.storage.settings import SCHEMA as SETTINGS_SCHEMA
 
 _REGION_PATTERN = re.compile(r"^[A-Z]{2}$")
 DEFAULT_SITE_TITLE = "MyTaste"
-_MAX_SITE_TITLE_LENGTH = 40
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,6 +34,7 @@ class DisplayPreferences:
     card_size: str = "comfortable"
     autoplay_trailer: bool = True
     sidebar_open: bool = True
+    # The app's name, for browser tab titles; the header shows the signed-in person.
     site_title: str = DEFAULT_SITE_TITLE
 
 
@@ -102,7 +102,7 @@ class PreferenceRepository:
     def _upgrade_one_profile_display(self, connection: sqlite3.Connection) -> None:
         """Bring a display table from before accounts up to date before it is converted.
 
-        Its site name becomes an instance setting, since everyone shares the site.
+        Its site name is dropped: the header shows the signed-in person's name instead.
         """
 
         columns = table_columns(connection, "display_preferences")
@@ -116,16 +116,6 @@ class PreferenceRepository:
             if column not in columns:
                 connection.execute(
                     f"ALTER TABLE display_preferences ADD COLUMN {column} {definition}"
-                )
-        if "site_title" in columns:
-            row = connection.execute(
-                "SELECT site_title FROM display_preferences WHERE id = 1"
-            ).fetchone()
-            if row and str(row[0]).strip() and str(row[0]) != DEFAULT_SITE_TITLE:
-                connection.execute(
-                    "INSERT INTO instance_settings (key, value) VALUES ('site_title', ?) "
-                    "ON CONFLICT(key) DO NOTHING",
-                    (str(row[0]),),
                 )
 
     def get(self) -> Preferences:
@@ -168,7 +158,7 @@ class PreferenceRepository:
         return Preferences(region=normalized_region, provider_ids=normalized_ids)
 
     def get_display(self) -> DisplayPreferences:
-        """The current user's display options, with the instance's site name."""
+        """The current user's display options."""
 
         with self._connect() as connection:
             row = connection.execute(
@@ -180,9 +170,8 @@ class PreferenceRepository:
                 """,
                 (current_user_id(),),
             ).fetchone()
-        site_title = self.site_title()
         if row is None:
-            return DisplayPreferences(site_title=site_title)
+            return DisplayPreferences()
         return DisplayPreferences(
             show_year=bool(row[0]),
             show_rating=bool(row[1]),
@@ -193,39 +182,10 @@ class PreferenceRepository:
             autoplay_trailer=bool(row[6]),
             sidebar_open=bool(row[7]),
             show_providers=bool(row[8]),
-            site_title=site_title,
         )
 
-    def display_for_anyone(self) -> DisplayPreferences:
-        """Display options for pages shown before anyone signs in."""
-
-        return DisplayPreferences(site_title=self.site_title())
-
-    def site_title(self) -> str:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT value FROM instance_settings WHERE key = 'site_title'"
-            ).fetchone()
-        return str(row[0]) if row and str(row[0]) else DEFAULT_SITE_TITLE
-
-    def save_site_title(self, title: str) -> str:
-        """Rename the site for everyone on this instance."""
-
-        site_title = " ".join(title.split())
-        if not site_title:
-            raise ValueError("Give the site a name")
-        if len(site_title) > _MAX_SITE_TITLE_LENGTH:
-            raise ValueError(f"Keep the name under {_MAX_SITE_TITLE_LENGTH} characters")
-        with self._connect() as connection:
-            connection.execute(
-                "INSERT INTO instance_settings (key, value) VALUES ('site_title', ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (site_title,),
-            )
-        return site_title
-
     def save_display(self, preferences: DisplayPreferences) -> DisplayPreferences:
-        """Save the current user's display options; the site name is saved separately."""
+        """Save the current user's display options."""
 
         if preferences.card_size not in {"compact", "comfortable"}:
             raise ValueError("Card size must be compact or comfortable")
@@ -261,7 +221,7 @@ class PreferenceRepository:
                     preferences.show_providers,
                 ),
             )
-        return replace(preferences, site_title=self.site_title())
+        return replace(preferences, site_title=DEFAULT_SITE_TITLE)
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path, timeout=5)

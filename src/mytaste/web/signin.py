@@ -24,7 +24,7 @@ _COOKIE_AGE = int(SESSION_IDLE.total_seconds())
 _PUBLIC = ("/static/", "/healthz", "/login", "/setup", "/favicon.ico")
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 # Server-wide changes: libraries and their folders (which also lists the server's disks), how
-# games are matched across stores, and the people and name of this server.
+# games are matched across stores, and the people on this server.
 _ADMIN_PREFIXES = (
     "/settings/libraries",
     "/api/libraries/folders",

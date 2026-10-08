@@ -4146,17 +4146,6 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 
 .brand-account form { display: grid; }
 
-.account-popover-name {
-  display: grid;
-  margin: 4px 10px 8px;
-  gap: 2px;
-  color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 750;
-}
-
-.account-popover-name small { color: var(--muted); font-size: 0.72rem; font-weight: 600; }
-
 .signin-header .header-primary { display: flex; justify-content: space-between; }
 .brand-static { cursor: default; }
 .brand-static:hover { background: transparent; }

@@ -32,18 +32,6 @@
     </div>
   </header>
 
-  <section class="account-section" aria-labelledby="site-name-title">
-    <h2 id="site-name-title">Site name</h2>
-    <p class="account-help">Shown at the top left for everyone on this server.</p>
-    {% if site_error %}<p class="alert" role="alert">{{ site_error }}</p>{% endif %}
-    {% if saved == 'site' %}<p class="notice" role="status">The site name is saved.</p>{% endif %}
-    <form class="account-form account-form-inline" method="post" action="/settings/people/site-name">
-      <label class="sr-only" for="site-name">Site name</label>
-      <input id="site-name" name="title" type="text" value="{{ site_title }}" maxlength="40" autocomplete="off" required>
-      <button class="button button-primary" type="submit">Save</button>
-    </form>
-  </section>
-
   <section class="account-section" aria-labelledby="picker-title">
     <h2 id="picker-title">Profile screen</h2>
     <form class="switch-form" method="post" action="/settings/people/picker">

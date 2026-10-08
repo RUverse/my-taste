@@ -39,7 +39,7 @@ matching releases in a clean poster grid.
   profiles like on a TV; a profile can have a password, a short PIN, or nothing. The owner and
   admins manage the server and choose which local libraries each member sees
   (see [Accounts](#accounts))
-- Preferences persisted in SQLite, including the site's name (admins change it under People)
+- Preferences persisted in SQLite; the header shows the name of whoever is signed in
 - Responsive, server-rendered interface that follows the OS light or dark theme
 - Native Python and Docker deployment
 
@@ -84,7 +84,7 @@ collections, watch progress, display options, Game Pass and Steam) becomes the o
 
 - **Members** use the app with their own services, collections, display options, Steam account,
   Game Pass plan, and Continue watching, and see only the local libraries they are given.
-- **Admins** also manage libraries and folders, the site's name, and people. Only the owner can
+- **Admins** also manage libraries and folders, and people. Only the owner can
   add admins, change roles, or hand over ownership.
 - A profile signs in with a password, a 4–8 digit PIN, or nothing (members only); the owner and
   admins always use a password. After five wrong tries a profile waits before the next one.
@@ -231,7 +231,7 @@ The sidebar's **Services** section lists what you have enabled: streaming subscr
 libraries. Collapsed, it shows their icons beside its name; expanded, each one has a checkmark
 that hides it from (or shows it in) the current view and an **Only** link that shows just that
 one. Nothing is removed there: **Manage** opens the Services page, which adds and removes them. The
-Services page (**Sources and region** in the menu under the site's name) also lets you change
+Services page (**Sources and region** in the menu under your name) also lets you change
 the region, add folders to a library, rename it, and rescan it. To add a library, choose **Add**,
 pick **Local library**, browse to a folder, and say whether it holds
 movies or TV shows. A library can span several folders, for example a `Movies` and a `TV Shows`

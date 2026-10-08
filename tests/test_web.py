@@ -1213,25 +1213,17 @@ def test_collections_are_created_edited_and_deleted(tmp_path: Path) -> None:
     ]
 
 
-def test_site_title_is_renamed_and_kept_by_display_changes(tmp_path: Path) -> None:
+def test_header_shows_who_is_signed_in(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
-        default = client.get("/")
-        renamed = client.post(
-            "/settings/people/site-name", data={"title": " Sarah's  Taste "}, follow_redirects=False
-        )
         client.post("/api/preferences/display", json={"show_year": False})
         home = client.get("/")
-        people = client.get("/settings/people")
-        blank = client.post("/settings/people/site-name", data={"title": "  "})
+        signed_out = TestClient(client.app).get("/login")
 
-    assert '<span class="brand-name">MyTaste</span>' in default.text
-    assert renamed.status_code == 303
-    assert '<span class="brand-name">Sarah&#39;s Taste</span>' in home.text
-    assert "<title>Popular · Sarah&#39;s Taste</title>" in home.text
-    assert 'value="Sarah&#39;s Taste" maxlength="40"' in people.text
+    assert '<span class="brand-name">Owner</span>' in home.text
+    assert "<title>Popular · MyTaste</title>" in home.text
     assert 'data-show-year="false"' in home.text
-    assert blank.status_code == 422
+    assert '<span class="brand-name">MyTaste</span>' in signed_out.text
 
 
 def test_sidebar_source_changes_return_to_the_page(tmp_path: Path) -> None:

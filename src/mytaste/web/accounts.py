@@ -13,6 +13,7 @@ from mytaste.accounts.models import (
     User,
     username_from,
 )
+from mytaste.storage.preferences import DisplayPreferences
 from mytaste.storage.users import UserRepository
 from mytaste.web.signin import Throttle, safe_next, sign_in, sign_out
 
@@ -39,7 +40,7 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
         shared: dict[str, object] = {
             "request": request,
             "current_path": request.url.path,
-            "display": preferences.get_display() if me else preferences.display_for_anyone(),
+            "display": preferences.get_display() if me else DisplayPreferences(),
             "header_has_library": False,
             "header_media": "all",
             "search_query": "",
@@ -204,7 +205,6 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
             "libraries": request.app.state.library.libraries(),
             "roles": ROLE_LABELS,
             "picker": picker_on(request),
-            "site_title": request.app.state.preferences.site_title(),
             "saved": request.query_params.get("saved", ""),
             "new_person": {},
         }
@@ -334,16 +334,6 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
             context = people_context(request, person_error=str(exc), error_for=person_id)
             return render(request, "people.html", context, status_code=422)
         return RedirectResponse("/settings/people", status_code=303)
-
-    @router.post("/settings/people/site-name", response_class=HTMLResponse)
-    async def save_site_name(request: Request) -> Response:
-        form = await request.form()
-        try:
-            request.app.state.preferences.save_site_title(str(form.get("title") or ""))
-        except ValueError as exc:
-            context = people_context(request, site_error=str(exc))
-            return render(request, "people.html", context, status_code=422)
-        return RedirectResponse("/settings/people?saved=site", status_code=303)
 
     @router.post("/settings/people/picker")
     async def save_picker(request: Request) -> Response:
