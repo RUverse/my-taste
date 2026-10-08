@@ -61,10 +61,17 @@ self-hosted instances working behind home routers, VPNs, and tailnets.
 A user signs in with a local password, with their Hub account, or both once linked. A local
 user can link one Hub account; the link is what lets them publish and rate.
 
+At home, people switch profiles the way they do on a TV. The sign-in page can show a **"Who's
+watching?"** screen with everyone's profiles: picking one opens it, after its PIN or password if
+it has one. Members may use a short PIN or nothing at all; the owner and admins always use a
+password. The owner can turn the screen off, and then everyone signs in with a username and
+password.
+
 ### Sign-in and sessions
 
-- **Local passwords** are hashed with `hashlib.scrypt` from the standard library, with a random
-  salt per user and parameters stored next to the hash so they can be raised later.
+- **Local passwords and PINs** are hashed with `hashlib.scrypt` from the standard library, with a
+  random salt per user and parameters stored next to the hash so they can be raised later.
+  After five wrong tries a profile waits before the next one, for a while that grows.
 - **Hub sign-in** uses OpenID Connect with the authorization code flow and PKCE. Each instance
   registers with the Hub once (the owner clicks "Connect this server to MyTaste") and gets a
   client id; its redirect URL is the address the owner uses, so it works on a LAN or tailnet
@@ -156,8 +163,9 @@ count plus a damped average, so a handful of votes cannot top a list.
 
 Each step is useful on its own and ships as its own pull requests.
 
-1. **Users in the app.** Local accounts, sessions, setup page, roles, per-user data, library
-   access, and the migration. No Hub yet. Done when two users on one instance see their own
+1. **Users in the app** ([#24](https://github.com/RUverse/my-taste/pull/24)). Local accounts,
+   the profile screen, sessions, setup page, roles, per-user data, library access, and the
+   migration. No Hub yet. Done when two users on one instance see their own
    services, collections, and Continue watching, a member cannot open a library they were not
    given (including by URL), and an existing database upgrades with all its data under the
    owner.
