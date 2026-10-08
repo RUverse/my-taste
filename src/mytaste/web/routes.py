@@ -1061,18 +1061,6 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             return JSONResponse({"error": str(exc)}, status_code=422)
         return JSONResponse({"status": "saved"})
 
-    @router.post("/api/preferences/site-title", response_class=JSONResponse)
-    async def save_site_title(request: Request) -> JSONResponse:
-        repository = request.app.state.preferences
-        try:
-            payload = await request.json()
-            if not isinstance(payload, dict) or not isinstance(payload.get("title"), str):
-                raise ValueError("Expected a title")
-            site_title = repository.save_site_title(payload["title"])
-        except (ValueError, TypeError) as exc:
-            return JSONResponse({"error": str(exc)}, status_code=422)
-        return JSONResponse({"site_title": site_title})
-
     @router.get("/api/collections", response_class=JSONResponse)
     async def list_collections(request: Request) -> JSONResponse:
         collections = request.app.state.collections.collections()

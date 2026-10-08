@@ -164,21 +164,6 @@ select:focus-visible {
 }
 
 .brand-popover { right: auto; left: 0; width: 250px; }
-.rename-form { display: grid; gap: 8px; padding: 8px; }
-.rename-form label { color: var(--muted); font-size: 0.74rem; font-weight: 700; }
-
-.rename-form input {
-  width: 100%;
-  min-height: 38px;
-  padding: 0 10px;
-  color: var(--text);
-  background: var(--input-background);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-
-.rename-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
-.rename-actions .button { min-height: 34px; padding: 0 12px; font-size: 0.8rem; }
 .form-error { margin: 0; color: var(--alert-text); font-size: 0.76rem; }
 
 .primary-controls {

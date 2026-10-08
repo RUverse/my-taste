@@ -1217,20 +1217,21 @@ def test_site_title_is_renamed_and_kept_by_display_changes(tmp_path: Path) -> No
     with make_client(tmp_path) as client:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
         default = client.get("/")
-        renamed = client.post("/api/preferences/site-title", json={"title": " Sarah's  Taste "})
+        renamed = client.post(
+            "/settings/people/site-name", data={"title": " Sarah's  Taste "}, follow_redirects=False
+        )
         client.post("/api/preferences/display", json={"show_year": False})
         home = client.get("/")
-        blank = client.post("/api/preferences/site-title", json={"title": "  "})
-        wrong = client.post("/api/preferences/site-title", json={"name": "x"})
+        people = client.get("/settings/people")
+        blank = client.post("/settings/people/site-name", data={"title": "  "})
 
-    assert '<span class="brand-name" data-site-title>MyTaste</span>' in default.text
-    assert renamed.json() == {"site_title": "Sarah's Taste"}
-    assert '<span class="brand-name" data-site-title>Sarah&#39;s Taste</span>' in home.text
-    assert 'value="Sarah&#39;s Taste" maxlength="40"' in home.text
+    assert '<span class="brand-name">MyTaste</span>' in default.text
+    assert renamed.status_code == 303
+    assert '<span class="brand-name">Sarah&#39;s Taste</span>' in home.text
     assert "<title>Popular · Sarah&#39;s Taste</title>" in home.text
+    assert 'value="Sarah&#39;s Taste" maxlength="40"' in people.text
     assert 'data-show-year="false"' in home.text
     assert blank.status_code == 422
-    assert wrong.status_code == 422
 
 
 def test_sidebar_source_changes_return_to_the_page(tmp_path: Path) -> None:

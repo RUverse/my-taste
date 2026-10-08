@@ -173,11 +173,11 @@ def test_members_cant_change_the_server(tmp_path: Path) -> None:
 
     assert kid.get("/api/libraries/folders").status_code == 403
     assert kid.post("/settings/libraries", data={"name": "Mine"}).status_code == 403
-    assert kid.post("/api/preferences/site-title", json={"title": "Kid TV"}).status_code == 403
+    assert kid.post("/settings/people/site-name", data={"title": "Kid TV"}).status_code == 403
     assert kid.get("/settings/people").status_code == 403
     assert kid.post("/api/games/steam-1/unlink").status_code == 403
     page = kid.get("/settings").text
-    assert "data-rename-site" not in page and 'href="/settings/people"' not in page
+    assert 'href="/settings/people"' not in page
     assert 'href="/settings/people"' in owner.get("/settings").text
 
 

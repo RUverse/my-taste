@@ -28,13 +28,12 @@
       <div class="header-primary">
         <div class="popover-anchor brand-menu">
           <button class="brand" type="button" data-popover-button aria-expanded="false" aria-controls="brand-popover">
-            <span class="brand-name" data-site-title>{{ display.site_title }}</span>
+            <span class="brand-name">{{ display.site_title }}</span>
             <span class="brand-logo" aria-hidden="true"></span>
           </button>
           <div class="popover brand-popover" id="brand-popover" hidden>
-            <div data-brand-actions>
+            <div>
               <a href="/">Home</a>
-              {% if me and me.is_admin %}<button type="button" data-rename-site>Rename…</button>{% endif %}
               <a href="/settings" {% if current_path == '/settings' %}aria-current="page"{% endif %}>Sources and region</a>
               {% if me %}
               <div class="brand-account">
@@ -46,15 +45,6 @@
               </div>
               {% endif %}
             </div>
-            <form class="rename-form" data-site-title-form hidden>
-              <label for="site-title-input">Name this site</label>
-              <input id="site-title-input" name="title" type="text" value="{{ display.site_title }}" maxlength="40" autocomplete="off" required>
-              <p class="form-error" data-site-title-error role="alert" hidden></p>
-              <div class="rename-actions">
-                <button class="button button-secondary" type="button" data-rename-cancel>Cancel</button>
-                <button class="button button-primary" type="submit">Save</button>
-              </div>
-            </form>
           </div>
         </div>
 

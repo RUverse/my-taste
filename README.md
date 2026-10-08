@@ -39,7 +39,7 @@ matching releases in a clean poster grid.
   profiles like on a TV; a profile can have a password, a short PIN, or nothing. The owner and
   admins manage the server and choose which local libraries each member sees
   (see [Accounts](#accounts))
-- Preferences persisted in SQLite, including the site's name (admins click it to rename)
+- Preferences persisted in SQLite, including the site's name (admins change it under People)
 - Responsive, server-rendered interface that follows the OS light or dark theme
 - Native Python and Docker deployment
 

@@ -23,12 +23,11 @@ COOKIE = "mytaste_session"
 _COOKIE_AGE = int(SESSION_IDLE.total_seconds())
 _PUBLIC = ("/static/", "/healthz", "/login", "/setup", "/favicon.ico")
 _SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
-# Server-wide changes: libraries and their folders (which also lists the server's disks), the
-# site's name, how games are matched across stores, and the people on this server.
+# Server-wide changes: libraries and their folders (which also lists the server's disks), how
+# games are matched across stores, and the people and name of this server.
 _ADMIN_PREFIXES = (
     "/settings/libraries",
     "/api/libraries/folders",
-    "/api/preferences/site-title",
     "/settings/people",
 )
 
