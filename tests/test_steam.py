@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import httpx
 import pytest
+from conftest import owner_client
 
 from mytaste.games.gamepass import GamePassError
 from mytaste.games.matching import GameLinker, normalize_title
@@ -627,7 +628,6 @@ def test_link_corrections_are_never_overwritten_by_automatic_findings(tmp_path):
 
 
 def test_steam_sign_in_saving_and_pages(tmp_path):
-    from fastapi.testclient import TestClient
     from test_web import FakeCatalog
 
     from mytaste.config import AppSettings
@@ -644,7 +644,7 @@ def test_steam_sign_in_saving_and_pages(tmp_path):
 
     steam.verify_openid = verify
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=FakeCatalog(), games=service)
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         app.state.preferences.save("DE", (8, 337))
         assert "Connect Steam" in client.get("/settings?add=steam").text
         assert 'data-open-step="steam"' in client.get("/settings?add=steam").text
@@ -765,7 +765,6 @@ async def test_playable_games_alternate_game_pass_ranking_and_the_steam_library(
 
 
 def test_all_mixes_the_games_you_can_play_with_movies_and_series(tmp_path):
-    from fastapi.testclient import TestClient
     from test_web import FakeCatalog
 
     from mytaste.config import AppSettings
@@ -773,7 +772,7 @@ def test_all_mixes_the_games_you_can_play_with_movies_and_series(tmp_path):
 
     service, _steam = make_service(tmp_path)
     app = create_app(AppSettings(None, tmp_path / "app.db"), catalog=FakeCatalog(), games=service)
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         app.state.preferences.save("DE", (8, 337))
         app.state.game_preferences.save("ultimate", "pc")
 

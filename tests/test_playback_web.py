@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 
 import pytest
+from conftest import owner_client
 from fastapi.testclient import TestClient
 from test_web import FakeCatalog, FakeLibrary
 
@@ -96,7 +97,7 @@ def client_for(tmp_path: Path) -> TestClient:
     settings = AppSettings(tmdb_token="test-token", database_path=tmp_path / "mytaste.db")
     app = create_app(settings, catalog=FakeCatalog(), library=FakeLibrary())
     app.state.playback.ffprobe = "ffprobe"
-    return TestClient(app)
+    return owner_client(app)
 
 
 def player_config(html: str) -> dict:
@@ -198,7 +199,7 @@ def test_progress_feeds_continue_watching_and_cards(
     settings = AppSettings(tmdb_token="test-token", database_path=tmp_path / "mytaste.db")
     app = create_app(settings, catalog=FakeCatalog(), library=library)
     app.state.playback.ffprobe = "ffprobe"
-    with TestClient(app) as client:
+    with owner_client(app) as client:
         client.post("/settings/services", data={"region": "DE", "provider_ids": "8"})
         saved = client.post(
             "/api/playback/progress",

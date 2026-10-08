@@ -9,7 +9,10 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from mytaste.accounts.context import current_user_id
 from mytaste.playback.models import MediaInfo
+from mytaste.storage.access import visible_library_clause
+from mytaste.storage.migrations import give_to_first_user
 
 
 def utc_now() -> str:
@@ -77,17 +80,21 @@ class PlaybackRepository:
                     data TEXT,
                     error TEXT
                 );
-                CREATE TABLE IF NOT EXISTS playstate (
-                    key TEXT PRIMARY KEY,
-                    file_id INTEGER,
-                    position REAL NOT NULL DEFAULT 0,
-                    duration REAL NOT NULL DEFAULT 0,
-                    watched INTEGER NOT NULL DEFAULT 0,
-                    play_count INTEGER NOT NULL DEFAULT 0,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS playstate_updated ON playstate (updated_at);
                 """
+            )
+        # Watch progress from before accounts becomes the first user's.
+        give_to_first_user(
+            self.database_path,
+            "playstate",
+            _PLAYSTATE,
+            ("key", "file_id", "position", "duration", "watched", "play_count", "updated_at"),
+            after=("DROP INDEX IF EXISTS playstate_updated",),
+        )
+        with self._connect() as connection:
+            connection.execute(_PLAYSTATE)
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS playstate_user_updated ON playstate "
+                "(user_id, updated_at)"
             )
 
     # Media information ---------------------------------------------------------------
@@ -176,14 +183,17 @@ class PlaybackRepository:
         with self._connect() as connection:
             if not _has_table(connection, "library_files"):
                 return ()
+            visible, params = visible_library_clause("i.library_id")
             rows = connection.execute(
-                """
+                f"""
                 SELECT i.id, i.media_type, i.tmdb_id, f.id, f.season, f.episode, m.probed_at,
                        m.data
                 FROM library_items i
                 JOIN library_files f ON f.item_id = i.id
                 LEFT JOIN media_info m ON m.file_id = f.id
-                """
+                WHERE {visible}
+                """,
+                params,
             ).fetchall()
         return tuple(
             FileRow(
@@ -201,25 +211,31 @@ class PlaybackRepository:
 
     def all_states(self) -> tuple[PlayState, ...]:
         with self._connect() as connection:
-            rows = connection.execute(_STATE_SELECT).fetchall()
+            rows = connection.execute(
+                f"{_STATE_SELECT} WHERE user_id = ?", (current_user_id(),)
+            ).fetchall()
         return tuple(_state_from_row(row) for row in rows)
 
     # Watch state ---------------------------------------------------------------------
 
     def state(self, key: str) -> PlayState | None:
         with self._connect() as connection:
-            row = connection.execute(f"{_STATE_SELECT} WHERE key = ?", (key,)).fetchone()
+            row = connection.execute(
+                f"{_STATE_SELECT} WHERE user_id = ? AND key = ?", (current_user_id(), key)
+            ).fetchone()
         return _state_from_row(row) if row else None
 
     def states(self, keys: Iterable[str]) -> dict[str, PlayState]:
         wanted = tuple(dict.fromkeys(keys))
         found: dict[str, PlayState] = {}
+        user_id = current_user_id()
         with self._connect() as connection:
             for start in range(0, len(wanted), 500):
                 chunk = wanted[start : start + 500]
                 placeholders = ",".join("?" for _ in chunk)
                 for row in connection.execute(
-                    f"{_STATE_SELECT} WHERE key IN ({placeholders})", chunk
+                    f"{_STATE_SELECT} WHERE user_id = ? AND key IN ({placeholders})",
+                    (user_id, *chunk),
                 ):
                     state = _state_from_row(row)
                     found[state.key] = state
@@ -229,16 +245,17 @@ class PlaybackRepository:
         escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         with self._connect() as connection:
             rows = connection.execute(
-                f"{_STATE_SELECT} WHERE key LIKE ? ESCAPE '\\'", (f"{escaped}%",)
+                f"{_STATE_SELECT} WHERE user_id = ? AND key LIKE ? ESCAPE '\\'",
+                (current_user_id(), f"{escaped}%"),
             ).fetchall()
         return tuple(_state_from_row(row) for row in rows)
 
     def recent_states(self, limit: int = 50) -> tuple[PlayState, ...]:
         with self._connect() as connection:
             rows = connection.execute(
-                f"{_STATE_SELECT} WHERE position > 0 OR watched = 1 "
+                f"{_STATE_SELECT} WHERE user_id = ? AND (position > 0 OR watched = 1) "
                 "ORDER BY updated_at DESC LIMIT ?",
-                (limit,),
+                (current_user_id(), limit),
             ).fetchall()
         return tuple(_state_from_row(row) for row in rows)
 
@@ -247,14 +264,15 @@ class PlaybackRepository:
             connection.execute(
                 """
                 INSERT INTO playstate
-                    (key, file_id, position, duration, watched, play_count, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (key) DO UPDATE SET
+                    (user_id, key, file_id, position, duration, watched, play_count, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (user_id, key) DO UPDATE SET
                     file_id = excluded.file_id, position = excluded.position,
                     duration = excluded.duration, watched = excluded.watched,
                     play_count = excluded.play_count, updated_at = excluded.updated_at
                 """,
                 (
+                    current_user_id(),
                     state.key,
                     state.file_id,
                     state.position,
@@ -268,6 +286,20 @@ class PlaybackRepository:
     def _connect(self) -> sqlite3.Connection:
         return sqlite3.connect(self.database_path, timeout=5)
 
+
+_PLAYSTATE = """
+    CREATE TABLE IF NOT EXISTS playstate (
+        user_id INTEGER NOT NULL,
+        key TEXT NOT NULL,
+        file_id INTEGER,
+        position REAL NOT NULL DEFAULT 0,
+        duration REAL NOT NULL DEFAULT 0,
+        watched INTEGER NOT NULL DEFAULT 0,
+        play_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, key)
+    )
+"""
 
 _STATE_SELECT = (
     "SELECT key, file_id, position, duration, watched, play_count, updated_at FROM playstate"

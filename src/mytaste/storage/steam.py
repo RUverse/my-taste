@@ -11,7 +11,31 @@ import sqlite3
 from dataclasses import replace
 from pathlib import Path
 
+from mytaste.accounts.context import current_user_id
 from mytaste.games.models import OwnedGame, SteamAccount
+from mytaste.storage.migrations import give_to_first_user
+
+_SCHEMA = """
+    CREATE TABLE IF NOT EXISTS steam_account (
+        user_id INTEGER PRIMARY KEY,
+        steam_id TEXT NOT NULL,
+        persona TEXT NOT NULL DEFAULT '',
+        avatar_url TEXT NOT NULL DEFAULT '',
+        profile_url TEXT NOT NULL DEFAULT '',
+        owned TEXT NOT NULL DEFAULT '[]',
+        owned_checked_at REAL,
+        owned_status TEXT NOT NULL DEFAULT ''
+    )
+"""
+_COLUMNS = (
+    "steam_id",
+    "persona",
+    "avatar_url",
+    "profile_url",
+    "owned",
+    "owned_checked_at",
+    "owned_status",
+)
 
 
 class SteamAccountRepository:
@@ -19,27 +43,17 @@ class SteamAccountRepository:
         self.database_path = database_path
 
     def initialize(self) -> None:
+        # A Steam account connected before accounts existed becomes the first user's.
+        give_to_first_user(self.database_path, "steam_account", _SCHEMA, _COLUMNS)
         with sqlite3.connect(self.database_path) as connection:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS steam_account (
-                    id INTEGER PRIMARY KEY CHECK (id = 1),
-                    steam_id TEXT NOT NULL,
-                    persona TEXT NOT NULL DEFAULT '',
-                    avatar_url TEXT NOT NULL DEFAULT '',
-                    profile_url TEXT NOT NULL DEFAULT '',
-                    owned TEXT NOT NULL DEFAULT '[]',
-                    owned_checked_at REAL,
-                    owned_status TEXT NOT NULL DEFAULT ''
-                )
-                """
-            )
+            connection.execute(_SCHEMA)
 
     def get(self) -> SteamAccount | None:
         with sqlite3.connect(self.database_path) as connection:
             row = connection.execute(
                 "SELECT steam_id, persona, avatar_url, profile_url, owned, owned_checked_at, "
-                "owned_status FROM steam_account WHERE id = 1"
+                "owned_status FROM steam_account WHERE user_id = ?",
+                (current_user_id(),),
             ).fetchone()
         if row is None:
             return None
@@ -52,12 +66,19 @@ class SteamAccountRepository:
     def connect(self, account: SteamAccount) -> SteamAccount:
         """Replace the connected account; another account's games are never kept."""
 
+        user_id = current_user_id()
         with sqlite3.connect(self.database_path) as connection:
-            connection.execute("DELETE FROM steam_account")
+            connection.execute("DELETE FROM steam_account WHERE user_id = ?", (user_id,))
             connection.execute(
-                "INSERT INTO steam_account (id, steam_id, persona, avatar_url, profile_url) "
-                "VALUES (1, ?, ?, ?, ?)",
-                (account.steam_id, account.persona, account.avatar_url, account.profile_url),
+                "INSERT INTO steam_account (user_id, steam_id, persona, avatar_url, profile_url) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    user_id,
+                    account.steam_id,
+                    account.persona,
+                    account.avatar_url,
+                    account.profile_url,
+                ),
             )
         return replace(account, owned=(), owned_checked_at=None, owned_status="")
 
@@ -74,19 +95,31 @@ class SteamAccountRepository:
         payload = json.dumps(
             [[game.appid, game.name, game.playtime, game.last_played] for game in owned]
         )
+        user_id = current_user_id()
         with sqlite3.connect(self.database_path) as connection:
             connection.execute(
                 "UPDATE steam_account SET owned = ?, owned_checked_at = ?, owned_status = ? "
-                "WHERE id = 1 AND steam_id = ?",
-                (payload, checked_at, status, steam_id),
+                "WHERE user_id = ? AND steam_id = ?",
+                (payload, checked_at, status, user_id, steam_id),
             )
             if profile:
                 connection.execute(
                     "UPDATE steam_account SET persona = ?, avatar_url = ?, profile_url = ? "
-                    "WHERE id = 1 AND steam_id = ?",
-                    (profile["persona"], profile["avatar_url"], profile["profile_url"], steam_id),
+                    "WHERE user_id = ? AND steam_id = ?",
+                    (
+                        profile["persona"],
+                        profile["avatar_url"],
+                        profile["profile_url"],
+                        user_id,
+                        steam_id,
+                    ),
                 )
 
     def disconnect(self) -> bool:
         with sqlite3.connect(self.database_path) as connection:
-            return connection.execute("DELETE FROM steam_account").rowcount > 0
+            return (
+                connection.execute(
+                    "DELETE FROM steam_account WHERE user_id = ?", (current_user_id(),)
+                ).rowcount
+                > 0
+            )

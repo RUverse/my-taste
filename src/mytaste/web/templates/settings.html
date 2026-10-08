@@ -14,6 +14,7 @@
       </span>
       <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
     </button>
+    {% if me.is_admin %}
     <button class="source-choice" type="button" {{ action }}="local">
       <span class="source-choice-icon source-choice-icon-local" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="{{ folder_path }}"></path></svg>
@@ -24,6 +25,7 @@
       </span>
       <svg class="source-choice-arrow" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"></path></svg>
     </button>
+    {% endif %}
     {% if steam_available and not steam_account %}
     <button class="source-choice" type="button" {{ action }}="steam">
       <span class="source-choice-icon source-choice-icon-steam" aria-hidden="true">{{ steam_logo() }}</span>
@@ -142,6 +144,7 @@
                 <button class="button button-secondary" type="button" data-library-rename-cancel>Cancel</button>
               </form>
               <p class="source-kind">Local · <span class="source-status" data-library-status role="status" aria-live="polite">{{ row.text }}</span></p>
+              {% if me.is_admin %}
               <ul class="source-folders" aria-label="Folders in {{ row.name }}">
                 {% for folder in row.folders %}
                   <li class="source-folder">
@@ -157,7 +160,9 @@
                   </li>
                 {% endfor %}
               </ul>
+              {% endif %}
             </div>
+            {% if me.is_admin %}
             <div class="source-actions">
               <button class="icon-button source-action" type="button" data-open-add="local" data-library-target="{{ row.id }}" data-library-name="{{ row.name }}" data-library-near="{{ row.folders[-1].path if row.folders else '' }}" aria-haspopup="dialog" aria-label="Add a folder to {{ row.name }}" title="Add folder">
                 <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"></path></svg>
@@ -176,6 +181,7 @@
                 </button>
               </form>
             </div>
+            {% endif %}
           </li>
         {% endfor %}
         {% if steam_account %}
@@ -235,7 +241,7 @@
             </span>
             <span class="source-add-copy">
               <strong>Add</strong>
-              <small>Streaming service, local library{% if steam_available and not steam_account %}, or Steam{% endif %}</small>
+              <small>Streaming service{% if me.is_admin %}, local library{% endif %}{% if steam_available and not steam_account %}, or Steam{% endif %}</small>
             </span>
           </button>
         </li>

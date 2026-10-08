@@ -17,6 +17,13 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 ## Project map
 
 - `src/mytaste/config.py` — environment parsing and application settings.
+- `src/mytaste/accounts/` — people on an instance: `models.py` (`User`, roles, password and PIN
+  rules), `passwords.py` (scrypt), and `context.py`, which holds the signed-in user and the
+  libraries they may see for the current request (`current_user_id`, `visible_libraries`).
+- `src/mytaste/storage/users.py` — accounts, sign-in sessions (only token hashes are stored),
+  and `library_access`; `settings.py` — instance-wide settings such as the site's name;
+  `access.py` — the SQL condition that limits library queries to the user's libraries;
+  `migrations.py` — `give_to_first_user`, which turns a one-profile table into a per-user one.
 - `src/mytaste/catalog/models.py` — immutable domain and browse-query models.
 - `src/mytaste/catalog/tmdb.py` — raw asynchronous TMDB requests and response normalization.
 - `src/mytaste/catalog/service.py` — browsing, cross-media merging, availability checks,
@@ -54,6 +61,11 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/storage/games.py`, `steam.py`, `game_links.py`, `gamepass_cache.py` — Game Pass
   preferences, the connected Steam account, Xbox ↔ Steam matches, and the optional store cache.
 - `src/mytaste/web/app.py` — FastAPI factory, dependency wiring, templates, and static assets.
+- `src/mytaste/web/signin.py` — `SignInMiddleware`: binds each request to its user, sends
+  signed-out visitors to `/setup` or `/login`, keeps admin-only paths from members, and refuses
+  changing requests from other sites; also the session cookie and the wrong-PIN throttle.
+- `src/mytaste/web/accounts.py` — setup, sign-in and the profile picker, `/account`, and
+  `/settings/people` for admins.
 - `src/mytaste/web/routes.py` — page/API routes, query parsing, and template context construction.
 - `src/mytaste/web/filter_options.py` — filter URL parameters and the sidebar's filter controls.
 - `src/mytaste/web/playback.py` — `/watch/...` player pages and the streaming, subtitle, and
@@ -79,6 +91,13 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   `TitleFilters`, `discover_params` (when TMDB can apply it), and `title_matches` together.
   Display-only preferences are persisted in SQLite via
   `/api/preferences/display` and should update immediately in the UI.
+- Per-user data is scoped in storage, not in routes: per-user tables have a `user_id` and every
+  query uses `current_user_id()`, which raises outside a signed-in request (tests bind the first
+  user through the autouse `first_user` fixture; web tests sign in with `owner_client`). Library
+  queries add `visible_library_clause`, so a member never reaches another library's titles or
+  files, including by id. In-memory caches must not hold one user's data for another: key them
+  by user or bypass them when `visible_libraries()` is set, as `LibraryService.matched_keys`
+  does. New admin-only paths go in `_ADMIN_PREFIXES` in `web/signin.py`.
 - Preserve dependency injection in `create_app()` so tests can supply fake catalog, preference,
   and library implementations. Update the fakes when a service interface changes.
 - Library scans must never block requests: filesystem walks run in a worker thread and matching

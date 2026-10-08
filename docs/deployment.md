@@ -161,12 +161,25 @@ transaction, and keeps every collection's order and dates. The previous `collect
 table is left as it was and is no longer used. Back up the database before upgrading, as before
 any release.
 
+### Accounts and the database
+
+The first start of a version with accounts gives each one-profile table (region, services,
+display options, watch progress, Game Pass plan, Steam account) a `user_id` and assigns the
+existing rows to user 1; collections get a `user_id` column. Each table is rebuilt in its own
+transaction, and nothing is copied or deleted otherwise. Until someone opens the app and creates
+the owner on the setup page, every page redirects there; the owner becomes user 1 and finds
+everything as before. The site's name moves to the shared `instance_settings` table. There is
+no way back to the one-profile layout except restoring a backup, so back up the database first.
+
 ## Network exposure
 
-Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. The app does
-not provide accounts or authentication in this release. For Internet or untrusted-LAN exposure,
-put it behind a reverse proxy that provides HTTPS and access control. With a storage library,
-anyone who can reach the app can also play its files.
+Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. Everyone
+signs in, but by default the "Who's watching?" screen lets anyone who can reach the app open a
+profile that has no password or PIN, and play that profile's libraries. For Internet or
+untrusted-LAN exposure, turn the profile screen off under **People**, give every account a
+password, and put MyTaste behind a reverse proxy that provides HTTPS. Sign-in cookies are marked
+`Secure` when the request arrives over HTTPS (uvicorn trusts `X-Forwarded-Proto` from a proxy
+on the same host).
 
 Run one application worker against a database. The in-memory TMDB cache is intentionally local to
 the process, and the workload does not benefit from multiple workers for a household deployment.

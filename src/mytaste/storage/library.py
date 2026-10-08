@@ -22,6 +22,7 @@ from mytaste.library.models import (
     LibraryItem,
     ScannedFile,
 )
+from mytaste.storage.access import visible_library_clause
 
 _MEDIA_TYPES: frozenset[str] = frozenset({"movie", "tv"})
 
@@ -157,14 +158,22 @@ class LibraryRepository:
             connection.close()
 
     def list_libraries(self) -> tuple[Library, ...]:
+        """The libraries the current user may see (all of them outside a request)."""
+
+        visible, params = visible_library_clause("l.id")
         with self._connect() as connection:
-            rows = connection.execute(f"{_LIBRARY_SELECT} ORDER BY l.created_at, l.id").fetchall()
+            rows = connection.execute(
+                f"{_LIBRARY_SELECT} WHERE {visible} ORDER BY l.created_at, l.id", params
+            ).fetchall()
             folders = self._folders(connection)
         return tuple(_library_from_row(row, folders.get(int(row[0]), ())) for row in rows)
 
     def get_library(self, library_id: int) -> Library | None:
+        visible, params = visible_library_clause("l.id")
         with self._connect() as connection:
-            row = connection.execute(f"{_LIBRARY_SELECT} WHERE l.id = ?", (library_id,)).fetchone()
+            row = connection.execute(
+                f"{_LIBRARY_SELECT} WHERE l.id = ? AND {visible}", (library_id, *params)
+            ).fetchone()
             folders = self._folders(connection, library_id)
         return _library_from_row(row, folders.get(library_id, ())) if row else None
 
@@ -222,6 +231,10 @@ class LibraryRepository:
     def remove_library(self, library_id: int) -> bool:
         with self._connect() as connection:
             cursor = connection.execute("DELETE FROM libraries WHERE id = ?", (library_id,))
+            if connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_access'"
+            ).fetchone():
+                connection.execute("DELETE FROM library_access WHERE library_id = ?", (library_id,))
         return cursor.rowcount > 0
 
     def record_error(self, library_id: int, message: str | None) -> None:
@@ -232,10 +245,12 @@ class LibraryRepository:
             )
 
     def items(self, library_id: int) -> tuple[LibraryItem, ...]:
+        visible, params = visible_library_clause("i.library_id")
         with self._connect() as connection:
             rows = connection.execute(
-                f"{_ITEM_SELECT} WHERE i.library_id = ? ORDER BY i.title COLLATE NOCASE",
-                (library_id,),
+                f"{_ITEM_SELECT} WHERE i.library_id = ? AND {visible} "
+                "ORDER BY i.title COLLATE NOCASE",
+                (library_id, *params),
             ).fetchall()
         return tuple(_item_from_row(row) for row in rows)
 
@@ -355,8 +370,13 @@ class LibraryRepository:
             )
 
     def get_file(self, file_id: int) -> LibraryFile | None:
+        """A file, if it is in a library the current user may see."""
+
+        visible, params = visible_library_clause("i.library_id")
         with self._connect() as connection:
-            row = connection.execute(f"{_FILE_SELECT} WHERE f.id = ?", (file_id,)).fetchone()
+            row = connection.execute(
+                f"{_FILE_SELECT} WHERE f.id = ? AND {visible}", (file_id, *params)
+            ).fetchone()
         return _file_from_row(row) if row else None
 
     def files_for_item(self, item_id: int) -> tuple[LibraryFile, ...]:
@@ -371,10 +391,12 @@ class LibraryRepository:
         return self._files("i.media_type = 'tv' AND i.tmdb_id = ?", (tmdb_id,))
 
     def _files(self, where: str, params: tuple[object, ...]) -> tuple[LibraryFile, ...]:
+        visible, visible_params = visible_library_clause("i.library_id")
+        params = (*params, *visible_params)
         with self._connect() as connection:
             rows = connection.execute(
                 f"""
-                {_FILE_SELECT} WHERE {where}
+                {_FILE_SELECT} WHERE ({where}) AND {visible}
                 ORDER BY f.season IS NULL, f.season = 0, f.season, f.episode IS NULL, f.episode,
                          f.path, f.id
                 """,
@@ -385,13 +407,15 @@ class LibraryRepository:
     def matched_keys(self, library_ids: Sequence[int] | None = None) -> frozenset[tuple[str, int]]:
         """Return the TMDB titles on disk, optionally only those in some libraries."""
 
-        sql = "SELECT media_type, tmdb_id FROM library_items WHERE tmdb_id IS NOT NULL"
-        params: tuple[int, ...] = ()
+        visible, params = visible_library_clause("library_id")
+        sql = (
+            f"SELECT media_type, tmdb_id FROM library_items WHERE tmdb_id IS NOT NULL AND {visible}"
+        )
         if library_ids is not None:
             if not library_ids:
                 return frozenset()
             sql += f" AND library_id IN ({','.join('?' for _ in library_ids)})"
-            params = tuple(library_ids)
+            params = (*params, *library_ids)
         with self._connect() as connection:
             rows = connection.execute(sql, params).fetchall()
         return frozenset((str(row[0]), int(row[1])) for row in rows)
@@ -399,9 +423,10 @@ class LibraryRepository:
     def episode_keys(self, tmdb_id: int) -> frozenset[tuple[int, int]]:
         """Return the ``(season, episode)`` pairs on disk for a matched series."""
 
+        visible, params = visible_library_clause("library_items.library_id")
         with self._connect() as connection:
             rows = connection.execute(
-                """
+                f"""
                 SELECT DISTINCT library_files.season, library_files.episode
                 FROM library_files
                 JOIN library_items ON library_items.id = library_files.item_id
@@ -409,8 +434,9 @@ class LibraryRepository:
                     AND library_items.tmdb_id = ?
                     AND library_files.season IS NOT NULL
                     AND library_files.episode IS NOT NULL
+                    AND {visible}
                 """,
-                (tmdb_id,),
+                (tmdb_id, *params),
             ).fetchall()
         return frozenset((int(row[0]), int(row[1])) for row in rows)
 
@@ -424,8 +450,9 @@ class LibraryRepository:
     ) -> CatalogPage:
         """Browse titles; ``item_ids``, when given, limits them to those that passed filters."""
 
-        clauses: list[str] = []
-        params: list[object] = []
+        visible, visible_params = visible_library_clause("i.library_id")
+        clauses: list[str] = [visible]
+        params: list[object] = list(visible_params)
         if item_ids is not None:
             ids = sorted(item_ids)
             clauses.append(f"i.id IN ({','.join('?' for _ in ids)})" if ids else "0")
@@ -497,11 +524,12 @@ class LibraryRepository:
         if not library_ids:
             return ()
         placeholders = ",".join("?" for _ in library_ids)
+        visible, params = visible_library_clause("library_id")
         with self._connect() as connection:
             rows = connection.execute(
                 f"SELECT id, media_type, tmdb_id, genre_ids FROM library_items "
-                f"WHERE library_id IN ({placeholders})",
-                tuple(library_ids),
+                f"WHERE library_id IN ({placeholders}) AND {visible}",
+                (*library_ids, *params),
             ).fetchall()
         return tuple(
             TitleRef(

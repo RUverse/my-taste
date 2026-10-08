@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+from conftest import owner_client
 from fastapi.testclient import TestClient
 
 from mytaste.catalog.filters import GenreChoice, TitleFacts, genre_choices
@@ -393,7 +394,7 @@ def make_client(
         tmdb_token="test-token",
         database_path=tmp_path / "mytaste.db",
     )
-    return TestClient(
+    return owner_client(
         create_app(settings, catalog=catalog or FakeCatalog(), library=library or FakeLibrary())
     )
 

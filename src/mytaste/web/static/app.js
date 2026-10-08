@@ -2113,6 +2113,24 @@
   initializeInfiniteScroll();
   document.addEventListener("mytaste:results-ready", initializeInfiniteScroll);
 
+  // Choosing how someone signs in: the password or PIN fields only apply when one is chosen.
+  document.querySelectorAll("[data-secret-form]").forEach((form) => {
+    const fields = form.querySelector("[data-secret-fields]");
+    const update = () => {
+      const kind = form.querySelector("[data-secret-kind]:checked")?.value ?? "password";
+      if (!fields) return;
+      fields.hidden = kind === "";
+      fields.querySelectorAll("input").forEach((input) => {
+        input.required = kind !== "";
+        input.inputMode = kind === "pin" ? "numeric" : "text";
+      });
+    };
+    form.querySelectorAll("[data-secret-kind]").forEach((radio) => {
+      radio.addEventListener("change", update);
+    });
+    update();
+  });
+
   document.querySelectorAll("form[data-confirm]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       if (!window.confirm(form.dataset.confirm)) {

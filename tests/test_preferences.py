@@ -95,11 +95,14 @@ def test_site_title_is_cleaned_and_required(tmp_path: Path) -> None:
     repository = PreferenceRepository(tmp_path / "mytaste.db")
     repository.initialize()
 
-    saved = repository.save_display(DisplayPreferences(site_title="  Sarah's   Taste "))
-
-    assert saved.site_title == "Sarah's Taste"
+    assert repository.save_site_title("  Sarah's   Taste ") == "Sarah's Taste"
     assert repository.get_display().site_title == "Sarah's Taste"
+    # Everyone shares the site's name, including pages shown before signing in.
+    assert repository.display_for_anyone().site_title == "Sarah's Taste"
+    # Saving someone's display options leaves the name alone.
+    repository.save_display(DisplayPreferences(site_title="Ignored"))
+    assert repository.site_title() == "Sarah's Taste"
     with pytest.raises(ValueError, match="name"):
-        repository.save_display(DisplayPreferences(site_title=" "))
+        repository.save_site_title(" ")
     with pytest.raises(ValueError, match="40"):
-        repository.save_display(DisplayPreferences(site_title="x" * 41))
+        repository.save_site_title("x" * 41)

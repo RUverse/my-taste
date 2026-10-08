@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}People · {{ display.site_title }}{% endblock %}
+{% block content %}
+{% set kind_labels = {'password': 'Password', 'pin': 'PIN', '': 'No password'} %}
+{% macro library_choices(prefix, chosen) -%}
+  {% if libraries %}
+    <fieldset class="library-access">
+      <legend>Libraries they see</legend>
+      {% for library in libraries %}
+        <label class="check-row"><input type="checkbox" name="libraries" value="{{ library.id }}" {% if library.id in chosen %}checked{% endif %}><span>{{ library.name }}</span></label>
+      {% endfor %}
+    </fieldset>
+  {% endif %}
+{%- endmacro %}
+{% macro sign_in_choice(prefix, kinds, chosen) -%}
+  <fieldset class="secret-kinds secret-kinds-compact">
+    <legend>Signs in with</legend>
+    {% for kind in kinds %}
+      <label class="secret-kind"><input type="radio" name="kind" value="{{ kind }}" {% if kind == chosen %}checked{% endif %} data-secret-kind><span><strong>{{ kind_labels[kind] }}</strong></span></label>
+    {% endfor %}
+  </fieldset>
+  <div class="secret-fields" data-secret-fields>
+    <label for="{{ prefix }}-secret">Password or PIN</label>
+    <input id="{{ prefix }}-secret" name="secret" type="password" autocomplete="new-password">
+  </div>
+{%- endmacro %}
+<div class="account-page people-page">
+  <header class="account-header">
+    <div>
+      <h1>People</h1>
+      <p class="account-meta">Everyone at home gets their own services, collections, and Continue watching. Members see only the libraries you give them.</p>
+    </div>
+  </header>
+
+  <section class="account-section" aria-labelledby="picker-title">
+    <h2 id="picker-title">Profile screen</h2>
+    <form class="switch-form" method="post" action="/settings/people/picker">
+      <label class="check-row">
+        <input type="checkbox" name="picker" {% if picker %}checked{% endif %} onchange="this.form.requestSubmit()">
+        <span><strong>Show everyone's profiles when signing in</strong>
+          <small>Like a TV at home: pick a profile, then type its PIN or password if it has one. Turn this off if the server is reachable by people you don't know; then everyone signs in with a username and password.</small></span>
+      </label>
+      <noscript><button class="button button-secondary" type="submit">Save</button></noscript>
+    </form>
+  </section>
+
+  <section class="account-section" aria-labelledby="people-list-title">
+    <h2 id="people-list-title">{{ people|length }} {{ 'person' if people|length == 1 else 'people' }}</h2>
+    <ul class="people-list">
+      {% for person in people %}
+        {% set manageable = me.is_owner or person.role == 'member' or person.id == me.id %}
+        <li class="person-card" id="person-{{ person.id }}">
+          <div class="person-summary">
+            <span class="avatar" style="--avatar: {{ person.color }}" aria-hidden="true">{{ person.initial }}</span>
+            <div class="person-copy">
+              <strong>{{ person.name }}{% if person.id == me.id %} <span class="person-you">(you)</span>{% endif %}</strong>
+              <small>{{ person.role_label }} · {{ person.username }} · {{ kind_labels[person.secret_kind] }}
+                {% if person.role == 'member' %} · {% set count = access[person.id]|length %}{{ 'no libraries' if not count else (count ~ ' of ' ~ libraries|length ~ ' libraries') }}{% endif %}</small>
+            </div>
+            {% if saved == person.id|string %}<span class="person-saved" role="status">Saved</span>{% endif %}
+          </div>
+          {% if manageable %}
+          <details class="person-edit" {% if error_for == person.id %}open{% endif %}>
+            <summary>Edit</summary>
+            {% if error_for == person.id and person_error %}<p class="alert" role="alert">{{ person_error }}</p>{% endif %}
+            <form class="account-form" method="post" action="/settings/people/{{ person.id }}">
+              <label for="person-{{ person.id }}-name">Name</label>
+              <input id="person-{{ person.id }}-name" name="name" type="text" value="{{ person.name }}" maxlength="40" required>
+              {% if me.is_owner and not person.is_owner %}
+                <label for="person-{{ person.id }}-role">Role</label>
+                <span class="select-field"><select id="person-{{ person.id }}-role" name="role">
+                  <option value="member" {% if person.role == 'member' %}selected{% endif %}>Member: uses the app</option>
+                  <option value="admin" {% if person.role == 'admin' %}selected{% endif %}>Admin: also manages the server</option>
+                </select></span>
+              {% endif %}
+              {% if person.role == 'member' %}{{ library_choices('person-' ~ person.id, access[person.id]) }}{% endif %}
+              <button class="button button-primary" type="submit">Save</button>
+            </form>
+            <form class="account-form" method="post" action="/settings/people/{{ person.id }}/secret" data-secret-form>
+              {{ sign_in_choice('person-' ~ person.id, ('password',) if person.is_admin else ('pin', 'password', ''), person.secret_kind or 'pin') }}
+              <button class="button button-secondary" type="submit">Change how they sign in</button>
+            </form>
+            <div class="person-actions">
+              <form method="post" action="/settings/people/{{ person.id }}/signout">
+                <button class="button button-secondary" type="submit">Sign out everywhere</button>
+              </form>
+              {% if me.is_owner and person.role == 'admin' %}
+                <form method="post" action="/settings/people/{{ person.id }}/owner" data-confirm="Make {{ person.name }} the owner? You become an admin.">
+                  <button class="button button-secondary" type="submit">Make owner</button>
+                </form>
+              {% endif %}
+              {% if not person.is_owner and person.id != me.id %}
+                <form method="post" action="/settings/people/{{ person.id }}/remove" data-confirm="Remove {{ person.name }}? Their collections, services, and watch progress are deleted.">
+                  <button class="button button-danger" type="submit">Remove</button>
+                </form>
+              {% endif %}
+            </div>
+          </details>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  <section class="account-section" aria-labelledby="add-person-title">
+    <h2 id="add-person-title">Add someone</h2>
+    {% if add_error %}<p class="alert" role="alert">{{ add_error }}</p>{% endif %}
+    <form class="account-form" method="post" action="/settings/people" data-secret-form>
+      <label for="new-name">Name</label>
+      <input id="new-name" name="name" type="text" value="{{ new_person.name or '' }}" maxlength="40" required>
+      {% if me.is_owner %}
+        <label for="new-role">Role</label>
+        <span class="select-field"><select id="new-role" name="role">
+          <option value="member" {% if new_person.role != 'admin' %}selected{% endif %}>Member: uses the app</option>
+          <option value="admin" {% if new_person.role == 'admin' %}selected{% endif %}>Admin: also manages the server</option>
+        </select></span>
+      {% else %}
+        <input type="hidden" name="role" value="member">
+      {% endif %}
+      {{ sign_in_choice('new', ('pin', 'password', ''), new_person.kind if new_person.kind is defined else '') }}
+      {{ library_choices('new', libraries|map(attribute='id')|list) }}
+      <button class="button button-primary" type="submit">Add</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
