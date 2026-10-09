@@ -28,6 +28,9 @@ class User:
     role: Role
     secret_kind: SecretKind
     created_at: str
+    # Joined through a MyTaste account invite: signs in only with that account, and stays off
+    # the profile screen, which is for the people at home.
+    hub_only: bool = False
 
     @property
     def is_admin(self) -> bool:

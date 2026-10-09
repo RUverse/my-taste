@@ -58,6 +58,22 @@
     </form>
   </section>
 
+  {% if hub_signin %}
+  <section class="account-section" aria-labelledby="account-hub-title">
+    <h2 id="account-hub-title">MyTaste account</h2>
+    {% if hub_message %}<p class="{{ 'notice' if request.query_params.get('hub') == 'linked' else 'alert' }}" role="status">{{ hub_message }}</p>{% endif %}
+    {% if hub_username %}
+      <p class="account-help">Linked to <strong>@{{ hub_username }}</strong>. You can sign in here with it, and use it on other MyTaste servers you're invited to.</p>
+      {% if not me.hub_only %}
+        <form method="post" action="/account/hub/unlink"><button class="button button-secondary" type="submit">Unlink</button></form>
+      {% endif %}
+    {% else %}
+      <p class="account-help">Link your MyTaste account to sign in with it here and on other MyTaste servers.</p>
+      <a class="button button-primary" href="/auth/hub/start?purpose=link">Link your MyTaste account</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="account-section">
     <form method="post" action="/logout">
       <button class="button button-secondary" type="submit">Sign out on this device</button>

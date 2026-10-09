@@ -20,8 +20,11 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
 - `src/mytaste/accounts/` — people on an instance: `models.py` (`User`, roles, password and PIN
   rules), `passwords.py` (scrypt), and `context.py`, which holds the signed-in user and the
   libraries they may see for the current request (`current_user_id`, `visible_libraries`).
+- `src/mytaste/accounts/hub.py` — `HubClient`, which registers this server with the MyTaste
+  Hub (`MYTASTE_HUB_URL`) and runs "Sign in with MyTaste" (OpenID Connect code flow with PKCE;
+  the ID token is checked against the client secret, issuer, audience, expiry, and nonce).
 - `src/mytaste/storage/users.py` — accounts, sign-in sessions (only token hashes are stored),
-  and `library_access`; `settings.py` — instance-wide settings such as whether the profile screen is shown;
+  `library_access`, linked MyTaste accounts (`hub_links`), and invites (`hub_invites`); `settings.py` — instance-wide settings such as whether the profile screen is shown;
   `access.py` — the SQL condition that limits library queries to the user's libraries;
   `migrations.py` — `give_to_first_user`, which turns a one-profile table into a per-user one.
 - `src/mytaste/catalog/models.py` — immutable domain and browse-query models.
@@ -65,7 +68,9 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   signed-out visitors to `/setup` or `/login`, keeps admin-only paths from members, and refuses
   changing requests from other sites; also the session cookie and the wrong-PIN throttle.
 - `src/mytaste/web/accounts.py` — setup, sign-in and the profile picker, `/account`, and
-  `/settings/people` for admins.
+  `/settings/people` for admins (including invites by MyTaste username).
+- `src/mytaste/web/hub.py` — connecting to the Hub and the `/auth/hub/start` and
+  `/auth/hub/callback` round trip. Tests use the `FakeHub` in `tests/test_hub_signin.py`.
 - `src/mytaste/web/routes.py` — page/API routes, query parsing, and template context construction.
 - `src/mytaste/web/filter_options.py` — filter URL parameters and the sidebar's filter controls.
 - `src/mytaste/web/playback.py` — `/watch/...` player pages and the streaming, subtitle, and

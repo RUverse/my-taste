@@ -32,6 +32,44 @@
     </div>
   </header>
 
+  {% if hub_url %}
+  <section class="account-section" aria-labelledby="hub-title">
+    <h2 id="hub-title">MyTaste accounts</h2>
+    {% if hub_message %}<p class="{{ 'notice' if request.query_params.get('hub') == 'connected' else 'alert' }}" role="status">{{ hub_message }}</p>{% endif %}
+    {% if hub_connected %}
+      <p class="account-help">Connected to <strong>{{ hub_url }}</strong>. People can sign in with their MyTaste account once it's linked to their profile here, and friends you invite get an account here the first time they sign in.</p>
+      {% if invite_error %}<p class="alert" role="alert">{{ invite_error }}</p>{% endif %}
+      {% if saved == 'invite' %}<p class="notice" role="status">Invited. They join the first time they sign in with MyTaste.</p>{% endif %}
+      <form class="account-form" method="post" action="/settings/people/invites">
+        <label for="invite-username">Invite a MyTaste username</label>
+        <input id="invite-username" name="username" type="text" value="{{ invite_name or '' }}" maxlength="33" autocapitalize="none" spellcheck="false" placeholder="sara" required>
+        {{ library_choices('invite', libraries|map(attribute='id')|list) }}
+        <button class="button button-primary" type="submit">Invite</button>
+      </form>
+      {% if invites %}
+        <ul class="people-list">
+          {% for invite_id, username, invited_libraries in invites %}
+            <li class="person-card person-summary">
+              <div class="person-copy"><strong>@{{ username }}</strong><small>Invited · {{ invited_libraries|length }} of {{ libraries|length }} libraries</small></div>
+              <form method="post" action="/settings/people/invites/{{ invite_id }}/remove" style="margin-left: auto">
+                <button class="button button-secondary" type="submit">Cancel invite</button>
+              </form>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <form method="post" action="/settings/people/hub/disconnect" data-confirm="Disconnect from MyTaste? Nobody can sign in with MyTaste here until you connect again.">
+        <button class="button button-secondary" type="submit">Disconnect from MyTaste</button>
+      </form>
+    {% else %}
+      <p class="account-help">Connect this server to <strong>{{ hub_url }}</strong> so people can sign in with their MyTaste account, and so you can invite friends by their MyTaste username.</p>
+      <form method="post" action="/settings/people/hub/connect">
+        <button class="button button-primary" type="submit">Connect to MyTaste</button>
+      </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
   <section class="account-section" aria-labelledby="picker-title">
     <h2 id="picker-title">Profile screen</h2>
     <form class="switch-form" method="post" action="/settings/people/picker">
@@ -54,7 +92,7 @@
             <span class="avatar" style="--avatar: {{ person.color }}" aria-hidden="true">{{ person.initial }}</span>
             <div class="person-copy">
               <strong>{{ person.name }}{% if person.id == me.id %} <span class="person-you">(you)</span>{% endif %}</strong>
-              <small>{{ person.role_label }} · {{ person.username }} · {{ kind_labels[person.secret_kind] }}
+              <small>{{ person.role_label }} · {{ person.username }} · {{ 'MyTaste sign-in' if person.hub_only else kind_labels[person.secret_kind] }}{% if hub_names.get(person.id) %} · @{{ hub_names[person.id] }}{% endif %}
                 {% if person.role == 'member' %} · {% set count = access[person.id]|length %}{{ 'no libraries' if not count else (count ~ ' of ' ~ libraries|length ~ ' libraries') }}{% endif %}</small>
             </div>
             {% if saved == person.id|string %}<span class="person-saved" role="status">Saved</span>{% endif %}

@@ -169,7 +169,8 @@ Each step is useful on its own and ships as its own pull requests.
    services, collections, and Continue watching, a member cannot open a library they were not
    given (including by URL), and an existing database upgrades with all its data under the
    owner.
-2. **Hub, first version** (private repository). Accounts, OpenID Connect, instance registration.
+2. **Hub, first version** (private repository `RUverse/mytaste-hub`). Accounts, OpenID
+   Connect, instance registration.
    In the app: "Connect this server to MyTaste", "Sign in with MyTaste", invites by Hub account,
    and linking a local user to a Hub account. The landing page's Login and a waitlist move onto
    the Hub at this point.
