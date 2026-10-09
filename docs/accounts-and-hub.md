@@ -154,6 +154,12 @@ The Hub's code is private, but its interface is part of the app's contract:
 - **Ratings**: set or clear the user's rating of a title, identified the same way
   `saved_items` identifies it (TMDB movie or series id, Steam app id, Xbox product id); read a
   title's community rating (count and score).
+- **Waitlist** (used by the landing page in `site/`, not the app): `POST /api/waitlist` with
+  `{"email", "audience", "interests"}` as JSON, accepted only from the landing page's own
+  sites. The answers' values are listed in `site/README.md`.
+
+The Hub sends its own email (confirming an address, resetting a password) through a
+transactional email service; instances never send email for it.
 
 Ratings need care because anyone can run an instance. The Hub counts at most one rating per Hub
 account per title, rate-limits changes, and may weigh new accounts less. Scores are shown as a
@@ -171,8 +177,9 @@ Each step is useful on its own and ships as its own pull requests.
    owner.
 2. **Hub, first version** (private repository). Accounts, OpenID Connect, instance registration.
    In the app: "Connect this server to MyTaste", "Sign in with MyTaste", invites by Hub account,
-   and linking a local user to a Hub account. The landing page's Login and a waitlist move onto
-   the Hub at this point.
+   and linking a local user to a Hub account. The landing page's Login page now has a waitlist
+   whose sign-ups the Hub keeps ([#26](https://github.com/RUverse/my-taste/pull/26)); hosted
+   sign-ups open from it later.
 3. **Sharing collections.** `.taste` export and import in the app (the remaining milestones of
    [Portable collections](taste-collections.md)), then publishing to and adding from the Hub.
 4. **Ratings.** Rate titles in the app, send them to the Hub when the user has turned that on,
@@ -181,7 +188,6 @@ Each step is useful on its own and ships as its own pull requests.
 
 ## Open questions
 
-- How the Hub sends email (invites, password resets for Hub accounts) and from which domain.
 - Account deletion and data export for Hub accounts, and how deleting one affects collections
   others have added (they keep their own copy, since adding a collection copies it).
 - Whether members of a self-hosted instance may connect their own Steam accounts, or only the

@@ -31,8 +31,9 @@ effect, and the slides. Without JavaScript the pages are plain sections below th
 The Login page's **Join the waitlist** button opens a dialog (`<dialog class="waitlist">`)
 whose form posts JSON to the MyTaste Hub (`https://hub.mytaste.cc/api/waitlist`, the form's
 `action`), which keeps the list; the hub only accepts it from `mytaste.cc` and
-`www.mytaste.cc`. The answers' values (`me`, `household`, …, `streaming`, `games`, …) must
-match the ones the hub accepts. To try the form locally, run a hub with
+`www.mytaste.cc`. The answers' values must match the ones the hub accepts: `audience` is one
+of `me`, `household`, `friends`, `community`, and `interests` a list drawn from `streaming`,
+`library`, `games`, `music`, `articles`, `sharing`. To try the form locally, run a hub with
 `HUB_WAITLIST_ORIGINS` set to the preview's address and point the `action` at it.
 
 ## Preview
