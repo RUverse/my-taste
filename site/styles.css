@@ -35,6 +35,10 @@
   --cover-3: #f7f7f7;
   --sheet-shadow: rgb(0 0 0 / 0.18);
   --hue-start: 355;
+  --field: rgb(0 0 0 / 0.025);
+  --field-edge: rgb(0 0 0 / 0.18);
+  --muted: #8a8a8a;
+  --error: #b3261e;
 
   --ease: cubic-bezier(0.76, 0, 0.24, 1);
   --bar-h: 4.8rem;
@@ -78,6 +82,10 @@
     --cover-3: #080808;
     --sheet-shadow: rgb(0 0 0 / 0.8);
     --hue-start: 295;
+    --field: rgb(255 255 255 / 0.04);
+    --field-edge: rgb(255 255 255 / 0.18);
+    --muted: #8f8f8f;
+    --error: #ff8a80;
   }
 }
 
@@ -532,8 +540,11 @@ a:focus-visible,
   margin-top: 0.4em;
   padding: 0.6em 1.3em;
   border: 1px solid currentColor;
+  background: transparent;
   color: var(--ink);
+  font: inherit;
   text-decoration: none;
+  cursor: pointer;
   transition:
     background 0.2s,
     color 0.2s;
@@ -542,6 +553,302 @@ a:focus-visible,
 .button:hover {
   background: var(--ink);
   color: var(--bg);
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.button[hidden] {
+  display: none;
+}
+
+/* The main action: filled, and a little lighter on hover. */
+.button-solid {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.button-solid:hover {
+  background: color-mix(in srgb, var(--ink) 82%, var(--bg));
+}
+
+.page .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em 0.9em;
+}
+
+/* Waitlist: a modal form that posts to the hub. */
+
+.waitlist {
+  width: min(32rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 2rem);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--shot-edge);
+  background: var(--sheet);
+  color: var(--text);
+  box-shadow: 0 2rem 5rem -1rem rgb(0 0 0 / 0.45);
+  font-size: 15px;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  transform: translateY(0.75rem) scale(0.98);
+  transition:
+    opacity 0.18s ease,
+    transform 0.35s var(--snap),
+    overlay 0.18s allow-discrete,
+    display 0.18s allow-discrete;
+}
+
+.waitlist[open] {
+  opacity: 1;
+  transform: none;
+}
+
+.waitlist::backdrop {
+  background: rgb(0 0 0 / 0);
+  transition:
+    background 0.18s ease,
+    overlay 0.18s allow-discrete,
+    display 0.18s allow-discrete;
+}
+
+.waitlist[open]::backdrop {
+  background: rgb(0 0 0 / 0.5);
+}
+
+@starting-style {
+  .waitlist[open] {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.98);
+  }
+
+  .waitlist[open]::backdrop {
+    background: rgb(0 0 0 / 0);
+  }
+}
+
+.waitlist-body {
+  position: relative;
+  padding: 2rem;
+}
+
+.waitlist h2 {
+  margin: 0 0 0.5rem;
+  padding-right: 2.5rem;
+  color: var(--ink);
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.waitlist h2:focus {
+  outline: none;
+}
+
+.waitlist p {
+  margin: 0 0 1.5rem;
+}
+
+.waitlist-close {
+  position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.waitlist-close:hover {
+  background: var(--code-bg);
+}
+
+.waitlist-close:focus-visible {
+  outline: 2px solid var(--ink);
+}
+
+.waitlist-close svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.field {
+  display: grid;
+  gap: 0.45rem;
+  min-width: 0;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border: 0;
+}
+
+.field > span,
+.field > legend {
+  padding: 0;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.field > legend {
+  margin-bottom: 0.65rem;
+}
+
+.field legend span {
+  display: block;
+  margin-top: 0.1rem;
+  color: var(--text);
+  font-size: 0.9em;
+  font-weight: 400;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--field-edge);
+  border-radius: 0;
+  background-color: var(--field);
+  color: var(--ink);
+  font: inherit;
+  transition: border-color 0.15s;
+}
+
+.field input::placeholder {
+  color: var(--muted);
+}
+
+.field select {
+  appearance: none;
+  padding-right: 2.4rem;
+  /* A small chevron drawn from two triangles. */
+  background-image:
+    linear-gradient(45deg, transparent 50%, currentColor 50%),
+    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position:
+    calc(100% - 1.2rem) 55%,
+    calc(100% - 0.85rem) 55%;
+  background-size: 0.35rem 0.35rem;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+.field select:invalid {
+  color: var(--muted);
+}
+
+.field option {
+  background: var(--sheet);
+  color: var(--ink);
+}
+
+.field input:hover,
+.field select:hover {
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+.field input:focus-visible,
+.field select:focus-visible {
+  border-color: var(--ink);
+  outline: 2px solid color-mix(in srgb, var(--ink) 25%, transparent);
+  outline-offset: 0;
+}
+
+.field [aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chip {
+  position: relative;
+}
+
+.chip input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.chip span {
+  display: block;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--field-edge);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 0.93em;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.chip:hover span {
+  border-color: color-mix(in srgb, var(--ink) 45%, transparent);
+}
+
+.chip input:checked + span {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.chip input:focus-visible + span {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
+/* The honeypot stays out of sight and out of the tab order. */
+.trap {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.waitlist .waitlist-status {
+  margin: 0 0 0.9rem;
+}
+
+.waitlist-status:empty {
+  display: none;
+}
+
+.waitlist-status[data-tone="error"] {
+  color: var(--error);
+}
+
+.waitlist-submit {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.85rem 1.3em;
+  font-weight: 600;
+}
+
+.waitlist-submit:disabled {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 /* A page is open: the curtain sweeps over the hero and hides it completely. */
@@ -630,6 +937,19 @@ a:focus-visible,
     margin-bottom: 2.5rem;
   }
 
+  .waitlist {
+    width: calc(100vw - 1.5rem);
+    max-height: calc(100dvh - 1.5rem);
+  }
+
+  .waitlist-body {
+    padding: 1.5rem 1.25rem;
+  }
+
+  .waitlist-close {
+    top: 0.75rem;
+    right: 0.75rem;
+  }
 }
 
 /* Without JavaScript the pages are ordinary sections below the hero. */
@@ -699,5 +1019,13 @@ html:not(.js) .page {
 
   .page.is-active {
     transition: opacity 0.3s ease;
+  }
+
+  /* Fade only; transform isn't transitioned, so the dialog doesn't move. */
+  .waitlist {
+    transition:
+      opacity 0.15s ease,
+      overlay 0.15s allow-discrete,
+      display 0.15s allow-discrete;
   }
 }

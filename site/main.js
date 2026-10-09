@@ -222,7 +222,8 @@
     show(null);
   };
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") goHome();
+    // An open dialog closes itself on Escape; leave the page open behind it.
+    if (event.key === "Escape" && !document.querySelector("dialog[open]")) goHome();
   });
   // The browser scrolls a linked page's section into view once the document loads; undo it.
   window.addEventListener(
@@ -233,6 +234,77 @@
     },
     { once: true },
   );
+
+  // Waitlist: a dialog whose form posts JSON to the hub, which keeps the list.
+  const waitlist = document.querySelector(".waitlist");
+  const form = waitlist.querySelector(".waitlist-form");
+  const done = waitlist.querySelector(".waitlist-done");
+  const status = form.querySelector(".waitlist-status");
+  const submit = form.querySelector('[type="submit"]');
+  const say = (message, tone = "") => {
+    status.textContent = message;
+    status.dataset.tone = tone;
+  };
+  document.querySelectorAll("[data-open-waitlist]").forEach((button) => {
+    button.hidden = false;
+    button.addEventListener("click", () => {
+      form.hidden = false;
+      done.hidden = true;
+      say("");
+      waitlist.showModal();
+      form.elements.email.focus();
+    });
+  });
+  waitlist.querySelectorAll("[data-close-waitlist]").forEach((button) => {
+    button.addEventListener("click", () => waitlist.close());
+  });
+  // A click on the backdrop lands on the dialog itself; its content fills the inside.
+  waitlist.addEventListener("click", (event) => {
+    if (event.target === waitlist) waitlist.close();
+  });
+  form.addEventListener("input", (event) => {
+    event.target.removeAttribute("aria-invalid");
+    say("");
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const fields = form.elements;
+    for (const field of [fields.email, fields.audience]) {
+      if (!field.checkValidity()) {
+        field.setAttribute("aria-invalid", "true");
+        say(field.name === "email" ? "Enter a valid email address." : "Choose who MyTaste is for.", "error");
+        field.focus();
+        return;
+      }
+    }
+    const data = new FormData(form);
+    say("");
+    submit.disabled = true;
+    submit.textContent = "Joining…";
+    try {
+      const response = await fetch(form.action, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          email: data.get("email"),
+          audience: data.get("audience"),
+          interests: data.getAll("interests"),
+          website: data.get("website"),
+        }),
+      });
+      const reply = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(reply.error || "Something went wrong. Try again in a moment.");
+      form.reset();
+      form.hidden = true;
+      done.hidden = false;
+      done.querySelector("h2").focus();
+    } catch (error) {
+      say(error instanceof TypeError ? "Couldn't reach MyTaste. Check your connection and try again." : error.message, "error");
+    } finally {
+      submit.disabled = false;
+      submit.textContent = "Join the waitlist";
+    }
+  });
 
   // Open a linked page without animating the curtain in.
   body.classList.add("no-anim");

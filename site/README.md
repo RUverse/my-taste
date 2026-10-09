@@ -28,6 +28,13 @@ along (`--dock-*` in `styles.css`). The page scrolls on its own layer over the c
 button, or a click on the small logo returns home. `prefers-reduced-motion` turns off the hue cycle, the cursor
 effect, and the slides. Without JavaScript the pages are plain sections below the hero.
 
+The Login page's **Join the waitlist** button opens a dialog (`<dialog class="waitlist">`)
+whose form posts JSON to the MyTaste Hub (`https://hub.mytaste.cc/api/waitlist`, the form's
+`action`), which keeps the list; the hub only accepts it from `mytaste.cc` and
+`www.mytaste.cc`. The answers' values (`me`, `household`, …, `streaming`, `games`, …) must
+match the ones the hub accepts. To try the form locally, run a hub with
+`HUB_WAITLIST_ORIGINS` set to the preview's address and point the `action` at it.
+
 ## Preview
 
 ```bash
