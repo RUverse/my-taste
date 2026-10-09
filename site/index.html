@@ -197,8 +197,13 @@
           <h2 id="login-title" tabindex="-1">Login</h2>
           <p class="lead">One interface to all entertainment: your streaming services, local movies,
             games, and articles.</p>
-          <p>Hosted accounts are not open yet. Until then, run MyTaste on your own machine.</p>
-          <p><a class="button" href="#self-host" data-page="self-host">Self-host it</a></p>
+          <p>Hosted accounts are opening gradually. Join the waitlist and we'll email you when there's
+            room for you. Until then, you can run MyTaste on your own machine.</p>
+          <p class="actions">
+            <button class="button button-solid" type="button" data-open-waitlist hidden>Join the waitlist</button>
+            <a class="button" href="#self-host" data-page="self-host">Self-host it</a>
+          </p>
+          <noscript><p>Turn on JavaScript to join the waitlist.</p></noscript>
         </div>
         <div class="shots">
           <figure>
@@ -282,6 +287,60 @@ uv run mytaste serve</code></pre>
     <div class="cover" style="--f0: 0.3; --fw: 0.4; --dy: -12px; --sl: 7px; --sr: 0px; --shade: var(--cover-2); --open-delay: 0.04s; --close-delay: 0.04s"></div>
     <div class="cover" style="--f0: 0.6; --fw: 0.4; --dy: -12px; --sl: 2px; --sr: 10px; --shade: var(--cover-3); --open-delay: 0s; --close-delay: 0.08s"></div>
   </div>
+
+  <!-- The waitlist form posts to the MyTaste Hub, which keeps the list. -->
+  <dialog class="waitlist" id="waitlist" aria-labelledby="waitlist-title" aria-describedby="waitlist-intro">
+    <div class="waitlist-body">
+      <button class="waitlist-close" type="button" data-close-waitlist aria-label="Close">
+        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M3 3l10 10M13 3L3 13"/></svg>
+      </button>
+      <form class="waitlist-form" action="https://hub.mytaste.cc/api/waitlist" method="post" novalidate>
+        <h2 id="waitlist-title">Join the waitlist</h2>
+        <p id="waitlist-intro">Hosted MyTaste is rolling out gradually. Tell us a little about your
+          setup and we'll add you to the list.</p>
+
+        <label class="field">
+          <span>Email address</span>
+          <input type="email" name="email" autocomplete="email" placeholder="you@example.com" required maxlength="254">
+        </label>
+
+        <label class="field">
+          <span>Who is MyTaste for?</span>
+          <select name="audience" required>
+            <option value="" selected disabled>Choose one</option>
+            <option value="me">Just me</option>
+            <option value="household">Me and my household</option>
+            <option value="friends">Friends and family</option>
+            <option value="community">A club or community</option>
+          </select>
+        </label>
+
+        <fieldset class="field">
+          <legend>What do you want in one place? <span>Select all that apply.</span></legend>
+          <div class="chips">
+            <label class="chip"><input type="checkbox" name="interests" value="streaming"><span>Streaming services</span></label>
+            <label class="chip"><input type="checkbox" name="interests" value="library"><span>My own movies and shows</span></label>
+            <label class="chip"><input type="checkbox" name="interests" value="games"><span>Games</span></label>
+            <label class="chip"><input type="checkbox" name="interests" value="music"><span>Music</span></label>
+            <label class="chip"><input type="checkbox" name="interests" value="articles"><span>Articles</span></label>
+            <label class="chip"><input type="checkbox" name="interests" value="sharing"><span>Sharing collections</span></label>
+          </div>
+        </fieldset>
+
+        <!-- People never see this field; bots fill it in. -->
+        <label class="trap" aria-hidden="true">Website <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+
+        <p class="waitlist-status" role="status"></p>
+        <button class="button button-solid waitlist-submit" type="submit">Join the waitlist</button>
+      </form>
+
+      <div class="waitlist-done" hidden>
+        <h2 tabindex="-1">You're on the list</h2>
+        <p>Thanks. We'll email you when hosted MyTaste has room for you.</p>
+        <button class="button button-solid waitlist-submit" type="button" data-close-waitlist>Done</button>
+      </div>
+    </div>
+  </dialog>
 
   <script src="main.js" defer></script>
 </body>
