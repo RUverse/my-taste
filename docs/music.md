@@ -99,9 +99,9 @@ Researched on October 18, 2026, from the official developer sites and with keyle
 - **Your Spotify library is your own data, brought in rather than mirrored.** Your saved albums
   and followed artists are matched to MusicBrainz and shown as ordinary albums. Albums that don't
   match yet appear in a separate Spotify row that follows Spotify's rules.
-- **SoundCloud starts without an account**: paste a track or set link to save it, and it plays
-  in SoundCloud's own widget. Connecting a SoundCloud account (likes, playlists) is an optional
-  extra for owners with Artist Pro.
+- **SoundCloud works without an account**: paste a track or set link to save it, and it plays in
+  SoundCloud's own widget. Connecting a SoundCloud account needs an Artist Pro app, so it waits
+  (see [Later](#later)).
 - **One provider plays at a time.** A queue never mixes Spotify and SoundCloud, and no audio is
   stored.
 
@@ -143,14 +143,17 @@ size cap (default 500 MB). Missing covers fall back to the existing placeholder.
 | Collection | Source | Order |
 | --- | --- | --- |
 | Popular | Apple Music's 100 most-played albums in the user's region, matched to MusicBrainz | Chart |
+| Most listened | ListenBrainz's sitewide top albums this month | Listens |
 | New releases | ListenBrainz fresh releases, albums and EPs, last 30 days | Date, or popularity once listens arrive |
-| Your albums | Spotify saved albums (plus SoundCloud likes when connected) | Date saved, or any sort |
+| Your albums | Spotify saved albums | Date saved, or any sort |
 | New from your artists | Release groups of followed and saved artists, last 90 days | Date |
 | Genre collections | MusicBrainz genres, like the film genre collections | Popularity |
-| Most listened | ListenBrainz sitewide, this month | Listens |
 
-Popular is the one place a non-MusicBrainz list decides the order. The album's Apple Music page is
-linked from its details, as the feed's terms expect.
+Popular and Most listened are two separate charts, side by side. Apple's is mainstream and
+current, but each entry has to be matched to MusicBrainz, and an entry that doesn't match is left
+out. ListenBrainz's already uses MBIDs, but it follows what its own listeners play. Popular is the
+one place a non-MetaBrainz list decides the order. The album's Apple Music page is linked from its
+details, as the feed's terms expect.
 
 ### Sorts and the global order
 
@@ -262,9 +265,8 @@ connects their own accounts (`music_accounts`, per user).
   `user-read-playback-state`, `user-modify-playback-state`, and `streaming`. A Spotify user who
   isn't on the allowlist gets a 403 on every call. MyTaste explains that the owner has to add
   them.
-- **SoundCloud** needs nothing to paste links and play them. "Connect SoundCloud" appears only
-  when `MYTASTE_SOUNDCLOUD_CLIENT_ID` and `_SECRET` are set (an Artist Pro app). It uses OAuth 2.1
-  with PKCE, and its refresh tokens are single-use, so each refresh stores the new one.
+- **SoundCloud** needs no setup and no account. Pasted links play in the widget. Connecting an
+  account is in [Later](#later).
 - **Library refresh**: saved albums and followed artists are read after connecting, then every
   six hours or on demand, like Steam's owned games. They are matched to MusicBrainz in the
   background, and a failed refresh keeps the previous list.
@@ -275,20 +277,22 @@ connects their own accounts (`music_accounts`, per user).
   Spotify-only snapshots) at once. Spotify requires deletion within five days. Spotify has no
   revoke endpoint, so the page links to the user's Spotify app settings.
 - **Hosted mode**: the music catalog, saving, Listen-on links, embeds, and SoundCloud's widget
-  work. Spotify and SoundCloud accounts are turned off, because neither service's terms allow one
-  shared app for strangers.
+  work. Spotify accounts are turned off, because Spotify's terms don't allow one shared app for
+  strangers.
 
 ## Saving music to collections
 
-The + button and the details Save menu work for albums and SoundCloud items as for films and
-games.
+The + button and the details Save menu work for albums and SoundCloud tracks and sets as for
+films and games. Songs, Spotify playlists, and artists come later.
 
 - **Migration**: `saved_items.kind` is limited to `movie`, `tv`, and `game` by a CHECK
   constraint, which SQLite can't alter. The table is rebuilt once in a transaction, using
   SQLite's documented procedure: create the new table, copy, drop, rename, recreate the indexes,
   then run `foreign_key_check` before committing. IDs, portable IDs, and every entry's order and
   date are preserved. Nothing is deleted from the old data, and the live database is backed up
-  first. The new kinds are `album`, `track`, and `playlist`. The new columns are `mbid`,
+  first. The new kinds are `album`, `track`, `playlist`, and `artist`. SoundCloud tracks use
+  `track` and SoundCloud sets use `playlist`. `artist` and Spotify's tracks and playlists are
+  allowed now so the later steps don't need a second rebuild. The new columns are `mbid`,
   `spotify_id`, and `soundcloud_urn`, each with a partial unique index per kind.
 - **Snapshots**: an album's snapshot holds MusicBrainz facts (CC0), so it is durable like a film's.
   A Spotify-only or SoundCloud item keeps only what is needed to show and play it (ID, title,
@@ -321,8 +325,8 @@ will say so.
 Each step is useful on its own and ships as its own pull request.
 
 1. **Catalog and views, no accounts.** The music package, MusicBrainz/ListenBrainz/Cover Art
-   Archive/Apple clients with the request queue and cover cache, the Music tab with Popular, New
-   releases, genres, and Most listened, search, filters, sorts, Grid/Wall/List/Shelves, album
+   Archive/Apple clients with the request queue and cover cache, the Music tab with Popular, Most
+   listened, New releases, and genres, search, filters, sorts, Grid/Wall/List/Shelves, album
    details with Listen-on links and the Spotify embed, and saving albums (with the `saved_items`
    rebuild). Done when a fresh instance with no music settings browses, saves, and opens albums,
    an existing database upgrades with every collection intact, and a cold Popular page renders
@@ -334,31 +338,51 @@ Each step is useful on its own and ships as its own pull request.
 3. **Keep playing while browsing.** Fetch-and-swap navigation for the whole app, per-page
    listeners in `app.js` and `games.js`, and Media Session. Done when an album started in this
    browser keeps playing across collections, details, search, settings, and back/forward.
-4. **SoundCloud.** Saving pasted links with oEmbed, the docked widget in the player bar, and
-   optional Connect SoundCloud (likes and playlists) for Artist Pro owners.
-5. **More.** The Crate view; saving tracks and Spotify playlists; `.taste` export of music;
-   Apple Music and Bandcamp as play targets through links.
+4. **SoundCloud.** Saving pasted track and set links with oEmbed, and the docked widget in the
+   player bar.
 
 Tests use recorded responses for every provider and never call live services, as the existing
 web tests do. The migration is tested on a copy of a database with films, series, and games in
 several collections.
 
-## Questions for the owner
+## Decisions
 
-1. **MusicBrainz as the catalog** (recommended), with Spotify and SoundCloud as where music plays.
-   The alternative, a Music tab made of Spotify content, would be limited to five people per
-   instance, rows of at most 20, no new releases or popularity, and no SoundCloud next to it.
-2. **Popular from Apple Music's chart in your region** (recommended: mainstream and current, but
-   needs matching), or from ListenBrainz (native MBIDs, but skewed toward a niche audience).
-3. **SoundCloud without an account first.** Connecting needs an Artist Pro subscription per
-   instance. Do you have one, or want one, to build and test Connect SoundCloud?
-4. **Keep music playing across pages** with fetch-and-swap navigation (recommended), or a small
-   pop-out player window that is simpler but clumsy on phones.
-5. **What can be saved first**: albums and SoundCloud tracks/sets (recommended); songs, Spotify
-   playlists, and artists later.
-6. **Music stays out of All** (recommended), or albums join All's smart collections like games.
+The owner answered the plan's questions on October 19, 2026.
+
+1. **MusicBrainz is the catalog**, and Spotify and SoundCloud are where music plays. MusicBrainz
+   won't have everything, so another catalog may fill the gaps later.
+2. **Both charts**: Popular (Apple Music, the user's region) and Most listened (ListenBrainz) are
+   separate collections.
+3. **No Artist Pro**, so SoundCloud is pasted links and the widget. Connect SoundCloud waits.
+4. **Fetch-and-swap navigation** keeps music playing. Full page reloads go.
+5. **Albums and SoundCloud tracks and sets are saved first.** The rest is listed under Later.
+6. **Music stays out of All.**
 
 ## Later
+
+Postponed from the first four steps:
+
+- **Saving songs.** MusicBrainz recordings and Spotify tracks as `track` items, matched by ISRC,
+  with a song row in the List view and per-song Save in details.
+- **Spotify playlists.** Saved as `playlist` items that keep only the ID and what is needed to
+  show and play them, refreshed from Spotify, and shown in Spotify-only rows under its rules.
+- **Artists.** Saving artists to collections and a full artist page (discography by type,
+  popularity, links), as `artist` items keyed by MBID.
+- **Connect SoundCloud** (likes, playlists, and follows in Your albums). It needs an Artist Pro
+  app per instance, set with `MYTASTE_SOUNDCLOUD_CLIENT_ID` and `_SECRET`, OAuth 2.1 with PKCE,
+  and single-use refresh tokens that are stored again on each refresh.
+- **The Crate view.**
+- **`.taste` export of music**, once `music.playlist` and the `soundcloud` ID name are accepted in
+  the taste repository.
+- **Apple Music and Bandcamp as play targets**, opening the album there from Play.
+- **More catalogs for the gaps.** MusicBrainz lags on brand-new, regional, and independent
+  releases. A second source can supply albums it lacks: Apple's keyless lookup and search (by
+  barcode, then artist and title), or Discogs or Deezer if their terms fit. Such an album gets its
+  own key, such as `album-apple-<id>`, and is merged into the MusicBrainz album by barcode once
+  that exists, keeping its collection entries. Until then, unmatched albums link to Harmony, which
+  imports a Spotify or Apple release into MusicBrainz, so users can fill the gap themselves.
+
+Further out:
 
 - Local music files in storage libraries (FLAC, MP3, AAC), played by the existing playback stack.
   No provider rules apply, so they can sit in any grid or queue.
@@ -366,5 +390,3 @@ several collections.
   server itself a Spotify speaker in the living room.
 - A MusicBrainz mirror or shared catalog cache on the Hub, to spare MusicBrainz as instances grow.
 - Sending plays to ListenBrainz when a user links their account.
-- Unmatched albums link to Harmony, which imports a Spotify release into MusicBrainz, so users
-  can fill the gap.
