@@ -12,8 +12,9 @@ from uuid import uuid4
 
 from mytaste.accounts.context import current_user_id
 from mytaste.catalog.models import SORT_KEYS, MediaType
-from mytaste.collections.models import ICONS, Collection, CollectionItem, SavedGame
+from mytaste.collections.models import ICONS, Collection, CollectionItem, SavedAlbum, SavedGame
 from mytaste.games.models import Game, game_key, parse_game_key
+from mytaste.music.models import Album
 from mytaste.storage.migrations import FIRST_USER_ID
 
 _MAX_NAME_LENGTH = 60
@@ -90,7 +91,10 @@ class CollectionRepository:
                 """
             )
         self._migrate_saved_items("saved_items" not in tables and "collection_items" in tables)
+        self._make_room_for_music()
         with self._connect() as connection:
+            for statement in _MUSIC_INDEXES:
+                connection.execute(statement)
             columns = {row[1] for row in connection.execute("PRAGMA table_info(collections)")}
             if "user_id" not in columns:
                 # Collections from before accounts belong to the first user.
@@ -169,6 +173,60 @@ class CollectionRepository:
                     JOIN saved_items AS saved
                       ON saved.kind = old.media_type AND saved.tmdb_id = old.tmdb_id
                     """
+                )
+            connection.execute("COMMIT")
+        except BaseException:
+            if connection.in_transaction:
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+
+    def _make_room_for_music(self) -> None:
+        """Rebuild ``saved_items`` once so it can hold music.
+
+        Its CHECK constraint allowed only movies, series, and games, and SQLite can't change a
+        constraint in place. The table is rebuilt in one transaction by SQLite's documented
+        procedure, with foreign keys off so the collection entries pointing at it stay: create
+        the new table, copy every row with its ID, drop the old table, rename the new one,
+        recreate its indexes, and check every foreign key before committing. IDs, portable
+        IDs, snapshots, and every entry's order and date are kept. The rebuild can't be undone
+        by going back to an older MyTaste, so the database is copied to ``backups/`` first.
+        """
+
+        connection = sqlite3.connect(self.database_path, timeout=5, isolation_level=None)
+        try:
+            if not _needs_music_rebuild(connection):
+                return
+            _backup(connection, self.database_path, "before-music")
+            # Only takes effect outside a transaction.
+            connection.execute("PRAGMA foreign_keys = OFF")
+            connection.execute("BEGIN IMMEDIATE")
+            if not _needs_music_rebuild(connection):
+                connection.execute("COMMIT")
+                return
+            sequence = connection.execute(
+                "SELECT seq FROM sqlite_sequence WHERE name = 'saved_items'"
+            ).fetchone()
+            connection.execute(_SAVED_ITEMS_TABLE.format(name="saved_items_music"))
+            connection.execute(
+                f"INSERT INTO saved_items_music ({_FILM_AND_GAME_COLUMNS}) "
+                f"SELECT {_FILM_AND_GAME_COLUMNS} FROM saved_items"
+            )
+            connection.execute("DROP TABLE saved_items")
+            connection.execute("ALTER TABLE saved_items_music RENAME TO saved_items")
+            for statement in _SAVED_ITEMS_INDEXES:
+                connection.execute(statement)
+            if sequence is not None:
+                # IDs of deleted items are never handed out again.
+                connection.execute(
+                    "UPDATE sqlite_sequence SET seq = MAX(seq, ?) WHERE name = 'saved_items'",
+                    (int(sequence[0]),),
+                )
+            problems = connection.execute("PRAGMA foreign_key_check").fetchall()
+            if problems:
+                raise sqlite3.IntegrityError(
+                    f"Rebuilding saved items would break {len(problems)} references"
                 )
             connection.execute("COMMIT")
         except BaseException:
@@ -449,6 +507,87 @@ class CollectionRepository:
                     saved.setdefault(key, set()).add(int(collection_id))
         return {key: frozenset(ids) for key, ids in saved.items()}
 
+    # Music ------------------------------------------------------------------------------
+
+    def albums(self, collection_id: int) -> tuple[SavedAlbum, ...]:
+        """Return a collection's albums, in the order they were added."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT s.snapshot, s.mbid, e.added_at, e.position, s.title "
+                "FROM collection_entries e JOIN saved_items s ON s.id = e.item_id "
+                f"WHERE e.collection_id = ? AND s.kind = 'album' AND {_OWN_COLLECTION} "
+                "ORDER BY e.position",
+                (collection_id, current_user_id()),
+            ).fetchall()
+        return tuple(_saved_album(row) for row in rows)
+
+    def add_album(self, collection_id: int, album: Album, added_at: str = "") -> bool:
+        """Save an album with a snapshot of its MusicBrainz facts; ``False`` if already there."""
+
+        snapshot = json.dumps(album.payload())
+        summary = (album.title, album.release_date, json.dumps(list(album.genres)), snapshot)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT id FROM saved_items WHERE kind = 'album' AND mbid = ?", (album.mbid,)
+            ).fetchone()
+            if row is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO saved_items (
+                        portable_id, kind, mbid, title, release_date, genres, snapshot
+                    ) VALUES (?, 'album', ?, ?, ?, ?, ?)
+                    """,
+                    (album.portable_id, album.mbid, *summary),
+                )
+                item_id = int(cursor.lastrowid or 0)
+            else:
+                item_id = int(row[0])
+                connection.execute(
+                    "UPDATE saved_items SET title = ?, release_date = ?, genres = ?, "
+                    "snapshot = ? WHERE id = ?",
+                    (*summary, item_id),
+                )
+            return _add_entry(connection, collection_id, item_id, added_at or utc_now())
+
+    def remove_album(self, collection_id: int, mbid: str) -> bool:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                f"""
+                DELETE FROM collection_entries AS e
+                WHERE e.collection_id = ? AND e.item_id IN (
+                    SELECT id FROM saved_items WHERE kind = 'album' AND mbid = ?
+                ) AND {_OWN_COLLECTION}
+                """,
+                (collection_id, mbid, current_user_id()),
+            )
+        return cursor.rowcount > 0
+
+    def album_memberships(self, mbid: str) -> frozenset[int]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT e.collection_id FROM collection_entries e "
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = 'album' AND s.mbid = ? "
+                f"AND {_OWN_COLLECTION}",
+                (mbid, current_user_id()),
+            ).fetchall()
+        return frozenset(int(row[0]) for row in rows)
+
+    def saved_album_memberships(self) -> dict[str, frozenset[int]]:
+        """Map every saved album's MBID to the ids of the collections holding it."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT s.mbid, e.collection_id FROM collection_entries e "
+                "JOIN saved_items s ON s.id = e.item_id WHERE s.kind = 'album' "
+                f"AND {_OWN_COLLECTION}",
+                (current_user_id(),),
+            ).fetchall()
+        saved: dict[str, set[int]] = {}
+        for mbid, collection_id in rows:
+            saved.setdefault(str(mbid), set()).add(int(collection_id))
+        return {key: frozenset(ids) for key, ids in saved.items()}
+
     # Availability -----------------------------------------------------------------------
 
     def availability(
@@ -522,18 +661,24 @@ _ITEM_SELECT = """
     FROM collection_entries e JOIN saved_items s ON s.id = e.item_id
 """
 
-# A saved item is one movie, series, or game, shared by every collection holding it; an entry
-# is its place in one collection. Movies and series are identified by TMDB, games by their
-# Steam app or Xbox product (either can be found later).
-_SAVED_ITEMS_SCHEMA = (
-    """
-    CREATE TABLE IF NOT EXISTS saved_items (
+# A saved item is one movie, series, game, or piece of music, shared by every collection
+# holding it; an entry is its place in one collection. Movies and series are identified by
+# TMDB, games by their Steam app or Xbox product (either can be found later), and music by its
+# MusicBrainz, Spotify, or SoundCloud ID. Albums, SoundCloud tracks and sets, Spotify tracks
+# and playlists, and artists are all allowed, so later steps need no second rebuild.
+_KINDS = "'movie', 'tv', 'game', 'album', 'track', 'playlist', 'artist'"
+_MUSIC_KINDS = "'album', 'track', 'playlist', 'artist'"
+_SAVED_ITEMS_TABLE = f"""
+    CREATE TABLE IF NOT EXISTS {{name}} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         portable_id TEXT NOT NULL UNIQUE,
-        kind TEXT NOT NULL CHECK (kind IN ('movie', 'tv', 'game')),
+        kind TEXT NOT NULL CHECK (kind IN ({_KINDS})),
         tmdb_id INTEGER CHECK (tmdb_id > 0),
         steam_appid INTEGER CHECK (steam_appid > 0),
         xbox_id TEXT,
+        mbid TEXT,
+        spotify_id TEXT,
+        soundcloud_urn TEXT,
         title TEXT NOT NULL,
         release_date TEXT NOT NULL DEFAULT '',
         overview TEXT NOT NULL DEFAULT '',
@@ -542,17 +687,37 @@ _SAVED_ITEMS_SCHEMA = (
         poster_path TEXT,
         genre_ids TEXT NOT NULL DEFAULT ',',
         genres TEXT NOT NULL DEFAULT '[]',
-        snapshot TEXT NOT NULL DEFAULT '{}',
-        CHECK ((kind = 'game') = (tmdb_id IS NULL)),
-        CHECK (kind != 'game' OR steam_appid IS NOT NULL OR xbox_id IS NOT NULL)
+        snapshot TEXT NOT NULL DEFAULT '{{{{}}}}',
+        CHECK ((kind IN ('movie', 'tv')) = (tmdb_id IS NOT NULL)),
+        CHECK (kind != 'game' OR steam_appid IS NOT NULL OR xbox_id IS NOT NULL),
+        CHECK (kind NOT IN ({_MUSIC_KINDS}) OR mbid IS NOT NULL OR spotify_id IS NOT NULL
+               OR soundcloud_urn IS NOT NULL)
     )
-    """,
+"""
+# The columns a table from before music has; the rebuild copies exactly these.
+_FILM_AND_GAME_COLUMNS = (
+    "id, portable_id, kind, tmdb_id, steam_appid, xbox_id, title, release_date, overview, "
+    "rating, popularity, poster_path, genre_ids, genres, snapshot"
+)
+_SAVED_ITEMS_INDEXES = (
     "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_tmdb ON saved_items (kind, tmdb_id) "
     "WHERE tmdb_id IS NOT NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_steam ON saved_items (steam_appid) "
     "WHERE steam_appid IS NOT NULL",
     "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_xbox ON saved_items (xbox_id) "
     "WHERE xbox_id IS NOT NULL",
+)
+_MUSIC_INDEXES = (
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_mbid ON saved_items (kind, mbid) "
+    "WHERE mbid IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_spotify ON saved_items (kind, spotify_id) "
+    "WHERE spotify_id IS NOT NULL",
+    "CREATE UNIQUE INDEX IF NOT EXISTS saved_items_soundcloud "
+    "ON saved_items (kind, soundcloud_urn) WHERE soundcloud_urn IS NOT NULL",
+)
+_SAVED_ITEMS_SCHEMA = (
+    _SAVED_ITEMS_TABLE.format(name="saved_items"),
+    *_SAVED_ITEMS_INDEXES,
     """
     CREATE TABLE IF NOT EXISTS collection_entries (
         collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
@@ -564,6 +729,29 @@ _SAVED_ITEMS_SCHEMA = (
     """,
     "CREATE INDEX IF NOT EXISTS collection_entries_item ON collection_entries (item_id)",
 )
+
+
+def _needs_music_rebuild(connection: sqlite3.Connection) -> bool:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'saved_items'"
+    ).fetchone()
+    return row is not None and "'album'" not in str(row[0])
+
+
+def _backup(connection: sqlite3.Connection, database_path: Path, reason: str) -> Path:
+    """Copy the database to ``backups/`` beside it, named by the time and ``reason``."""
+
+    folder = database_path.parent / "backups"
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    target = folder / f"{database_path.stem}-{stamp}-{reason}.db"
+    copy = sqlite3.connect(target)
+    try:
+        connection.backup(copy)
+    finally:
+        copy.close()
+    target.chmod(0o600)
+    return target
 
 
 def _add_entry(
@@ -615,6 +803,16 @@ def _saved_game(row: sqlite3.Row | tuple[object, ...]) -> SavedGame:
         id=game_key(steam=game.steam_appid or steam, xbox=game.xbox_id or xbox),
     )
     return SavedGame(game=game, added_at=str(row[3]), sequence=int(row[4]))
+
+
+def _saved_album(row: sqlite3.Row | tuple[object, ...]) -> SavedAlbum:
+    try:
+        album = Album.from_payload(json.loads(str(row[0])))
+    except (TypeError, ValueError):
+        album = Album(str(row[1]), str(row[4]) or "Saved album")
+    return SavedAlbum(
+        album=replace(album, mbid=str(row[1])), added_at=str(row[2]), sequence=int(row[3])
+    )
 
 
 def _validated(name: str, description: str, icon: str, default_sort: str) -> tuple[str, ...]:

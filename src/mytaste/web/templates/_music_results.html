@@ -1,0 +1,31 @@
+{% from "_album_card.html" import album_card, album_row with context %}
+{% if error %}<div class="alert" role="alert"><strong>Music unavailable.</strong> {{ error }} <a href="{{ full_url }}" data-music-retry>Try again</a></div>
+{% else %}
+  {% if active_filters %}<div class="active-filters" role="group" aria-label="Active filters">{% for chip in active_filters %}<a class="filter-chip" href="{{ chip.url }}">{{ chip.label }}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17"></path></svg><span class="sr-only">(remove filter)</span></a>{% endfor %}{% if active_filters|length > 1 %}<a class="filter-chip-clear" href="{{ clear_url }}">Clear all</a>{% endif %}</div>{% endif %}
+  {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
+  {% for message in notices %}<div class="notice" role="status">{{ message }}</div>{% endfor %}
+  {% if pending %}<p class="collection-availability music-pending" role="status" data-music-pending="{{ pending }}"><span class="spinner" aria-hidden="true"></span>Finding {{ pending }} more {{ 'album' if pending == 1 else 'albums' }} from the chart on MusicBrainz…</p>{% endif %}
+  {% if groups %}
+    <div class="group-rows album-shelves" data-results>{% for row in groups %}{{ album_row(row, row_offset + loop.index) }}{% endfor %}</div>
+  {% elif page.items %}
+    <div class="album-list-head" aria-hidden="true">
+      <span></span>
+      <a href="{{ list_sorts.get('title', '#') }}" {% if query.sort == 'title' %}aria-current="true"{% endif %}>Title</a>
+      <a href="{{ list_sorts.get('artist', '#') }}" {% if query.sort == 'artist' %}aria-current="true"{% endif %}>Artist</a>
+      <span class="meta-type">Type</span>
+      <a class="meta-year" href="{{ list_sorts.get('release', '#') }}" {% if query.sort == 'release' %}aria-current="true"{% endif %}>Year</a>
+      <a class="meta-rating" href="{{ list_sorts.get('popularity', '#') }}" {% if query.sort == 'popularity' %}aria-current="true"{% endif %}>Listens</a>
+      <span class="meta-genres">Genres</span>
+    </div>
+    <section class="media-grid album-grid" aria-label="{{ heading }}" data-results>
+      {% for album in page.items %}{{ album_card(album, saved_album_icons.get(album.mbid, ()) if saved_album_icons else (), eager=loop.index <= 12) }}{% endfor %}
+    </section>
+  {% elif not pending %}
+    <div class="empty-state">
+      {% if query.search %}<h2>No albums found</h2><p>MusicBrainz has nothing for “{{ query.search }}”. Try the artist’s name, or paste a Spotify, Apple Music, Deezer, or Bandcamp album link.</p>
+      {% else %}<h2>No matching albums</h2><p>Try another collection or loosen the filters.</p><a class="button button-secondary" href="{{ clear_url }}">Clear filters</a>{% endif %}
+    </div>
+  {% endif %}
+  {% if previous_url or next_url %}<nav class="pagination" aria-label="Album pages" data-pagination>{% if previous_url %}<a class="button button-secondary" href="{{ previous_url }}">Previous</a>{% endif %}<span>{{ pagination_label }}</span>{% if next_url %}<a class="button button-secondary" href="{{ next_url }}" data-next-page>Next</a>{% endif %}</nav>{% endif %}
+  {% if next_url %}<div class="load-more" data-load-more hidden><span class="load-more-status" data-load-more-status role="status" aria-live="polite"></span><button class="button button-secondary" type="button" data-load-more-retry hidden>Try again</button></div>{% endif %}
+{% endif %}

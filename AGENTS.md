@@ -60,6 +60,14 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   owned games, merging both stores, ordering), and `http.py` (shared retries).
 - `src/mytaste/storage/games.py`, `steam.py`, `game_links.py`, `gamepass_cache.py` — Game Pass
   preferences, the connected Steam account, Xbox ↔ Steam matches, and the optional store cache.
+- `src/mytaste/music/` — Music: `models.py` (`Album`, a MusicBrainz release group keyed by its
+  MBID; collections, sorts, types, the shared genre list, and `album_matches`, the one filter
+  rule), `http.py` (paced requests with retries; background requests wait for foreground ones),
+  `musicbrainz.py`, `listenbrainz.py`, `apple.py` (catalog clients), `coverart.py` (the cover
+  cache), `matching.py` (chart entries and links ↔ MusicBrainz), `grouping.py` (Shelves), and
+  `service.py` (`MusicService`: collections, search, ordering, details, background facts).
+- `src/mytaste/storage/music.py` — the shared music cache: album facts, popularity, matches,
+  stored charts, and details.
 - `src/mytaste/web/app.py` — FastAPI factory, dependency wiring, templates, and static assets.
 - `src/mytaste/web/signin.py` — `SignInMiddleware`: binds each request to its user, sends
   signed-out visitors to `/setup` or `/login`, keeps admin-only paths from members, and refuses
@@ -72,6 +80,8 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   progress APIs.
 - `src/mytaste/web/games.py` — `/collections/games/...`, game details, Steam sign-in, and saving
   games to collections.
+- `src/mytaste/web/music.py` — `/collections/music/...`, album details and pages, cached covers
+  (`/music/covers/...`), and saving albums to collections.
 - `src/mytaste/web/templates/` — server-rendered Jinja pages; `_icons.html` draws collection icons.
 - `src/mytaste/web/static/` — CSS and vanilla JavaScript with no frontend build step; the only
   third-party file is the vendored hls.js light build in `static/vendor/` (Apache-2.0).
@@ -119,6 +129,12 @@ Follow [CONTRIBUTING.md](CONTRIBUTING.md) for branches, pull requests, and relea
   game. Steam's rankings only page through Steam games; collections that include games only on
   Xbox must sort by something every store can compute. Never merge games by title alone
   outside `matching.py`.
+- Music keeps to MusicBrainz release groups. Albums are merged only by MBID, a link MusicBrainz
+  keeps, or a barcode, and chart entries by artist, title, and release year together, all in
+  `music/matching.py`; never by title alone. MusicBrainz allows one request a second, so grids
+  come from ListenBrainz's batches and MusicBrainz is asked for searches, details, and
+  background facts only. Covers are always served from the cache, never hot-linked. Spotify's
+  player loads only when someone presses Play.
 - Never print or commit `.env`, TMDB tokens, the Steam Web API key, or the SQLite database.
 
 ## Local workflow

@@ -172,6 +172,30 @@ everything as before. The old site name is no longer used: the header shows the 
 person's name. There is
 no way back to the one-profile layout except restoring a backup, so back up the database first.
 
+## Music
+
+Music needs no keys. Outbound HTTPS goes to `musicbrainz.org`, `api.listenbrainz.org`,
+`coverartarchive.org` and `archive.org` (covers), and `rss.marketingtools.apple.com` (the Popular
+chart); browsers only talk to MyTaste, except Spotify's player, which loads from
+`open.spotify.com` when someone presses Play on an album. Requests identify themselves as
+`MyTaste/<version> ( https://mytaste.cc )`, and MusicBrainz is asked at most once a second, as it
+requires.
+
+On start, the server fills the charts, new releases, and the genre collections in the background
+(`MYTASTE_MUSIC_PREFETCH=false` turns that off). Album facts, popularity, and chart matches are
+kept in the database; the last chart read for each country is shown when Apple's feed is down.
+Covers are kept in `MYTASTE_CACHE_DIR/covers`, up to `MYTASTE_MUSIC_COVER_CACHE_MB` (500 MB by
+default), least recently used removed first. They need no backup.
+
+### Saved albums and the database
+
+The first start of a version with Music rebuilds `saved_items` once, because its CHECK constraint
+allowed only movies, series, and games and SQLite can't change a constraint in place. The rebuild
+follows SQLite's documented procedure in one transaction: every saved item keeps its ID, portable
+ID, and snapshot, every collection keeps its order and dates, and the foreign keys are checked
+before it commits. Older versions of MyTaste can't read the rebuilt table, so the database is
+copied to `backups/mytaste-<time>-before-music.db` beside it first; restore that copy to go back.
+
 ## Network exposure
 
 Binding to `0.0.0.0` makes MyTaste reachable through the host's network interfaces. Everyone

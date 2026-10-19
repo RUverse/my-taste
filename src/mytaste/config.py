@@ -63,6 +63,11 @@ class AppSettings:
     gamepass_stale_ttl: float = 86_400
     steam_enabled: bool = True
     steam_api_key: str | None = field(default=None, repr=False)
+    # Album covers kept on disk, in megabytes.
+    music_cover_cache_mb: int = 500
+    # Fill the music caches when the server starts. Servers do; apps built in tests don't, so
+    # they never reach live services.
+    music_prefetch: bool = False
 
     def require_tmdb_token(self) -> str:
         token = (self.tmdb_token or "").strip()
@@ -103,6 +108,14 @@ def load_app_settings() -> AppSettings:
         choices = ", ".join(sorted(_HWACCEL_MODES))
         raise ConfigurationError(f"MYTASTE_HWACCEL must be one of: {choices}")
 
+    covers_value = os.environ.get("MYTASTE_MUSIC_COVER_CACHE_MB", "500")
+    try:
+        cover_cache_mb = int(covers_value)
+    except ValueError as exc:
+        raise ConfigurationError("MYTASTE_MUSIC_COVER_CACHE_MB must be an integer") from exc
+    if cover_cache_mb < 10:
+        raise ConfigurationError("MYTASTE_MUSIC_COVER_CACHE_MB must be at least 10")
+
     return AppSettings(
         tmdb_token=os.environ.get("MYTASTE_TMDB_TOKEN"),
         database_path=default_database_path(),
@@ -125,6 +138,8 @@ def load_app_settings() -> AppSettings:
         ),
         steam_enabled=_parse_boolean("MYTASTE_STEAM_ENABLED", True),
         steam_api_key=(os.environ.get("MYTASTE_STEAM_API_KEY") or "").strip() or None,
+        music_cover_cache_mb=cover_cache_mb,
+        music_prefetch=_parse_boolean("MYTASTE_MUSIC_PREFETCH", True),
     )
 
 
