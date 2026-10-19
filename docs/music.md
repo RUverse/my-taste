@@ -129,12 +129,18 @@ The catalog client (`music/musicbrainz.py`, `listenbrainz.py`, `coverart.py`, `a
 transport, the one-request-per-second queue, retries with backoff on 503 and 429, and the
 User-Agent `MyTaste/<version> ( https://mytaste.cc )`. `MusicService` owns caching, matching, and
 ordering, like `CatalogService` and `GamesService`. Grids are filled from ListenBrainz's batch
-metadata and MusicBrainz searches of up to 100 MBIDs at a time (`rgid:a OR rgid:b …`). One
-MusicBrainz request per album happens only when a detail opens, for the tracklist and links.
+metadata (50 albums a request; a batch it answers with 502 is split in half) and popularity (1,000
+a request). MusicBrainz is asked for searches, details (two requests: the album's releases with
+their links, then one release's tracklist), matching, and, in the background, the facts
+ListenBrainz lacks (live, compilation, the first release date) for 50 albums at a time
+(`rgid:a OR rgid:b …`). Background requests wait while someone is waiting for another.
 
-Covers are downloaded once at 250 and 500 px into `$data/covers/`, served from
-`/music/covers/<release mbid>/<image id>-<size>.jpg`, and pruned by last use when they exceed a
-size cap (default 500 MB). Missing covers fall back to the existing placeholder.
+Covers are downloaded once, at 250 px for cards and 500 px for details and sharp screens, into
+`MYTASTE_CACHE_DIR/covers`, served from `/music/covers/<release mbid>/<image id>-<size>.jpg`, and
+pruned by last use when they exceed `MYTASTE_MUSIC_COVER_CACHE_MB` (default 500). Missing covers
+fall back to the existing placeholder. The server fills the charts and genres in the background
+when it starts (`MYTASTE_MUSIC_PREFETCH`), and keeps the last chart read for each country for
+when Apple's feed is down, which it often was during testing.
 
 ## The Music tab
 
@@ -144,16 +150,21 @@ size cap (default 500 MB). Missing covers fall back to the existing placeholder.
 | --- | --- | --- |
 | Popular | Apple Music's 100 most-played albums in the user's region, matched to MusicBrainz | Chart |
 | Most listened | ListenBrainz's sitewide top albums this month | Listens |
-| New releases | ListenBrainz fresh releases, albums and EPs, last 30 days | Date, or popularity once listens arrive |
+| New releases | ListenBrainz fresh releases, the 300 most played albums and EPs of the last 30 days | Popularity |
 | Your albums | Spotify saved albums | Date saved, or any sort |
 | New from your artists | Release groups of followed and saved artists, last 90 days | Date |
-| Genre collections | MusicBrainz genres, like the film genre collections | Popularity |
+| Genre collections | Albums and EPs whose main genre tags match, from ListenBrainz's most listened of all time, the last year, and the month | Popularity |
 
 Popular and Most listened are two separate charts, side by side. Apple's is mainstream and
 current, but each entry has to be matched to MusicBrainz, and an entry that doesn't match is left
 out. ListenBrainz's already uses MBIDs, but it follows what its own listeners play. Popular is the
 one place a non-MetaBrainz list decides the order. The album's Apple Music page is linked from its
 details, as the feed's terms expect.
+
+Genre collections can't come from a MusicBrainz genre search: its relevance favours albums with
+the most tags, so "jazz" returned smooth jazz rather than the albums people play. An album's main
+genres are its genre tags with at least half the votes of its top one, so one stray tag doesn't
+put *The Wall* in Jazz.
 
 ### Sorts and the global order
 
@@ -173,8 +184,11 @@ a film, as with games. Grouping rows offer artist, decade, genre, and type.
 ### Search
 
 A MusicBrainz release-group search (artist and title), ranked by ListenBrainz popularity among
-the first 100 results, then the user's own saved and library matches. A pasted Spotify,
-SoundCloud, Apple Music, or Bandcamp link goes straight to that album.
+the good matches of the first 100 results, then the user's own saved and library matches. A
+search alone buries an artist's albums under tributes ("radiohead" finds *Radiohead Revu*), so
+when the text is an artist's exact name, that artist's albums and EPs come first. A pasted
+Spotify, Apple Music, Deezer, Bandcamp, or MusicBrainz link goes straight to that album (SoundCloud
+links come with step 4).
 
 ## Views
 
@@ -187,8 +201,8 @@ without reloading. Card size (comfortable or compact) applies to Grid and to the
 
 - **Grid**: square covers with 6 px corners, title, artist, and year below. Hover or focus
   shows Play and the + save button. Dots show where it plays when **Sources** is on.
-- **Wall**: covers edge to edge with 2 px gaps and no text. The most popular or most recently
-  added take a 2×2 tile. Hover shows the caption and Play.
+- **Wall**: covers edge to edge with 2 px gaps and no text. Every eleventh album, starting with
+  the first, takes a 2×2 tile. Hover shows the caption and Play.
 - **List**: dense rows (cover, title, artist, type, year, tracks, length, where it plays) that
   sort by clicking a column. Used for large libraries.
 - **Shelves**: the existing Grouping rows (by artist, decade, genre, or type), scrolling sideways.
@@ -196,7 +210,7 @@ without reloading. Card size (comfortable or compact) applies to Grid and to the
   plays. With reduced motion it becomes a flat carousel.
 
 In a mixed user collection an album keeps the 2:3 card: the square cover on top, and below it a
-panel with the type, title, artist, and Play.
+panel in the cover's average colour with the type, title, artist, and Play.
 
 Spotify artwork, shown only in the "not matched yet" row, follows Spotify's rules: no crop, no
 controls over the image, 4 px corners on phones and 8 px elsewhere, at most 20 items, a link to
@@ -211,7 +225,8 @@ year, type, label, genres, and the tracklist of the release linked to Spotify (e
 official release) with lengths. Play, Shuffle, and per-track play sit beside Save. **Listen on**
 links (Spotify, Apple Music, Bandcamp, Deezer, SoundCloud) come from MusicBrainz relationships,
 like the Watch button for films. When the user hasn't connected Spotify or isn't on Premium, the
-official Spotify embed sits in the panel instead.
+official Spotify embed sits in the panel instead. It loads only when Play is pressed, so opening
+an album sends nothing to Spotify.
 
 ## Playing
 
@@ -324,7 +339,7 @@ will say so.
 
 Each step is useful on its own and ships as its own pull request.
 
-1. **Catalog and views, no accounts.** The music package, MusicBrainz/ListenBrainz/Cover Art
+1. **Catalog and views, no accounts** ([#29](https://github.com/RUverse/my-taste/pull/29)). The music package, MusicBrainz/ListenBrainz/Cover Art
    Archive/Apple clients with the request queue and cover cache, the Music tab with Popular, Most
    listened, New releases, and genres, search, filters, sorts, Grid/Wall/List/Shelves, album
    details with Listen-on links and the Spotify embed, and saving albums (with the `saved_items`
