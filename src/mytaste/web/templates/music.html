@@ -1,0 +1,56 @@
+{% extends "index.html" %}
+{% block head %}{% if loading %}<noscript><meta http-equiv="refresh" content="0;url={{ full_url }}"></noscript>{% endif %}{% endblock %}
+{% block title %}{{ heading }} · Music · {{ display.site_title }}{% endblock %}
+{% block sidebar_controls %}
+{% set minus_icon %}<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 12h12"></path></svg>{% endset %}
+<form class="sidebar-form" method="get" action="{{ page_path }}" data-filter-form>
+  {% if query.search %}<input type="hidden" name="q" value="{{ query.search }}">{% endif %}
+  {% if query.artist %}<input type="hidden" name="artist" value="{{ query.artist }}">{% endif %}
+  <section class="sidebar-section" id="sidebar-sort" aria-labelledby="sort-heading">
+    <div class="sidebar-section-head"><h2 id="sort-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h9M4 12h6M4 17h3M17 5v14M14 16l3 3 3-3"></path></svg>Sort</h2></div>
+    <div class="sort-row">
+      <label class="select-field"><span class="sr-only">Sort by</span><select name="sort" data-default="{{ default_sort }}" data-sort-field>{% for value, label in sorts.items() %}<option value="{{ value }}" {% if query.sort == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+      <input type="hidden" name="order" value="{{ sort_order }}" data-default="{{ natural_order }}" data-sort-order>
+      {% if can_reverse %}<a class="square-button" href="{{ sort_flip_url }}" aria-label="{{ sort_label }}, {{ 'descending' if sort_order == 'desc' else 'ascending' }}. Reverse the order" title="Reverse the order"><svg aria-hidden="true" viewBox="0 0 24 24">{% if sort_order == 'desc' %}<path d="M12 5v14M6.5 13.5 12 19l5.5-5.5"></path>{% else %}<path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"></path>{% endif %}</svg></a>{% endif %}
+      {% if sort_changed %}<a class="row-button" href="{{ sort_reset_url }}" aria-label="Back to this collection’s order" title="Back to this collection’s order">{{ minus_icon }}</a>{% endif %}
+    </div>
+  </section>
+  <section class="sidebar-section" id="sidebar-filter" aria-labelledby="filter-heading">
+    <div class="sidebar-section-head"><h2 id="filter-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5.5h16l-6.2 7.3v5.4l-3.6 1.8v-7.2L4 5.5Z"></path></svg>Filter</h2></div>
+    <div class="music-filters">
+      {% for name, label, empty, options, value in (
+        ('type', 'Type', 'Any type', types, query.type),
+        ('decade', 'Decade', 'Any decade', decades, query.decade),
+        ('genre', 'Genre', 'Any genre', genres, query.genre)
+      ) %}
+      <div class="music-filter">
+        <label class="sidebar-label" for="music-{{ name }}">{{ label }}</label>
+        <span class="select-field"><select id="music-{{ name }}" name="{{ name }}"><option value="">{{ empty }}</option>{% for option, text in options.items() %}<option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ text }}</option>{% endfor %}</select></span>
+      </div>
+      {% endfor %}
+    </div>
+    {% if active_filter_rules %}<div class="source-footer"><a href="{{ clear_url }}">Clear filters</a></div>{% endif %}
+  </section>
+  <section class="sidebar-section" id="sidebar-group" aria-labelledby="group-heading">
+    <div class="sidebar-section-head"><h2 id="group-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><rect x="4" y="4.5" width="16" height="6" rx="1.5"></rect><rect x="4" y="13.5" width="16" height="6" rx="1.5"></rect></svg>Shelves</h2></div>
+    <div class="sort-row">
+      <label class="select-field"><span class="sr-only">Group into shelves by</span><select name="group"><option value="">No shelves</option>{% for value, label in groupings.items() %}<option value="{{ value }}" {% if grouping == value %}selected{% endif %}>By {{ label|lower }}</option>{% endfor %}</select></label>
+      {% if grouping %}<a class="row-button" href="{{ group_clear_url }}" aria-label="Stop grouping" title="Stop grouping">{{ minus_icon }}</a>{% endif %}
+    </div>
+  </section>
+  <noscript><button class="button button-primary sidebar-apply" type="submit">Apply</button></noscript>
+</form>
+{% endblock %}
+{% block browse_results %}
+  <div data-music-results {% if loading %}data-music-load-url="{{ load_url }}" aria-busy="true"{% endif %}>
+    {% if loading %}
+      <p class="sr-only" role="status" aria-live="polite">Loading albums…</p>
+      <section class="media-grid album-grid skeleton-grid" aria-hidden="true">
+        {% for unused in range(24) %}<div class="skeleton-card album-skeleton"><div class="poster skeleton-poster"></div><div class="card-copy"><h2><span class="skeleton-line"></span></h2><div class="card-meta"><span class="meta-year skeleton-line"></span></div></div></div>{% endfor %}
+      </section>
+      <noscript><p><a href="{{ full_url }}">Load albums</a></p></noscript>
+    {% else %}{% include "_music_results.html" %}{% endif %}
+  </div>
+{% endblock %}
+{% block browse_dialogs %}{% include "_album_details.html" %}{% include "_collection_dialogs.html" %}{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='music.js') }}?v={{ asset_version }}" defer></script>{% endblock %}

@@ -21,6 +21,8 @@ from mytaste.games.matching import GameLinker
 from mytaste.games.service import GamesService
 from mytaste.games.steam import SteamClient
 from mytaste.library.service import LibraryService
+from mytaste.music.coverart import CoverCache
+from mytaste.music.service import MusicService
 from mytaste.playback.service import PlaybackService
 from mytaste.storage.collections import CollectionRepository
 from mytaste.storage.facts import FactsRepository
@@ -28,6 +30,7 @@ from mytaste.storage.game_links import GameLinkRepository
 from mytaste.storage.gamepass_cache import GamePassCache
 from mytaste.storage.games import GamePreferenceRepository
 from mytaste.storage.library import LibraryRepository
+from mytaste.storage.music import MusicCacheRepository
 from mytaste.storage.playback import PlaybackRepository
 from mytaste.storage.preferences import PreferenceRepository
 from mytaste.storage.settings import InstanceSettings
@@ -35,6 +38,7 @@ from mytaste.storage.steam import SteamAccountRepository
 from mytaste.storage.users import UserRepository
 from mytaste.web.accounts import create_accounts_router
 from mytaste.web.games import create_games_router
+from mytaste.web.music import create_music_router
 from mytaste.web.playback import create_playback_router
 from mytaste.web.routes import create_router
 from mytaste.web.signin import SignInMiddleware
@@ -52,6 +56,7 @@ def create_app(
     collections: CollectionService | None = None,
     facts: Any | None = None,
     games: Any | None = None,
+    music: Any | None = None,
 ) -> FastAPI:
     resolved_settings = settings or load_app_settings()
     users = UserRepository(resolved_settings.database_path)
@@ -91,6 +96,20 @@ def create_app(
             accounts=accounts,
             catalog_ttl=resolved_settings.gamepass_catalog_ttl,
             metadata_ttl=resolved_settings.gamepass_metadata_ttl,
+        )
+
+    owns_music = music is None
+    if music is None:
+        music_cache = MusicCacheRepository(resolved_settings.database_path)
+        music_cache.initialize()
+        music = MusicService(
+            music_cache,
+            covers=CoverCache(
+                (resolved_settings.cache_dir or resolved_settings.database_path.parent / "cache")
+                / "covers",
+                max_bytes=resolved_settings.music_cover_cache_mb * 1024 * 1024,
+                timeout=max(20, resolved_settings.request_timeout),
+            ),
         )
 
     owns_catalog = catalog is None
@@ -157,9 +176,13 @@ def create_app(
             await playback.start()
         if warm_facts:
             facts.warm(library.matched_keys)
+        if owns_music and resolved_settings.music_prefetch:
+            music.warm(repository.regions())
         try:
             yield
         finally:
+            if owns_music:
+                await music.close()
             if owns_games:
                 await games.close()
             if owns_facts:
@@ -188,6 +211,7 @@ def create_app(
     app.state.facts = facts
     app.state.settings = resolved_settings
     app.state.games = games
+    app.state.music = music
     app.state.game_preferences = game_preferences
     app.state.users = users
     app.state.instance_settings = instance_settings
@@ -199,12 +223,14 @@ def create_app(
     templates = Jinja2Templates(directory=_WEB_ROOT / "templates", context_processors=[signed_in])
     templates.env.globals["asset_version"] = hashlib.sha256(
         b"".join(
-            (_WEB_ROOT / "static" / name).read_bytes() for name in ("app.css", "app.js", "games.js")
+            (_WEB_ROOT / "static" / name).read_bytes()
+            for name in ("app.css", "app.js", "games.js", "music.js")
         )
     ).hexdigest()[:12]
     app.mount("/static", StaticFiles(directory=_WEB_ROOT / "static"), name="static")
     app.include_router(create_accounts_router(templates))
     app.include_router(create_games_router(templates))
+    app.include_router(create_music_router(templates))
     app.include_router(create_router(templates))
     app.include_router(create_playback_router(templates))
     return app

@@ -1,0 +1,3 @@
+{% from "_album_card.html" import album_card, album_row with context %}
+{% if groups %}{% for row in groups %}{{ album_row(row, row_offset + loop.index) }}{% endfor %}
+{% else %}{% for album in page.items %}{{ album_card(album, saved_album_icons.get(album.mbid, ()) if saved_album_icons else ()) }}{% endfor %}{% endif %}

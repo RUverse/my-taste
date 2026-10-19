@@ -13,6 +13,7 @@ from mytaste.catalog.models import (
     SortKey,
 )
 from mytaste.games.models import Game
+from mytaste.music.models import Album
 
 HOME_COLLECTION = "popular"
 # Steam lists a game's tags by votes; past the first ten they are often stray, such as
@@ -34,6 +35,7 @@ ICONS: tuple[str, ...] = (
     "rocket",
     "trophy",
     "gift",
+    "music",
     "folder",
     "list",
 )
@@ -322,3 +324,46 @@ class GameEntry:
     @property
     def year(self) -> str:
         return self.game.year
+
+
+@dataclass(frozen=True, slots=True)
+class SavedAlbum:
+    """An album in a user collection, with the snapshot taken when it was last saved."""
+
+    album: Album
+    added_at: str
+    sequence: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class AlbumEntry:
+    """A saved album on a collection page, shaped like a ``CatalogItem`` so it sorts and groups
+    among movies, series, and games. ``id`` 0 marks it as no TMDB title, so TMDB lookups skip
+    it. Albums have no score on TMDB's scale, so they rank like unrated titles."""
+
+    album: Album
+    added_at: str = ""
+    sequence: int = 0
+    id: int = 0
+    media_type: str = "album"
+    popularity: float = 0.0
+    rating: float = 0.0
+    in_library: bool = False
+    local_file_id: None = None
+    library_summary: str = ""
+
+    @property
+    def title(self) -> str:
+        return self.album.title
+
+    @property
+    def release_date(self) -> str:
+        return self.album.release_date
+
+    @property
+    def genres(self) -> tuple[str, ...]:
+        return self.album.genres
+
+    @property
+    def year(self) -> str:
+        return self.album.year or "—"

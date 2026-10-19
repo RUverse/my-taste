@@ -1,0 +1,57 @@
+{# One album card, shared by the Music views and saved collections that mix albums with titles.
+   The same markup is laid out as a grid, a wall of covers, or a list by body[data-music-view]. #}
+{% from "_icons.html" import collection_icon %}
+{% macro note_icon() -%}
+<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M9 17.5V6.5l10-2v11"></path><circle cx="6.5" cy="17.5" r="2.5"></circle><circle cx="16.5" cy="15.5" r="2.5"></circle></svg>
+{%- endmacro %}
+{% macro play_icon() -%}
+<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M8 5.5v13l10.5-6.5L8 5.5Z"></path></svg>
+{%- endmacro %}
+{% macro cover_image(album, eager=false) -%}
+  {%- if album.cover_id -%}
+  <img src="{{ album.cover_url(250) }}" srcset="{{ album.cover_url(250) }} 250w, {{ album.cover_url(500) }} 500w" sizes="(max-width: 600px) 46vw, 240px" alt="" width="250" height="250" {% if not eager %}loading="lazy"{% endif %} data-cover>
+  {%- else -%}
+  <div class="poster-placeholder album-placeholder" aria-hidden="true"><span>{{ album.title[0] }}</span></div>
+  {%- endif -%}
+{%- endmacro %}
+{% macro album_card(album, saved_in=(), eager=false, mixed=false) %}
+  {% set saved = saved_in|length > 0 %}
+  <article class="media-card album-card{% if mixed %} album-card-mixed{% endif %}" data-detail-url="/api/items/album/{{ album.mbid }}/details" data-title="{{ album.title }}" {% if album.color %}style="--album-color: {{ album.color }}"{% endif %}>
+    <a class="poster-link" href="/music/albums/{{ album.mbid }}" data-album-open="{{ album.mbid }}" aria-label="Open details for {{ album.title }}{% if album.artist %} by {{ album.artist }}{% endif %}">
+      <div class="poster album-cover">
+        {% if mixed %}
+          <div class="album-sleeve">{{ cover_image(album, eager) }}</div>
+          <div class="album-sleeve-panel" aria-hidden="true"><span class="album-sleeve-type">{{ album.type_label }}</span><strong>{{ album.title }}</strong><span>{{ album.artist }}</span></div>
+        {% else %}{{ cover_image(album, eager) }}{% endif %}
+        <span class="type-badge" title="{{ album.type_label }}">{{ note_icon() }}<span class="sr-only">{{ album.type_label }}</span></span>
+      </div>
+    </a>
+    <button class="album-play" type="button" data-album-play="{{ album.mbid }}" aria-label="Play {{ album.title }}" title="Play">{{ play_icon() }}</button>
+    <button class="card-save{% if saved %} is-saved{% endif %}" type="button" data-card-save aria-haspopup="true" aria-expanded="false" aria-controls="card-save-popover" aria-label="{{ 'Saved' if saved else 'Save' }} {{ album.title }} to collections" title="{{ 'In your collections' if saved else 'Add to a collection' }}">
+      <svg class="card-save-add" aria-hidden="true" viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"></path></svg>
+      <span class="saved-icons" data-saved-icons>{% for icon in saved_in %}{% if icon %}{{ collection_icon(icon) }}{% else %}<svg class="collection-icon" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 12.5 4 4 8-9"></path></svg>{% endif %}{% endfor %}</span>
+    </button>
+    <div class="card-copy">
+      <h2><a href="/music/albums/{{ album.mbid }}" data-album-open="{{ album.mbid }}">{{ album.title }}</a></h2>
+      <p class="album-artist">{{ album.artist or 'Unknown artist' }}</p>
+      <div class="card-meta">
+        <span class="meta-year">{{ album.year or '—' }}</span>
+        <span class="meta-type">{{ album.type_label }}</span>
+        {% if album.listens %}<span class="meta-rating" aria-label="{{ album.listens }} listens on ListenBrainz" title="Listens on ListenBrainz">{{ album.listens|compact_count }}</span>{% endif %}
+      </div>
+      <p class="meta-genres">{{ album.genres[:2]|join(' · ') }}</p>
+    </div>
+  </article>
+{% endmacro %}
+
+{% macro album_row(row, number) %}
+  <section class="group-row" aria-labelledby="group-row-{{ number }}">
+    <header class="group-row-head">
+      <h2 id="group-row-{{ number }}">{{ row.label }}</h2>
+      <span class="group-row-count">{{ row.items|length }} {{ 'album' if row.items|length == 1 else 'albums' }}</span>
+    </header>
+    <div class="group-strip album-strip">
+      {% for album in row.items %}{{ album_card(album, saved_album_icons.get(album.mbid, ()) if saved_album_icons else ()) }}{% endfor %}
+    </div>
+  </section>
+{%- endmacro %}

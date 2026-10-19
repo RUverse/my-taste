@@ -316,6 +316,20 @@
             </summary>
             <form class="sidebar-form" id="display-form" aria-labelledby="display-heading">
               <p class="save-status" id="display-save-status" role="status" aria-live="polite"></p>
+              {% if header_media == 'music' %}
+              <div class="segmented music-views" role="radiogroup" aria-label="View">
+                {% for value, label, icon in (
+                  ('grid', 'Grid', '<rect x="4" y="4" width="7" height="7" rx="1.5"></rect><rect x="13" y="4" width="7" height="7" rx="1.5"></rect><rect x="4" y="13" width="7" height="7" rx="1.5"></rect><rect x="13" y="13" width="7" height="7" rx="1.5"></rect>'),
+                  ('wall', 'Wall', '<rect x="3.5" y="3.5" width="10" height="10" rx="1"></rect><rect x="15" y="3.5" width="5.5" height="4.5" rx="1"></rect><rect x="15" y="9" width="5.5" height="4.5" rx="1"></rect><rect x="3.5" y="15" width="4.5" height="5.5" rx="1"></rect><rect x="9.25" y="15" width="4.5" height="5.5" rx="1"></rect><rect x="15" y="15" width="5.5" height="5.5" rx="1"></rect>'),
+                  ('list', 'List', '<rect x="4" y="5" width="3" height="3" rx=".8"></rect><rect x="4" y="10.5" width="3" height="3" rx=".8"></rect><rect x="4" y="16" width="3" height="3" rx=".8"></rect><path d="M10 6.5h10M10 12h10M10 17.5h10"></path>')
+                ) %}
+                <label>
+                  <input type="radio" name="music_view" value="{{ value }}" {% if display.music_view == value %}checked{% endif %}>
+                  <span><svg aria-hidden="true" viewBox="0 0 24 24">{{ icon|safe }}</svg>{{ label }}</span>
+                </label>
+                {% endfor %}
+              </div>
+              {% endif %}
               <div class="segmented" role="radiogroup" aria-label="Card size">
                 <label>
                   <input type="radio" name="card_size" value="comfortable" {% if display.card_size == 'comfortable' %}checked{% endif %}>
@@ -346,6 +360,14 @@
                     ('show_providers', 'Sources', 'Xbox Game Pass badge', display.show_providers)
                   ] %}
                 {% endif %}
+                {% if header_media == 'music' %}
+                  {% set card_options = [
+                    ('show_year', 'Year', 'First release year', display.show_year),
+                    ('show_rating', 'Listens', 'Listens on ListenBrainz', display.show_rating),
+                    ('show_media_type', 'Type', 'Album, EP, single, live, or compilation', display.show_media_type),
+                    ('show_genres', 'Genres', 'Up to two genres', display.show_genres)
+                  ] %}
+                {% endif %}
                 {% for key, label, hint, checked in card_options %}
                   <label class="chip chip-choice" title="{{ hint }}">
                     <input type="checkbox" name="{{ key }}" {% if checked %}checked{% endif %}>
@@ -353,7 +375,7 @@
                   </label>
                 {% endfor %}
               </div>
-              {% if header_media != 'game' %}
+              {% if header_media not in ('game', 'music') %}
               <label class="switch-row">
                 <span>Autoplay trailers<small>Play when title details open</small></span>
                 <input class="switch" type="checkbox" name="autoplay_trailer" {% if display.autoplay_trailer %}checked{% endif %}>
@@ -366,6 +388,7 @@
 
       <nav class="sidebar-rail" aria-label="Sidebar" {% if display.sidebar_open %}inert{% endif %}>
         <button class="icon-button rail-button" type="button" data-sidebar-toggle aria-controls="browse-sidebar" aria-expanded="{{ 'true' if display.sidebar_open else 'false' }}" aria-label="Show the sidebar" title="Show the sidebar">{{ collapse_icon }}</button>
+        {% if header_media != 'music' %}
         <button class="rail-button rail-sources" type="button" data-rail-section="sidebar-sources" aria-label="Services{% if sources_dot %} (some hidden){% endif %}" title="Services">
           {% set rail_logos = configured_providers[:3 if libraries else 4] %}
           {% if header_media == 'game' %}{{ sources_icon }}{% else %}
@@ -378,7 +401,8 @@
           {% endif %}
           {% if sources_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}
         </button>
-        {% if not query.search or header_media == 'game' %}
+        {% endif %}
+        {% if not query.search or header_media in ('game', 'music') %}
           <button class="icon-button rail-button" type="button" data-rail-section="sidebar-sort" aria-label="Sort: {{ sort_label }}{% if sort_changed %} (changed){% endif %}" title="Sort: {{ sort_label }}">{{ sort_icon }}{% if sort_changed %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
         {% endif %}
         <button class="icon-button rail-button" type="button" data-rail-section="sidebar-filter" aria-label="Filter{% if filter_dot %} ({{ active_filter_rules }} active){% endif %}" title="Filter">{{ filter_icon }}{% if filter_dot %}<span class="rail-dot" aria-hidden="true"></span>{% endif %}</button>
@@ -414,10 +438,10 @@
               {% for item in collection_links if not item.active %}
                 <a href="{{ item.url }}" data-collection-overflow="{{ item.key }}">{{ collection_icon(item.icon) }}{{ item.label }}</a>
               {% endfor %}
-              {% if header_media != 'game' %}<button class="popover-separated" type="button" data-new-collection aria-haspopup="dialog">{{ plus_icon }}New collection…</button>{% endif %}
+              {% if header_media not in ('game', 'music') %}<button class="popover-separated" type="button" data-new-collection aria-haspopup="dialog">{{ plus_icon }}New collection…</button>{% endif %}
             </div>
           </div>
-          {% if header_media != 'game' %}<button class="collection-add" type="button" data-new-collection data-collection-add aria-haspopup="dialog" aria-label="New collection" title="New collection">{{ plus_icon }}</button>{% endif %}
+          {% if header_media not in ('game', 'music') %}<button class="collection-add" type="button" data-new-collection data-collection-add aria-haspopup="dialog" aria-label="New collection" title="New collection">{{ plus_icon }}</button>{% endif %}
         </nav>
       </div>
 
@@ -532,6 +556,7 @@
         {% block browse_dialogs scoped %}
     {% include "_media_details.html" %}
     {% if has_games %}{% with game_details=true %}{% include "_media_details.html" %}{% endwith %}{% endif %}
+    {% if has_albums %}{% include "_album_details.html" %}{% endif %}
 
     {% include "_collection_dialogs.html" %}
         {% endblock %}
@@ -539,4 +564,4 @@
     </div>
   </div>
 {% endblock %}
-{% block scripts %}{% if has_games %}<script src="{{ request.url_for('static', path='games.js') }}?v={{ asset_version }}" defer></script>{% endif %}{% endblock %}
+{% block scripts %}{% if has_games %}<script src="{{ request.url_for('static', path='games.js') }}?v={{ asset_version }}" defer></script>{% endif %}{% if has_albums %}<script src="{{ request.url_for('static', path='music.js') }}?v={{ asset_version }}" defer></script>{% endif %}{% endblock %}

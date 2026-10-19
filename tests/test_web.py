@@ -1272,7 +1272,7 @@ def test_titles_can_be_saved_and_collections_edited_from_the_page(tmp_path: Path
     assert "data-save-new" in home.text
     assert "data-detail-add" not in home.text
     assert 'id="collection-editor"' in home.text
-    assert home.text.count('name="icon"') == 17, "no icon plus the sixteen choices"
+    assert home.text.count('name="icon"') == 18, "no icon plus the seventeen choices"
     assert '<option value="added">Date added</option>' in home.text
     assert "data-edit-collection" not in home.text, "predefined collections cannot be edited"
     assert home.text.count("data-new-collection") == 2, "in Show all and beside the tabs"

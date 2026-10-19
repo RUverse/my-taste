@@ -12,8 +12,11 @@ matching releases in a clean poster grid.
 - Games from Steam and Xbox Game Pass in one catalog: a game sold in both stores is one card
   with both services, your Steam library (signed in through Steam) and Game Pass plan are marked
   on every cover, and the whole Steam store stays browsable
+- Music: albums from MusicBrainz as a grid of covers, a wall, a list, or shelves, with Apple
+  Music's and ListenBrainz's charts, new releases, genres, search, tracklists, and links to play
+  them on Spotify, Apple Music, Bandcamp, Deezer, or SoundCloud
 - Collections: predefined views such as Popular, Latest, and genres, plus your own lists, starting
-  with an empty Watchlist and My favourites, which can mix movies, series, and games
+  with an empty Watchlist and My favourites, which can mix movies, series, games, and albums
 - Sort any collection by popularity, release date, rating, or title (and date added for your own
   lists and local folders)
 - Title search restricted to the configured streaming subscriptions and local folders
@@ -112,6 +115,8 @@ Sessions stay signed in on a device for 180 days of inactivity, so a TV doesn't 
 | `MYTASTE_STEAM_API_KEY` | unset | Steam Web API key, needed to list owned Steam games |
 | `MYTASTE_STEAM_ENABLED` | `true` | `false` hides Steam and keeps Games to Game Pass |
 | `MYTASTE_GAMEPASS_CACHE_ENABLED` | `false` | Keep game store data between requests (see [deployment](docs/deployment.md#game-pass-caching)) |
+| `MYTASTE_MUSIC_COVER_CACHE_MB` | `500` | Album covers kept in the cache folder, least recently used removed first |
+| `MYTASTE_MUSIC_PREFETCH` | `true` | Fill the music charts and genres in the background when the server starts |
 
 ## Collections
 
@@ -225,6 +230,37 @@ without affecting other categories. The design is in the
 [Game Pass](docs/game-pass-implementation.md) and [Steam](docs/steam-implementation.md) plans and
 the [portable collections design](docs/taste-collections.md).
 
+## Music
+
+**Music** is a tab of its own beside Games; albums don't join All's collections, but saved albums
+sit in your own collections beside films and games. Albums are MusicBrainz release groups (an
+album across all its editions), with popularity, charts, and covers from ListenBrainz and the
+Cover Art Archive.
+
+| Collection | Albums | Order |
+| --- | --- | --- |
+| Popular | Apple Music's 100 most played albums in your country, matched to MusicBrainz | Chart, or any sort |
+| Most listened | ListenBrainz's most played this month | Listens, or any sort |
+| New releases | The most played albums and EPs of the last 30 days | Popularity, or any sort |
+| Rock, Pop, Hip hop, … | The most played albums and EPs of each genre on ListenBrainz | Popularity, or any sort |
+
+Every music sort (popularity, release date, title, artist) and filter (type, decade, genre) works
+the same in every collection. **Appearance** switches between a grid of covers, a wall of covers
+edge to edge, and a sortable list; **Shelves** groups albums into rows by artist, decade, genre,
+or type. Search finds albums by title or artist, and an artist's name lists their own albums
+first; pasting a Spotify, Apple Music, Deezer, Bandcamp, or MusicBrainz album link opens that
+album.
+
+An album's details show its tracklist, label, and where it plays, from the links MusicBrainz keeps
+on its releases. **Play** opens Spotify's player in the details when the album is on Spotify (it
+loads only when you press Play) and otherwise opens the album on another service. Connecting
+Spotify to play in MyTaste and SoundCloud links come next; see the [music plan](docs/music.md).
+
+A chart entry or pasted link is matched to MusicBrainz only by a link MusicBrainz keeps, a barcode,
+or artist, title, and release year together; entries that match nothing are left out. MusicBrainz
+answers one request a second, so a chart's first matches take a minute in the background and are
+then kept. Covers are fetched once and served from `MYTASTE_CACHE_DIR/covers`.
+
 ## Storage libraries
 
 The sidebar's **Services** section lists what you have enabled: streaming subscriptions and local
@@ -309,6 +345,11 @@ This product uses the TMDB API but is not endorsed or certified by TMDB.
 
 Movie, TV, and image metadata is supplied by [TMDB](https://www.themoviedb.org/). Streaming
 availability is powered by [JustWatch](https://www.justwatch.com/).
+
+Album data is from [MusicBrainz](https://musicbrainz.org/) (CC0), popularity and charts from
+[ListenBrainz](https://listenbrainz.org/), covers from the [Cover Art Archive](https://coverartarchive.org/),
+and the Popular chart from [Apple Music](https://www.apple.com/apple-music/)'s marketing feeds.
+MyTaste is not affiliated with MetaBrainz, Apple, Spotify, or SoundCloud.
 
 Game metadata and availability is supplied by [Xbox and Microsoft Store](https://www.xbox.com/xbox-game-pass/games)
 and [Steam](https://store.steampowered.com/). [IsThereAnyDeal](https://isthereanydeal.com/) and

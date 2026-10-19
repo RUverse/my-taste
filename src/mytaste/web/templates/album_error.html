@@ -1,0 +1,5 @@
+{% extends "base.html" %}
+{% block title %}Album unavailable · {{ display.site_title }}{% endblock %}
+{% block content %}
+<div class="empty-state"><h1>Album unavailable</h1><p role="alert">{{ error }}</p><a class="button button-secondary" href="/collections/music">Back to music</a></div>
+{% endblock %}
