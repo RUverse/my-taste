@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from mytaste import __version__
+from mytaste.accounts.hub import HubClient
 from mytaste.catalog.facts import FactsService
 from mytaste.catalog.service import CatalogService
 from mytaste.catalog.tmdb import TMDBClient
@@ -35,6 +36,7 @@ from mytaste.storage.steam import SteamAccountRepository
 from mytaste.storage.users import UserRepository
 from mytaste.web.accounts import create_accounts_router
 from mytaste.web.games import create_games_router
+from mytaste.web.hub import create_hub_router
 from mytaste.web.playback import create_playback_router
 from mytaste.web.routes import create_router
 from mytaste.web.signin import SignInMiddleware
@@ -191,6 +193,11 @@ def create_app(
     app.state.game_preferences = game_preferences
     app.state.users = users
     app.state.instance_settings = instance_settings
+    app.state.hub = (
+        HubClient(resolved_settings.hub_url, timeout=resolved_settings.request_timeout)
+        if resolved_settings.hub_url
+        else None
+    )
     app.add_middleware(SignInMiddleware, users=users)
 
     def signed_in(request: Request) -> dict[str, Any]:
@@ -204,6 +211,7 @@ def create_app(
     ).hexdigest()[:12]
     app.mount("/static", StaticFiles(directory=_WEB_ROOT / "static"), name="static")
     app.include_router(create_accounts_router(templates))
+    app.include_router(create_hub_router())
     app.include_router(create_games_router(templates))
     app.include_router(create_router(templates))
     app.include_router(create_playback_router(templates))
