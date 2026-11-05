@@ -55,15 +55,23 @@ class CoverCache:
         return self.root / release[:2] / release / f"{image}-{size}.jpg"
 
     async def release_image(self, release: str, image: int, size: int) -> Path | None:
-        """One image of a release, as the Cover Art Archive lists it."""
+        """One image of a release, as the Cover Art Archive lists it.
+
+        ListenBrainz names the front cover by its image ID, and keeps the old ID for a while
+        after someone replaces the cover, so a missing image falls back to the release's front.
+        """
 
         if not MBID.fullmatch(release) or image <= 0 or size not in SIZES:
             return None
         return await self._get(
-            self.path(release, image, size), f"{ARCHIVE}/release/{release}/{image}-{size}.jpg"
+            self.path(release, image, size),
+            (
+                f"{ARCHIVE}/release/{release}/{image}-{size}.jpg",
+                f"{ARCHIVE}/release/{release}/front-{size}",
+            ),
         )
 
-    async def _get(self, path: Path, url: str) -> Path | None:
+    async def _get(self, path: Path, urls: tuple[str, ...]) -> Path | None:
         if path.is_file():
             # The modification time records the last use, which pruning goes by.
             with contextlib.suppress(OSError):
@@ -77,7 +85,7 @@ class CoverCache:
         future: asyncio.Future[Path | None] = asyncio.get_running_loop().create_future()
         self._pending[path] = future
         try:
-            result = await self._download(path, url)
+            result = await self._download(path, urls)
             future.set_result(result)
             return result
         except asyncio.CancelledError:
@@ -91,17 +99,22 @@ class CoverCache:
         finally:
             self._pending.pop(path, None)
 
-    async def _download(self, path: Path, url: str) -> Path | None:
+    async def _download(self, path: Path, urls: tuple[str, ...]) -> Path | None:
+        """The first of ``urls`` the archive has."""
+
         async with self._limit:
-            try:
-                response = await self.http.send(
-                    "GET", url, accept=frozenset({404}), headers={"Accept": "image/*"}
-                )
-            except MusicError:
+            for url in urls:
+                try:
+                    response = await self.http.send(
+                        "GET", url, accept=frozenset({404}), headers={"Accept": "image/*"}
+                    )
+                except MusicError:
+                    return None
+                if response.status_code != 404:
+                    break
+            else:
+                self._missing[path] = time.monotonic() + _MISSING_TTL
                 return None
-        if response.status_code == 404:
-            self._missing[path] = time.monotonic() + _MISSING_TTL
-            return None
         content = response.content
         kind = response.headers.get("content-type", "")
         if not kind.startswith("image/") or not content or len(content) > _MAX_IMAGE_BYTES:

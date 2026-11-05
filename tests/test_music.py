@@ -761,7 +761,7 @@ async def test_covers_are_fetched_once_missing_ones_remembered_and_cache_pruned(
 
     def respond(request):
         requests.append(request.url.path)
-        if "404" in request.url.path:
+        if "404" in request.url.path or "front" in request.url.path:
             return httpx.Response(404)
         return httpx.Response(200, content=b"x" * 600, headers={"content-type": "image/jpeg"})
 
@@ -773,7 +773,7 @@ async def test_covers_are_fetched_once_missing_ones_remembered_and_cache_pruned(
     assert requests == [f"/release/{key(1)}/5-250.jpg"]
     assert await cache.release_image(key(1), 404, 250) is None
     assert await cache.release_image(key(1), 404, 250) is None
-    assert len(requests) == 2
+    assert len(requests) == 3  # The image, then the release's front; then remembered.
     assert await cache.release_image(key(1), 5, 333) is None
     assert await cache.release_image("../etc", 5, 250) is None
     await cache._pruning  # The first pass measures the cache: 600 bytes fit.
@@ -783,6 +783,27 @@ async def test_covers_are_fetched_once_missing_ones_remembered_and_cache_pruned(
     second = await cache.release_image(key(2), 6, 250)
     await cache._pruning
     assert second.exists() and not first.exists()  # The least recently used went first.
+    await cache.close()
+
+
+@pytest.mark.anyio
+async def test_a_replaced_cover_falls_back_to_the_releases_front(tmp_path):
+    requests = []
+
+    def respond(request):
+        requests.append(request.url.path)
+        if request.url.path.endswith("-250.jpg") or key(2) in request.url.path:
+            return httpx.Response(404)
+        return httpx.Response(200, content=b"front", headers={"content-type": "image/jpeg"})
+
+    cache = CoverCache(tmp_path / "covers", http=http(respond))
+    # ListenBrainz still names the image someone replaced; the current front stands in.
+    cover = await cache.release_image(key(1), 5, 250)
+    assert cover == cache.path(key(1), 5, 250) and cover.read_bytes() == b"front"
+    assert requests == [f"/release/{key(1)}/5-250.jpg", f"/release/{key(1)}/front-250"]
+    assert await cache.release_image(key(2), 5, 250) is None
+    assert await cache.release_image(key(2), 5, 250) is None  # Remembered as missing.
+    assert len(requests) == 4
     await cache.close()
 
 
