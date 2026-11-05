@@ -83,7 +83,7 @@
     const pageSearch = searchInput.defaultValue.trim();
     const media = searchForm.querySelector('input[name="media"]')?.value ?? "all";
     const searchUrl = (text) => {
-      if (media === "game") {
+      if (media === "game" || media === "music") {
         const target = new URL(searchForm.action);
         new FormData(searchForm).forEach((value, key) => {
           if (value && !["media", "q", "page"].includes(key)) target.searchParams.set(key, value);
@@ -721,7 +721,8 @@
   const detailEpisodesStatus = detailDialog?.querySelector("[data-episodes-status]");
   const detailSeasons = detailDialog?.querySelector("[data-episodes-seasons]");
   const detailNeighbors = Array.from(detailDialog?.querySelectorAll("[data-detail-neighbor]") ?? []);
-  const detailCards = Array.from(document.querySelectorAll(".media-card"));
+  // Albums open in their own dialog (music.js), so they are not neighbors of films.
+  const detailCards = Array.from(document.querySelectorAll(".media-card:not(.album-card)"));
   const detailCache = new Map();
   const folderIcon =
     '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3.5 7.5A1.5 1.5 0 0 1 5 6h4.2l2 2H19a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 19 18H5a1.5 1.5 0 0 1-1.5-1.5v-9Z"></path></svg>';
@@ -1909,6 +1910,7 @@
         displayKeys.filter((key) => displayForm.elements[key]).map((key) => [key, data.has(key)]),
       ),
       card_size: data.get("card_size") || "comfortable",
+      ...(displayForm.elements.music_view ? { music_view: data.get("music_view") || "grid" } : {}),
     };
   };
 
@@ -1918,6 +1920,10 @@
       document.body.dataset[dataKey] = String(payload[key]);
     });
     document.body.dataset.cardSize = payload.card_size;
+    if (payload.music_view) {
+      document.body.dataset.musicView = payload.music_view;
+      document.dispatchEvent(new Event("mytaste:music-view"));
+    }
     if (!payload.autoplay_trailer) {
       detailVideo?.replaceChildren();
       detailVideo?.classList.remove("is-active");
@@ -1973,6 +1979,7 @@
   // and appended. The page links stay in the markup for browsers without JavaScript.
   const enhanceCards = (cards) => {
     cards.forEach((card) => {
+      if (card.matches(".album-card")) return;
       detailCards.push(card);
       card.querySelectorAll("[data-open-media-details]").forEach((button) => {
         button.addEventListener("click", () => openMediaDetails(card));

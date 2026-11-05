@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}{{ album.title }} · {{ display.site_title }}{% endblock %}
+{% block header %}{% endblock %}
+{% block footer %}{% endblock %}
+{% block layout %}{% with standalone=true %}{% include "_album_details.html" %}{% endwith %}{% endblock %}
+{% block scripts %}<script src="{{ request.url_for('static', path='music.js') }}?v={{ asset_version }}" defer></script>{% endblock %}

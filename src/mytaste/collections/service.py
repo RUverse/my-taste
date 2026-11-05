@@ -17,8 +17,9 @@ from mytaste.catalog.models import (
 )
 from mytaste.catalog.service import Refine
 from mytaste.catalog.tmdb import TMDBError
-from mytaste.collections.models import Collection, CollectionItem, GameEntry
+from mytaste.collections.models import AlbumEntry, Collection, CollectionItem, GameEntry
 from mytaste.games.models import Game
+from mytaste.music.models import Album
 from mytaste.storage.collections import CollectionRepository, utc_now
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,28 @@ class CollectionService:
     def remove_game(self, collection_id: int, key: str) -> bool:
         return self.repository.remove_game(collection_id, key)
 
+    def album_memberships(self, mbid: str) -> frozenset[int]:
+        return self.repository.album_memberships(mbid)
+
+    def saved_album_icons(self) -> dict[str, tuple[str, ...]]:
+        """Like :meth:`saved_icons`, keyed by each saved album's MBID."""
+
+        order = self.repository.list()
+        return {
+            key: tuple(dict.fromkeys(item.icon for item in order if item.id in ids))
+            for key, ids in self.repository.saved_album_memberships().items()
+        }
+
+    def add_album(self, collection_id: int, album: Album) -> bool:
+        """Save an album with a snapshot of its facts; ``False`` if it was already saved."""
+
+        if self.repository.get(collection_id) is None:
+            raise LookupError("Unknown collection")
+        return self.repository.add_album(collection_id, album)
+
+    def remove_album(self, collection_id: int, mbid: str) -> bool:
+        return self.repository.remove_album(collection_id, mbid)
+
     async def add_item(
         self, collection_id: int, media_type: MediaType, tmdb_id: int, *, region: str = ""
     ) -> bool:
@@ -177,9 +200,10 @@ class CollectionService:
         The query's own source selection, filters, and sort then apply on top; ``refine``
         applies the filters that need more than the saved snapshot of a title.
 
-        Saved games join the titles when all media types are shown. ``game_access`` marks the
-        ones on Game Pass or owned on Steam and says whether the user set up either; once they
-        have, only games they can play are listed, like titles on their services.
+        Saved games and albums join the titles when all media types are shown. ``game_access``
+        marks the games on Game Pass or owned on Steam and says whether the user set up either;
+        once they have, only games they can play are listed, like titles on their services.
+        Albums are always listed: they play through the links on their details.
         """
 
         items = [
@@ -225,9 +249,26 @@ class CollectionService:
             shown = [item for item in shown if item.key in allowed]
 
         games: list[GameEntry] = []
+        albums: list[AlbumEntry] = []
         all_games = 0
+        all_albums = 0
         playable_games = 0
+        # TMDB's filters (genres, people…) never match a game or an album, and narrowing the
+        # streaming services or libraries shows only what those carry.
+        narrowed = set(query.provider_ids) != set(provider_ids) or set(query.library_ids) != set(
+            library_ids
+        )
         if query.media_type == "all":
+            saved_albums = self.repository.albums(collection.id)
+            all_albums = len(saved_albums)
+            if not query.filters.active and not narrowed:
+                albums = [
+                    entry
+                    for saved in saved_albums
+                    if _matches_filters(
+                        entry := AlbumEntry(saved.album, saved.added_at, saved.sequence), query
+                    )
+                ]
             saved_games = self.repository.games(collection.id)
             all_games = len(saved_games)
             if saved_games:
@@ -242,11 +283,6 @@ class CollectionService:
                     if not configured or game.game_pass or game.owned
                 ]
                 playable_games = len(entries)
-                # TMDB's filters (genres, people…) never match a game, and narrowing the
-                # streaming services or libraries shows only what those carry.
-                narrowed = set(query.provider_ids) != set(provider_ids) or set(
-                    query.library_ids
-                ) != set(library_ids)
                 if not query.filters.active and not narrowed:
                     games = [entry for entry in entries if _matches_filters(entry, query)]
 
@@ -257,6 +293,7 @@ class CollectionService:
                 [
                     *((item.added_at, item.sequence, item.to_catalog_item()) for item in shown),
                     *((entry.added_at, entry.sequence, entry) for entry in games),
+                    *((entry.added_at, entry.sequence, entry) for entry in albums),
                 ],
                 key=lambda row: (row[0], row[1]),
                 reverse=descending,
@@ -264,13 +301,14 @@ class CollectionService:
             listed = [row[2] for row in ordered]
         else:
             listed = sorted(
-                [*(item.to_catalog_item() for item in shown), *games],
+                [*(item.to_catalog_item() for item in shown), *games, *albums],
                 key=catalog_sort_key(sort, descending),
                 reverse=descending,
             )
         titles = [
             replace(title, in_library=True)
-            if not isinstance(title, GameEntry) and (title.media_type, title.id) in local
+            if not isinstance(title, GameEntry | AlbumEntry)
+            and (title.media_type, title.id) in local
             else title
             for title in listed
         ]
@@ -285,8 +323,8 @@ class CollectionService:
                 total_pages=total_pages,
                 total_results=len(titles),
             ),
-            available=len(accessible) + playable_games,
-            total=len(items) + all_games,
+            available=len(accessible) + playable_games + all_albums,
+            total=len(items) + all_games + all_albums,
         )
 
     # Availability -----------------------------------------------------------------------
@@ -333,7 +371,7 @@ class CollectionService:
             logger.exception("Refreshing where saved titles stream failed")
 
 
-def _matches_filters(item: CollectionItem | GameEntry, query: BrowseQuery) -> bool:
+def _matches_filters(item: CollectionItem | GameEntry | AlbumEntry, query: BrowseQuery) -> bool:
     year = int(item.release_date[:4]) if item.release_date[:4].isdigit() else None
     if query.year_from is not None and (year is None or year < query.year_from):
         return False

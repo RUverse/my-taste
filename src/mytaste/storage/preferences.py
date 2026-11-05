@@ -33,6 +33,8 @@ class DisplayPreferences:
     show_providers: bool = False
     card_size: str = "comfortable"
     autoplay_trailer: bool = True
+    # How the Music tab lays out albums: grid, wall, or list.
+    music_view: str = "grid"
     sidebar_open: bool = True
     # The app's name, for browser tab titles; the header shows the signed-in person.
     site_title: str = DEFAULT_SITE_TITLE
@@ -63,7 +65,8 @@ _DISPLAY = """
             CHECK (card_size IN ('compact', 'comfortable')),
         autoplay_trailer INTEGER NOT NULL DEFAULT 1,
         sidebar_open INTEGER NOT NULL DEFAULT 1,
-        show_providers INTEGER NOT NULL DEFAULT 0
+        show_providers INTEGER NOT NULL DEFAULT 0,
+        music_view TEXT NOT NULL DEFAULT 'grid'
     )
 """
 _DISPLAY_COLUMNS = (
@@ -76,7 +79,9 @@ _DISPLAY_COLUMNS = (
     "autoplay_trailer",
     "sidebar_open",
     "show_providers",
+    "music_view",
 )
+MUSIC_VIEWS = frozenset({"grid", "wall", "list"})
 
 
 class PreferenceRepository:
@@ -98,6 +103,11 @@ class PreferenceRepository:
             connection.execute(_PREFERENCES)
             connection.execute(_SUBSCRIPTIONS)
             connection.execute(_DISPLAY)
+            if "music_view" not in table_columns(connection, "display_preferences"):
+                connection.execute(
+                    "ALTER TABLE display_preferences "
+                    "ADD COLUMN music_view TEXT NOT NULL DEFAULT 'grid'"
+                )
 
     def _upgrade_one_profile_display(self, connection: sqlite3.Connection) -> None:
         """Bring a display table from before accounts up to date before it is converted.
@@ -157,6 +167,16 @@ class PreferenceRepository:
             )
         return Preferences(region=normalized_region, provider_ids=normalized_ids)
 
+    def regions(self) -> tuple[str, ...]:
+        """Every region someone on the instance chose, most common first."""
+
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT region FROM preferences WHERE region != '' "
+                "GROUP BY region ORDER BY COUNT(*) DESC, region"
+            ).fetchall()
+        return tuple(str(row[0]) for row in rows)
+
     def get_display(self) -> DisplayPreferences:
         """The current user's display options."""
 
@@ -165,7 +185,7 @@ class PreferenceRepository:
                 """
                 SELECT show_year, show_rating, show_media_type, show_genres,
                        show_people, card_size, autoplay_trailer, sidebar_open,
-                       show_providers
+                       show_providers, music_view
                 FROM display_preferences WHERE user_id = ?
                 """,
                 (current_user_id(),),
@@ -182,6 +202,7 @@ class PreferenceRepository:
             autoplay_trailer=bool(row[6]),
             sidebar_open=bool(row[7]),
             show_providers=bool(row[8]),
+            music_view=str(row[9]) if str(row[9]) in MUSIC_VIEWS else "grid",
         )
 
     def save_display(self, preferences: DisplayPreferences) -> DisplayPreferences:
@@ -189,14 +210,16 @@ class PreferenceRepository:
 
         if preferences.card_size not in {"compact", "comfortable"}:
             raise ValueError("Card size must be compact or comfortable")
+        if preferences.music_view not in MUSIC_VIEWS:
+            raise ValueError("The music view must be grid, wall, or list")
         with self._connect() as connection:
             connection.execute(
                 """
                 INSERT INTO display_preferences (
                     user_id, show_year, show_rating, show_media_type,
                     show_genres, show_people, card_size, autoplay_trailer, sidebar_open,
-                    show_providers
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    show_providers, music_view
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(user_id) DO UPDATE SET
                     show_year = excluded.show_year,
                     show_rating = excluded.show_rating,
@@ -206,7 +229,8 @@ class PreferenceRepository:
                     card_size = excluded.card_size,
                     autoplay_trailer = excluded.autoplay_trailer,
                     sidebar_open = excluded.sidebar_open,
-                    show_providers = excluded.show_providers
+                    show_providers = excluded.show_providers,
+                    music_view = excluded.music_view
                 """,
                 (
                     current_user_id(),
@@ -219,6 +243,7 @@ class PreferenceRepository:
                     preferences.autoplay_trailer,
                     preferences.sidebar_open,
                     preferences.show_providers,
+                    preferences.music_view,
                 ),
             )
         return replace(preferences, site_title=DEFAULT_SITE_TITLE)

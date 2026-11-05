@@ -732,6 +732,13 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
                 getattr(item, "media_type", "") == "game"
                 for item in (*page.items, *(item for row in groups for item in row.items))
             ),
+            "has_albums": any(
+                getattr(item, "media_type", "") == "album"
+                for item in (*page.items, *(item for row in groups for item in row.items))
+            ),
+            "saved_album_icons": collections.saved_album_icons()
+            if hasattr(collections, "saved_album_icons")
+            else {},
             "game_rows": game_rows,
             "library_scanning": library_scanning,
             "streaming_selected": bool(query.provider_ids),
@@ -1054,6 +1061,7 @@ def create_router(templates: Jinja2Templates) -> APIRouter:
             display = replace(
                 current,
                 card_size=str(payload.get("card_size") or current.card_size),
+                music_view=str(payload.get("music_view") or current.music_view),
                 **values,
             )
             request.app.state.preferences.save_display(display)
