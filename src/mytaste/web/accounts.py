@@ -15,6 +15,7 @@ from mytaste.accounts.models import (
 )
 from mytaste.storage.preferences import DisplayPreferences
 from mytaste.storage.users import UserRepository
+from mytaste.web.hub import HUB_MESSAGES, hub_client, hub_connection, not_invited_message
 from mytaste.web.signin import Throttle, safe_next, sign_in, sign_out
 
 # Whether the sign-in page shows everyone's profiles to pick from, like a TV at home.
@@ -37,9 +38,16 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
     ) -> HTMLResponse:
         preferences = request.app.state.preferences
         me = request.state.user
+        hub_code = request.query_params.get("hub", "")
         shared: dict[str, object] = {
             "request": request,
             "current_path": request.url.path,
+            "hub_signin": hub_connection(request) is not None,
+            "hub_message": (
+                not_invited_message(request.query_params.get("who", ""))
+                if hub_code == "not_invited"
+                else HUB_MESSAGES.get(hub_code, "")
+            ),
             "display": preferences.get_display() if me else DisplayPreferences(),
             "header_has_library": False,
             "header_media": "all",
@@ -92,12 +100,12 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
         next_path = safe_next(request.query_params.get("next"))
         chosen = _int(request.query_params.get("user"))
         profile = users.get(chosen) if chosen else None
-        if profile is not None and profile.secret_kind:
+        if profile is not None and profile.secret_kind and not profile.hub_only:
             return render(
                 request, "signin.html", {"mode": "secret", "profile": profile, "next": next_path}
             )
         if picker_on(request):
-            context = {"mode": "picker", "profiles": users.list(), "next": next_path}
+            context = {"mode": "picker", "profiles": _at_home(users), "next": next_path}
             return render(request, "signin.html", context)
         return render(request, "signin.html", {"mode": "password", "next": next_path, "form": {}})
 
@@ -116,7 +124,7 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
             if picked and user is not None and user.secret_kind:
                 context: dict[str, object] = {"mode": "secret", "profile": user}
             elif picked:
-                context = {"mode": "picker", "profiles": users.list()}
+                context = {"mode": "picker", "profiles": _at_home(users)}
             else:
                 context = {"mode": "password", "form": {"username": username}}
             context.update({"next": next_path, "error": message})
@@ -124,6 +132,8 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
 
         if user is None:
             return failed("That username or password is wrong" if not picked else "Pick a profile")
+        if user.hub_only:
+            return failed("This account signs in with MyTaste")
         if picked and not picker_on(request):
             return failed("Sign in with your username and password")
         if not user.secret_kind and not picked:
@@ -155,6 +165,7 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
         context: dict[str, object] = {
             "secret_kinds": ("password",) if me.is_admin else _SECRET_KINDS,
             "saved": request.query_params.get("saved", ""),
+            "hub_username": users_of(request).hub_usernames().get(me.id, ""),
         }
         context.update(extra)
         return context
@@ -207,6 +218,10 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
             "picker": picker_on(request),
             "saved": request.query_params.get("saved", ""),
             "new_person": {},
+            "hub_url": hub_client(request).base_url if hub_client(request) else "",
+            "hub_connected": hub_connection(request) is not None,
+            "hub_names": users.hub_usernames(),
+            "invites": users.invites(),
         }
         context.update(extra)
         return context
@@ -238,7 +253,7 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
                 raise ValueError("Choose how they sign in")
             person = users.create(
                 name=name,
-                username=_free_username(users, str(form.get("username") or "") or name),
+                username=users.free_username(str(form.get("username") or "") or name),
                 role=role,  # type: ignore[arg-type]
                 secret_kind=kind,  # type: ignore[arg-type]
                 secret=str(form.get("secret") or ""),
@@ -335,6 +350,24 @@ def create_accounts_router(templates: Jinja2Templates) -> APIRouter:
             return render(request, "people.html", context, status_code=422)
         return RedirectResponse("/settings/people", status_code=303)
 
+    @router.post("/settings/people/invites", response_class=HTMLResponse)
+    async def invite(request: Request) -> Response:
+        form = await request.form()
+        username = str(form.get("username") or "")
+        try:
+            if hub_connection(request) is None:
+                raise ValueError("Connect this server to MyTaste first")
+            users_of(request).invite(username, _library_ids(form.getlist("libraries")))
+        except ValueError as exc:
+            context = people_context(request, invite_error=str(exc), invite_name=username)
+            return render(request, "people.html", context, status_code=422)
+        return RedirectResponse("/settings/people?saved=invite", status_code=303)
+
+    @router.post("/settings/people/invites/{invite_id:int}/remove")
+    async def cancel_invite(invite_id: int, request: Request) -> Response:
+        users_of(request).cancel_invite(invite_id)
+        return RedirectResponse("/settings/people", status_code=303)
+
     @router.post("/settings/people/picker")
     async def save_picker(request: Request) -> Response:
         form = await request.form()
@@ -356,12 +389,7 @@ def _library_ids(values: list[object]) -> tuple[int, ...]:
     return ids
 
 
-def _free_username(users: UserRepository, wanted: str) -> str:
-    """``wanted`` as a username, numbered if someone already has it (sara, sara2, …)."""
+def _at_home(users: UserRepository) -> tuple[User, ...]:
+    """The profiles for the profile screen: everyone except people who joined by invite."""
 
-    base = username_from(wanted)
-    candidate, number = base, 1
-    while users.by_username(candidate) is not None:
-        number += 1
-        candidate = f"{base[: 32 - len(str(number))]}{number}"
-    return candidate
+    return tuple(user for user in users.list() if not user.hub_only)

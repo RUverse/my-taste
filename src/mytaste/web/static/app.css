@@ -4354,6 +4354,20 @@ body[data-card-size="compact"] .poster .provider-strip svg { width: 12px; height
 .person-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .switch-form .check-row { align-items: flex-start; }
 
+/* Sign in with MyTaste, under the other ways in. */
+.hub-signin {
+  display: grid;
+  width: 100%;
+  margin-top: 8px;
+  gap: 10px;
+  justify-items: center;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.signin-card .hub-signin .button { justify-self: stretch; justify-content: center; }
+.profile-picker .hub-signin { width: auto; }
+
 /* Music ---------------------------------------------------------------------------------- */
 /* Albums are square covers with 6 px corners. One card's markup is laid out three ways by
    body[data-music-view]: a grid, a wall of covers, or a list. */
@@ -4561,11 +4575,6 @@ body[data-music-view="list"] .album-grid .skeleton-card .card-copy { display: bl
 
 @media (max-width: 720px) {
   body[data-music-view="list"] .album-list-head { display: none; }
-/* Headings stay in place when their column is turned off, so the columns keep their width. */
-body[data-show-year="false"] .album-list-head .meta-year,
-body[data-show-rating="false"] .album-list-head .meta-rating,
-body[data-show-media-type="false"] .album-list-head .meta-type,
-body[data-show-genres="false"] .album-list-head .meta-genres { display: block; visibility: hidden; }
   body[data-music-view="list"] .album-grid .album-card {
     grid-template-columns: 46px minmax(0, 1fr) auto 30px;
     grid-template-rows: auto auto;

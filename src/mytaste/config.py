@@ -63,6 +63,8 @@ class AppSettings:
     gamepass_stale_ttl: float = 86_400
     steam_enabled: bool = True
     steam_api_key: str | None = field(default=None, repr=False)
+    # The MyTaste Hub this server offers "Sign in with MyTaste" through; off when unset.
+    hub_url: str | None = None
     # Album covers kept on disk, in megabytes.
     music_cover_cache_mb: int = 500
     # Fill the music caches when the server starts. Servers do; apps built in tests don't, so
@@ -138,9 +140,19 @@ def load_app_settings() -> AppSettings:
         ),
         steam_enabled=_parse_boolean("MYTASTE_STEAM_ENABLED", True),
         steam_api_key=(os.environ.get("MYTASTE_STEAM_API_KEY") or "").strip() or None,
+        hub_url=_parse_hub_url(os.environ.get("MYTASTE_HUB_URL")),
         music_cover_cache_mb=cover_cache_mb,
         music_prefetch=_parse_boolean("MYTASTE_MUSIC_PREFETCH", True),
     )
+
+
+def _parse_hub_url(value: str | None) -> str | None:
+    cleaned = (value or "").strip().rstrip("/")
+    if not cleaned:
+        return None
+    if not cleaned.startswith(("https://", "http://")):
+        raise ConfigurationError("MYTASTE_HUB_URL must start with https:// or http://")
+    return cleaned
 
 
 def _parse_boolean(name: str, default: bool) -> bool:
